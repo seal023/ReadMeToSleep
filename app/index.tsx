@@ -1,0 +1,125 @@
+import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Racco } from '../components/common/Racco';
+import { useLanguage } from '../hooks/useLanguage';
+import { ChildTitle } from '../types';
+import { useState } from 'react';
+
+export default function IndexScreen() {
+  const router = useRouter();
+  const { t, language, setLanguage } = useLanguage();
+  const [childTitle] = useState(
+    () => ChildTitle[Math.floor(Math.random() * ChildTitle.length)]
+  );
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'zh' ? 'en' : 'zh');
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.appName}>{t('app.name')}</Text>
+        <Text style={styles.tagline}>{t('app.tagline')}</Text>
+      </View>
+
+      <View style={styles.raccoArea}>
+        <Racco
+          state="happy"
+          size={180}
+          showSpeechBubble
+          speechText={t('home.racco.happy')}
+        />
+      </View>
+
+      <View style={styles.buttons}>
+        <TouchableOpacity
+          style={[styles.card, { backgroundColor: '#FFE0B2' }]}
+          onPress={() => router.push('/(tabs)')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.cardEmoji}>🎮</Text>
+          <Text style={styles.cardTitle}>
+            {t('home.childMode')} · {childTitle}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, { backgroundColor: '#E8F5E9' }]}
+          onPress={() => router.push('/(parent)')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.cardEmoji}>👨‍👩‍👧‍👦</Text>
+          <Text style={styles.cardTitle}>{t('home.parentMode')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity style={styles.langBtn} onPress={toggleLanguage}>
+        <Text style={styles.langText}>
+          {language === 'zh' ? '🌐 English' : '🌐 中文'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFF5E6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  appName: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#5D4037',
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#8D6E63',
+    marginTop: 4,
+  },
+  raccoArea: {
+    marginVertical: 30,
+    alignItems: 'center',
+  },
+  buttons: {
+    width: '100%',
+    gap: 16,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  cardEmoji: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#5D4037',
+  },
+  langBtn: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+  },
+  langText: {
+    fontSize: 16,
+    color: '#8D6E63',
+  },
+});

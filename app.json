@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Read Me To Sleep",
+    "slug": "readmetosleep",
+    "version": "1.0.0",
+    "privacy": "unlisted",
+    "description": "All data stored locally. No personal info collected.",
+    "orientation": "portrait",
+    "scheme": "readmetosleep",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFF5E6"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.readmetosleep.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Generate stories about your location (data stays on device)",
+        "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFF5E6"
+      },
+      "package": "com.readmetosleep.app",
+      "permissions": ["ACCESS_FINE_LOCATION", "RECORD_AUDIO", "INTERNET"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-av",
+      "expo-speech",
+      "expo-file-system"
+    ]
+  }
+}
