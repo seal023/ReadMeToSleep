@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import type { RaccoState } from '../../types';
@@ -16,7 +16,6 @@ function getGreetingKey(): string {
 }
 
 export default function HomeTab() {
-  const router = useRouter();
   const { t } = useLanguage();
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
@@ -31,25 +30,20 @@ export default function HomeTab() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Greeting */}
       <View style={styles.greetingSection}>
         <Text style={styles.greetingText}>
           {t(getGreetingKey())}, {title} ✨
         </Text>
       </View>
 
-      {/* 2. Racco Display */}
       <TouchableOpacity activeOpacity={0.7} onPress={handleRaccoPress} style={styles.raccoWrap}>
         <Racco state={raccoState} size={raccoSize} />
       </TouchableOpacity>
 
-      {/* 3. Today's Recommendation */}
       <TouchableOpacity
         style={styles.recCard}
         activeOpacity={0.8}
-        onPress={() => {
-          // TODO: navigate to story detail
-        }}
+        onPress={() => router.push('/(tabs)/library')}
       >
         <View style={styles.recCover}>
           <Text style={styles.recCoverEmoji}>📖</Text>
@@ -63,21 +57,18 @@ export default function HomeTab() {
         </View>
       </TouchableOpacity>
 
-      {/* 4. Quick Actions */}
       <View style={styles.actions}>
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#FFB5A0' }]}
+          style={styles.actionCard1}
           activeOpacity={0.8}
-          onPress={() => {
-            // TODO: navigate to listen
-          }}
+          onPress={() => router.push('/(tabs)/library')}
         >
           <Text style={styles.actionEmoji}>🎧</Text>
           <Text style={styles.actionLabel}>{t('home.quickListen')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#FFD3B0' }]}
+          style={styles.actionCard2}
           activeOpacity={0.8}
           onPress={() => router.push('/(tabs)/create')}
         >
@@ -86,18 +77,15 @@ export default function HomeTab() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#C8E6C9' }]}
+          style={styles.actionCard3}
           activeOpacity={0.8}
-          onPress={() => {
-            // TODO: navigate to travel
-          }}
+          onPress={() => router.push('/story/travel-checkin')}
         >
           <Text style={styles.actionEmoji}>✈️</Text>
           <Text style={styles.actionLabel}>{t('home.quickTravel')}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 5. Recent Stories */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('home.recentStories')}</Text>
         <View style={styles.emptyState}>
@@ -117,7 +105,6 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  /* Greeting */
   greetingSection: {
     paddingHorizontal: 24,
     paddingTop: 20,
@@ -129,13 +116,11 @@ const styles = StyleSheet.create({
     color: '#5D4037',
   },
 
-  /* Racco */
   raccoWrap: {
     alignItems: 'center',
     marginVertical: 16,
   },
 
-  /* Recommendation Card */
   recCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -143,10 +128,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 20,
     padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
     elevation: 3,
   },
   recCover: {
@@ -185,18 +167,32 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  /* Quick Actions */
   actions: {
     flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 24,
     marginBottom: 24,
   },
-  actionCard: {
+  actionCard1: {
     flex: 1,
     borderRadius: 16,
     paddingVertical: 18,
     alignItems: 'center',
+    backgroundColor: '#FFB5A0',
+  },
+  actionCard2: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    backgroundColor: '#FFD3B0',
+  },
+  actionCard3: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
+    backgroundColor: '#C8E6C9',
   },
   actionEmoji: {
     fontSize: 28,
@@ -209,7 +205,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /* Recent Stories */
   section: {
     paddingHorizontal: 24,
   },

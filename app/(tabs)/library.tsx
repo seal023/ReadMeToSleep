@@ -96,7 +96,6 @@ export default function LibraryScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Racco state="idle" size={100} />
         <View style={styles.searchBox}>
@@ -116,22 +115,20 @@ export default function LibraryScreen() {
         </View>
       </View>
 
-      {/* Tab Switch */}
       <View style={styles.tabRow}>
         {TABS.map(tab => (
           <TouchableOpacity
             key={tab.key}
-            style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive]}
+            style={activeTab === tab.key ? styles.tabBtnActive : styles.tabBtn}
             onPress={() => { setActiveTab(tab.key); setActiveTag(null); }}
           >
-            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
+            <Text style={activeTab === tab.key ? styles.tabLabelActive : styles.tabLabel}>
               {tab.label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Tag Filter */}
       {activeTab === 'classic' && (
         <ScrollView
           horizontal
@@ -140,20 +137,20 @@ export default function LibraryScreen() {
           contentContainerStyle={styles.tagBarInner}
         >
           <TouchableOpacity
-            style={[styles.tagChip, !activeTag && styles.tagChipActive]}
+            style={!activeTag ? styles.tagChipActive : styles.tagChip}
             onPress={() => setActiveTag(null)}
           >
-            <Text style={[styles.tagChipText, !activeTag && styles.tagChipTextActive]}>
+            <Text style={!activeTag ? styles.tagChipTextActive : styles.tagChipText}>
               全部
             </Text>
           </TouchableOpacity>
           {TAGS.map(tag => (
             <TouchableOpacity
               key={tag.label}
-              style={[styles.tagChip, activeTag === tag.label && styles.tagChipActive]}
+              style={activeTag === tag.label ? styles.tagChipActive : styles.tagChip}
               onPress={() => setActiveTag(activeTag === tag.label ? null : tag.label)}
             >
-              <Text style={[styles.tagChipText, activeTag === tag.label && styles.tagChipTextActive]}>
+              <Text style={activeTag === tag.label ? styles.tagChipTextActive : styles.tagChipText}>
                 {tag.emoji} {tag.label}
               </Text>
             </TouchableOpacity>
@@ -161,7 +158,6 @@ export default function LibraryScreen() {
         </ScrollView>
       )}
 
-      {/* Story List */}
       <FlatList
         data={filtered}
         keyExtractor={item => item.id}
@@ -197,24 +193,31 @@ const styles = StyleSheet.create({
     borderRadius: 20, marginHorizontal: 4,
     backgroundColor: '#FFF0D6', borderWidth: 1, borderColor: '#F0D9B5',
   },
-  tabBtnActive: { backgroundColor: '#FFB347', borderColor: '#FF8C00' },
+  tabBtnActive: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderRadius: 20, marginHorizontal: 4,
+    backgroundColor: '#FFB347', borderWidth: 1, borderColor: '#FF8C00',
+  },
   tabLabel: { fontSize: 13, color: '#888', fontWeight: '500' },
-  tabLabelActive: { color: '#fff', fontWeight: '700' },
+  tabLabelActive: { fontSize: 13, color: '#fff', fontWeight: '700' },
   tagBar: { maxHeight: 40 },
   tagBarInner: { paddingHorizontal: 12, paddingVertical: 4 },
   tagChip: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
     backgroundColor: '#FFF0D6', marginHorizontal: 4, borderWidth: 1, borderColor: '#F0D9B5',
   },
-  tagChipActive: { backgroundColor: '#FFB347', borderColor: '#FF8C00' },
+  tagChipActive: {
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: '#FFB347', marginHorizontal: 4, borderWidth: 1, borderColor: '#FF8C00',
+  },
   tagChipText: { fontSize: 12, color: '#888' },
-  tagChipTextActive: { color: '#fff', fontWeight: '600' },
+  tagChipTextActive: { fontSize: 12, color: '#fff', fontWeight: '600' },
   list: { paddingHorizontal: 12, paddingTop: 8 },
   card: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 14,
     padding: 14, marginBottom: 10,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
+    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)', elevation: 2,
   },
   cardLeft: { marginRight: 12 },
   cardEmoji: { fontSize: 32 },

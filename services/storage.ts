@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, Progress, SensitiveWords } from '../types';
+import { MOCK_STORIES } from '../data/classic-stories/mock-stories';
+
+const CLASSIC_STORIES_DATA = MOCK_STORIES;
 
 const KEYS = {
   STORIES: 'rms_stories',
@@ -39,7 +42,25 @@ export async function getStories(): Promise<Story[]> {
 
 export async function getStory(id: string): Promise<Story | null> {
   const stories = await getStories();
-  return stories.find(s => s.id === id) || null;
+  const found = stories.find(s => s.id === id);
+  if (found) return found;
+
+  for (const data of CLASSIC_STORIES_DATA) {
+    const classicStory = data.find((s: any) => s.id === id);
+    if (classicStory) {
+      return {
+        id: classicStory.id,
+        title: classicStory.title,
+        content: classicStory.content,
+        language: 'zh' as const,
+        type: 'classic' as const,
+        tags: classicStory.tags || [],
+        duration: classicStory.duration || 0,
+        createdAt: new Date().toISOString(),
+      };
+    }
+  }
+  return null;
 }
 
 export async function deleteStory(id: string): Promise<void> {

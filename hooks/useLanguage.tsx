@@ -19,7 +19,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
-      if (saved === 'en' || saved === 'zh') setLang(saved as Language)
+      if (saved === 'en') {
+        setLang('en')
+      } else {
+        setLang('zh')
+        AsyncStorage.setItem(STORAGE_KEY, 'zh')
+      }
+    }).catch(() => {
+      setLang('zh')
     })
   }, [])
 
@@ -29,8 +36,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }
 
   const t = (key: string): string => {
-    const dict = locales[language]
-    return (dict as Record<string, string>)[key] ?? key
+    const locale = locales[language];
+    return locale[key] || key;
   }
 
   return (

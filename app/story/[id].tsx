@@ -7,8 +7,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   Dimensions,
+  Platform,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
 import { getStory, saveProgress, getProgress } from '../../services/storage';
 import { askQuestion } from '../../services/openclaw';
@@ -26,7 +27,6 @@ const qaQuestions = [
 const { width } = Dimensions.get('window');
 
 export default function StoryPlayScreen() {
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [phase, setPhase] = useState<Phase>('loading');
@@ -41,24 +41,31 @@ export default function StoryPlayScreen() {
   const [aiAnswer, setAiAnswer] = useState('');
   const [isAsking, setIsAsking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load story
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setError('故事ID无效');
+      return;
+    }
     (async () => {
       try {
         const s = await getStory(id);
+        if (!s) {
+          setError('故事不存在');
+          return;
+        }
         setStory(s);
         setPhase('playing');
-      } catch {
-        setPhase('playing');
+      } catch (err) {
+        console.error('Load story error:', err);
+        setError('加载故事失败');
       }
     })();
   }, [id]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopSpeech();
@@ -66,7 +73,6 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
-  // Save progress when phase changes to finished
   useEffect(() => {
     if (phase === 'finished' && story) {
       saveProgress({ storyId: story.id, completed: true, date: new Date().toISOString() });
@@ -75,11 +81,10 @@ export default function StoryPlayScreen() {
 
   const handlePlay = () => {
     if (!story) return;
-    textToSpeech(story.content);
+    textToSpeech(story.content, selectedVoice);
     setIsPlaying(true);
 
-    // Simulate progress
-    const totalDuration = story.content.length * 80; // ~80ms per char
+    const totalDuration = story.content.length * 80;
     const step = 100 / (totalDuration / 500);
     if (progressInterval.current) clearInterval(progressInterval.current);
     progressInterval.current = setInterval(() => {
@@ -116,7 +121,6 @@ export default function StoryPlayScreen() {
     setProgress(newProgress);
   };
 
-  // QA Round 1
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
@@ -132,7 +136,6 @@ export default function StoryPlayScreen() {
   };
 
   const handleVoiceRecord = () => {
-    // Simulate voice recording
     setIsRecording(true);
     setTimeout(() => {
       setIsRecording(false);
@@ -160,10 +163,20 @@ export default function StoryPlayScreen() {
     setIsAsking(false);
   };
 
-  // ─── Render ─────────────────────────────────────────
+  if (error) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>❌ {error}</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>← 返回</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (phase === 'loading') {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={styles.loadingContainer}>
         <Racco state="thinking" size={120} />
         <Text style={styles.loadingText}>正在准备故事...</Text>
       </View>
@@ -172,20 +185,26 @@ export default function StoryPlayScreen() {
 
   if (phase === 'playing') {
     const currentVoice = VOICES.find((v) => v.id === selectedVoice);
+    const progressWidth = `${progress}%`;
+    
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>{story?.title ?? '故事'}</Text>
+        <View style={styles.headerRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Text style={styles.backBtnText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>{story?.title ?? '故事'}</Text>
+          <View style={styles.headerSpacer} />
+        </View>
 
         <ScrollView style={styles.storyScroll} showsVerticalScrollIndicator={false}>
           <Text style={styles.storyText}>{story?.content ?? '加载中...'}</Text>
         </ScrollView>
 
-        {/* Progress bar */}
         <TouchableOpacity style={styles.progressBar} onPress={handleProgressTap} activeOpacity={0.8}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          <View style={{ ...styles.progressFill, width: progressWidth }} />
         </TouchableOpacity>
 
-        {/* Controls */}
         <View style={styles.controls}>
           <TouchableOpacity style={styles.controlBtn} onPress={handlePlay} disabled={isPlaying}>
             <Text style={styles.controlIcon}>▶️</Text>
@@ -198,7 +217,6 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Voice selector */}
         <View style={styles.voiceRow}>
           <Text style={styles.voiceLabel}>🔊 {currentVoice?.name ?? '默认'}</Text>
           <TouchableOpacity onPress={() => setShowVoicePicker(!showVoicePicker)}>
@@ -210,7 +228,7 @@ export default function StoryPlayScreen() {
             {VOICES.map((v) => (
               <TouchableOpacity
                 key={v.id}
-                style={[styles.voiceOption, v.id === selectedVoice && styles.voiceOptionActive]}
+                style={v.id === selectedVoice ? styles.voiceOptionActive : styles.voiceOption}
                 onPress={() => { setSelectedVoice(v.id); setShowVoicePicker(false); }}
               >
                 <Text style={styles.voiceOptionText}>{v.name}</Text>
@@ -228,7 +246,7 @@ export default function StoryPlayScreen() {
 
   if (phase === 'completed') {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={styles.completedContainer}>
         <Racco state="happy" size={150} />
         <Text style={styles.completedText}>故事讲完啦！🎉</Text>
         <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setPhase('qa_round1'); }}>
@@ -240,6 +258,7 @@ export default function StoryPlayScreen() {
 
   if (phase === 'qa_round1') {
     const q = qaQuestions[qaIndex];
+    
     return (
       <View style={styles.container}>
         <Text style={styles.qaRoundTitle}>问答时间 🧠 ({qaIndex + 1}/{qaQuestions.length})</Text>
@@ -258,7 +277,7 @@ export default function StoryPlayScreen() {
         {q.type === 'voice' && (
           <View style={styles.voiceRecordWrap}>
             <TouchableOpacity
-              style={[styles.micBtn, isRecording && styles.micBtnActive]}
+              style={isRecording ? styles.micBtnActive : styles.micBtn}
               onPress={handleVoiceRecord}
               disabled={isRecording}
             >
@@ -282,7 +301,7 @@ export default function StoryPlayScreen() {
         <Text style={styles.qaQuestion}>你有什么想问的？</Text>
 
         <TouchableOpacity
-          style={[styles.micBtn, isRecording && styles.micBtnActive]}
+          style={isRecording ? styles.micBtnActive : styles.micBtn}
           onPress={() => {
             setIsRecording(true);
             setTimeout(() => {
@@ -311,36 +330,29 @@ export default function StoryPlayScreen() {
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.primaryBtn, { marginTop: 20 }]}
-          onPress={() => setPhase('finished')}
-        >
+        <TouchableOpacity style={styles.primaryBtn2} onPress={() => setPhase('finished')}>
           <Text style={styles.primaryBtnText}>完成</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // finished
   return (
-    <View style={[styles.container, styles.center]}>
+    <View style={styles.finishedContainer}>
       <Racco state="sleeping" size={150} />
       <Text style={styles.finishedText}>晚安，好梦 🌙</Text>
 
-      <TouchableOpacity style={styles.finishedBtn} onPress={() => router.replace('/(tabs)')}>
+      <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)')}>
         <Text style={styles.finishedBtnIcon}>🏠</Text>
         <Text style={styles.finishedBtnText}>返回首页</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.finishedBtn}
-        onPress={() => { router.back(); setTimeout(() => router.push('/create'), 100); }}
-      >
+      <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)/create')}>
         <Text style={styles.finishedBtnIcon}>🔄</Text>
         <Text style={styles.finishedBtnText}>再听一个</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.finishedBtn, styles.finishedBtnDisabled]}>
+      <TouchableOpacity style={styles.finishedBtnDisabled}>
         <Text style={styles.finishedBtnIcon}>🎤</Text>
         <Text style={styles.finishedBtnText}>我来讲故事（即将上线）</Text>
       </TouchableOpacity>
@@ -348,14 +360,19 @@ export default function StoryPlayScreen() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF5E6', padding: 20 },
-  center: { justifyContent: 'center', alignItems: 'center' },
+  loadingContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
+  completedContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
+  finishedContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontSize: 16, color: '#888', marginTop: 16 },
+  errorText: { fontSize: 18, color: '#c00', marginBottom: 20 },
+  backBtn: { padding: 8 },
+  backBtnText: { fontSize: 24, color: '#5D4037' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  headerSpacer: { width: 40 },
 
-  // Playing
-  title: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#5D4037', marginTop: 10, marginBottom: 12 },
+  title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#5D4037', flex: 1 },
   storyScroll: { flex: 1, borderRadius: 16, backgroundColor: '#FFFDF7', padding: 20 },
   storyText: { fontSize: 16, lineHeight: 28, color: '#4E342E' },
   progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, marginTop: 12, overflow: 'hidden' },
@@ -371,14 +388,12 @@ const styles = StyleSheet.create({
   voiceToggle: { fontSize: 14, color: '#FF8A65', fontWeight: '600' },
   voicePicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   voiceOption: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#FFF' },
-  voiceOptionActive: { backgroundColor: '#FF8A65' },
+  voiceOptionActive: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#FF8A65' },
   voiceOptionText: { fontSize: 13, color: '#5D4037' },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
-  // Completed
   completedText: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', marginTop: 20, marginBottom: 24 },
 
-  // QA
   qaRoundTitle: { fontSize: 20, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginTop: 20, marginBottom: 16 },
   qaQuestion: { fontSize: 18, color: '#4E342E', textAlign: 'center', marginBottom: 24, lineHeight: 28 },
   optionsWrap: { gap: 16, paddingHorizontal: 20 },
@@ -392,19 +407,25 @@ const styles = StyleSheet.create({
     width: 100, height: 100, borderRadius: 50, backgroundColor: '#7C4DFF',
     justifyContent: 'center', alignItems: 'center', elevation: 3,
   },
-  micBtnActive: { backgroundColor: '#651FFF', transform: [{ scale: 1.1 }] },
+  micBtnActive: {
+    width: 100, height: 100, borderRadius: 50, backgroundColor: '#651FFF',
+    justifyContent: 'center', alignItems: 'center', elevation: 3,
+    transform: [{ scale: 1.1 }],
+  },
   micIcon: { fontSize: 32 },
   micLabel: { fontSize: 12, color: '#FFF', marginTop: 4 },
   feedbackText: { fontSize: 20, color: '#FF8A65', fontWeight: 'bold', textAlign: 'center', marginTop: 24 },
 
-  // Primary button
   primaryBtn: {
     backgroundColor: '#FF8A65', borderRadius: 28, paddingVertical: 16, paddingHorizontal: 40,
     elevation: 2, marginTop: 10,
   },
+  primaryBtn2: {
+    backgroundColor: '#FF8A65', borderRadius: 28, paddingVertical: 16, paddingHorizontal: 40,
+    elevation: 2, marginTop: 20,
+  },
   primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
 
-  // QA Round 2
   childQWrap: { marginTop: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
   childQ: { fontSize: 16, color: '#5D4037', marginBottom: 12 },
   askBtn: {
@@ -415,14 +436,18 @@ const styles = StyleSheet.create({
   aiAnswerWrap: { marginTop: 16, backgroundColor: '#F3E5F5', borderRadius: 16, padding: 16 },
   aiAnswer: { fontSize: 15, color: '#4A148C', lineHeight: 24 },
 
-  // Finished
   finishedText: { fontSize: 22, fontWeight: 'bold', color: '#5D4037', marginTop: 16, marginBottom: 32 },
   finishedBtn: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
     borderRadius: 24, paddingVertical: 16, paddingHorizontal: 28, marginBottom: 12,
     elevation: 1, minWidth: 220, justifyContent: 'center',
   },
-  finishedBtnDisabled: { opacity: 0.5 },
+  finishedBtnDisabled: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+    borderRadius: 24, paddingVertical: 16, paddingHorizontal: 28, marginBottom: 12,
+    elevation: 1, minWidth: 220, justifyContent: 'center',
+    opacity: 0.5,
+  },
   finishedBtnIcon: { fontSize: 20, marginRight: 10 },
   finishedBtnText: { fontSize: 15, color: '#5D4037', fontWeight: '600' },
 });

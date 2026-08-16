@@ -27,6 +27,11 @@ export default function CreateScreen() {
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
 
   const handleGenerate = async () => {
+    if (!theme.trim()) {
+      Alert.alert('提示', '请输入故事主题');
+      return;
+    }
+    
     setGenerating(true);
     setRaccoState('thinking');
     try {
@@ -50,15 +55,15 @@ export default function CreateScreen() {
       setRaccoState('happy');
       router.push(`/story/${story.id}`);
     } catch (e) {
+      console.error('Generate story error:', e);
       setRaccoState('idle');
-      Alert.alert(t('common.error'));
+      Alert.alert(t('common.error'), '生成故事失败，请重试');
     }
     setGenerating(false);
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Racco */}
       <View style={styles.raccoWrap}>
         <Racco
           state={generating ? 'thinking' : raccoState}
@@ -67,10 +72,8 @@ export default function CreateScreen() {
         />
       </View>
 
-      {/* Title */}
       <Text style={styles.title}>{t('create.title')}</Text>
 
-      {/* Input: Theme */}
       <View style={styles.card}>
         <Text style={styles.icon}>🌟</Text>
         <TextInput
@@ -81,7 +84,6 @@ export default function CreateScreen() {
         />
       </View>
 
-      {/* Input: Protagonist */}
       <View style={styles.card}>
         <Text style={styles.icon}>🐰</Text>
         <TextInput
@@ -92,11 +94,10 @@ export default function CreateScreen() {
         />
       </View>
 
-      {/* Input: Details */}
       <View style={styles.card}>
         <Text style={styles.icon}>✨</Text>
         <TextInput
-          style={[styles.input, styles.multiline]}
+          style={styles.inputMultiline}
           placeholder="找到魔法星球 / Found a magic planet"
           value={details}
           onChangeText={setDetails}
@@ -105,24 +106,22 @@ export default function CreateScreen() {
         />
       </View>
 
-      {/* Language selector */}
       <View style={styles.langRow}>
         {(['zh', 'en'] as Language[]).map((lang) => (
           <TouchableOpacity
             key={lang}
-            style={[styles.chip, storyLang === lang && styles.chipActive]}
+            style={storyLang === lang ? styles.chipActive : styles.chip}
             onPress={() => setStoryLang(lang)}
           >
-            <Text style={[styles.chipText, storyLang === lang && styles.chipTextActive]}>
+            <Text style={storyLang === lang ? styles.chipTextActive : styles.chipText}>
               {lang === 'zh' ? '中文' : 'English'}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Generate button */}
       <TouchableOpacity
-        style={[styles.btn, generating && styles.btnDisabled]}
+        style={generating ? styles.btnDisabled : styles.btn}
         onPress={handleGenerate}
         disabled={generating}
         activeOpacity={0.8}
@@ -147,14 +146,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.06)',
     elevation: 2,
   },
   icon: { fontSize: 22, marginRight: 10, marginTop: 2 },
   input: { flex: 1, fontSize: 16, color: '#333', padding: 0 },
-  multiline: { minHeight: 60, textAlignVertical: 'top' },
+  inputMultiline: { flex: 1, fontSize: 16, color: '#333', padding: 0, minHeight: 60, textAlignVertical: 'top' },
   langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 16, gap: 12 },
   chip: {
     paddingHorizontal: 20,
@@ -162,9 +159,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#FFE0B2',
   },
-  chipActive: { backgroundColor: '#FF6B6B' },
+  chipActive: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: '#FF6B6B' },
   chipText: { fontSize: 15, color: '#5D4037' },
-  chipTextActive: { color: '#FFF', fontWeight: '600' },
+  chipTextActive: { fontSize: 15, color: '#FFF', fontWeight: '600' },
   btn: {
     backgroundColor: '#FF8A65',
     borderRadius: 20,
@@ -172,6 +169,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  btnDisabled: { opacity: 0.5 },
+  btnDisabled: {
+    backgroundColor: '#FF8A65',
+    borderRadius: 20,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    opacity: 0.5,
+  },
   btnText: { fontSize: 18, color: '#FFF', fontWeight: '700' },
 });

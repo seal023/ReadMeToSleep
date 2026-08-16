@@ -1,12 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
-  const router = useRouter();
 
   const toggleLanguage = () => {
     setLanguage(language === 'zh' ? 'en' : 'zh');
@@ -28,7 +27,6 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 顶部 Racco */}
       <View style={styles.raccoWrap}>
         <Racco
           state="idle"
@@ -38,10 +36,8 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* 标题 */}
       <Text style={styles.title}>{t('settings.title')}</Text>
 
-      {/* 语言切换 */}
       <TouchableOpacity style={styles.card} onPress={toggleLanguage}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>🌐</Text>
@@ -52,7 +48,6 @@ export default function SettingsScreen() {
         </Text>
       </TouchableOpacity>
 
-      {/* 声音选择 */}
       <TouchableOpacity style={styles.card} onPress={showVoiceOptions}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>🔊</Text>
@@ -61,7 +56,6 @@ export default function SettingsScreen() {
         <Text style={styles.cardValue}>{t('settings.voice.system')}</Text>
       </TouchableOpacity>
 
-      {/* 家长入口 */}
       <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)')}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>👨‍👩‍👧‍👦</Text>
@@ -70,7 +64,6 @@ export default function SettingsScreen() {
         <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
 
-      {/* 关于 */}
       <View style={styles.card}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>ℹ️</Text>
@@ -115,10 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
     elevation: 3,
   },
   cardLeft: {

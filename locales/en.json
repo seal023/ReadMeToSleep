@@ -2,6 +2,18 @@
   "app.name": "Read Me To Sleep",
   "app.tagline": "Sweet stories for sweet dreams",
 
+  "home.childMode": "Child Mode",
+  "home.parentMode": "Parent Mode",
+  "home.greetingMorning": "Good morning, {title}!",
+  "home.greetingAfternoon": "Good afternoon, {title}!",
+  "home.greetingEvening": "Good evening, {title}!",
+  "home.recTitle": "Today's Story",
+  "home.recTag1": "Bedtime",
+  "home.recTag2": "3 min",
+  "home.quickListen": "Listen",
+  "home.quickCreate": "Create",
+  "home.quickTravel": "Travel",
+
   "tab.home": "Home",
   "tab.create": "Create",
   "tab.library": "Library",

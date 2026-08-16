@@ -1,27 +1,14 @@
-import { useEffect, useLayoutEffect } from 'react';
-import { ToastAndroid, Platform } from 'react-native';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LanguageProvider } from '../hooks/useLanguage';
 import { useAppStore } from '../store/appStore';
-import { Stack, useRouter, usePathname } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 const PRIVACY_SHOWN_KEY = 'rms_privacy_shown_v1';
 
 export default function RootLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
-
-  // catch-all fallback for /(parent)/...
-  useLayoutEffect(() => {
-    if (pathname?.startsWith('/(parent)/')) {
-      const sub = pathname.slice('/(parent)/'.length);
-      const known = ['index', 'hub', 'child-profile', 'subscription', 'sensitive-words', 'child-recordings', 'voice-clone', 'statistics'];
-      if (!known.includes(sub)) {
-        router.replace('/(parent)/settings');
-      }
-    }
-  }, [pathname, router]);
 
   // privacy toast on first open
   useEffect(() => {
@@ -30,7 +17,12 @@ export default function RootLayout() {
         const msg = Platform.OS === 'ios'
           ? '所有数据仅存储在设备本地，不收集任何个人信息。'
           : 'All data stored locally. No personal info collected.';
-        ToastAndroid.show(msg, ToastAndroid.SHORT);
+        if (Platform.OS !== 'web') {
+          const ToastAndroid = require('react-native').ToastAndroid;
+          ToastAndroid.show(msg, ToastAndroid.SHORT);
+        } else {
+          console.log('Privacy notice:', msg);
+        }
         AsyncStorage.setItem(PRIVACY_SHOWN_KEY, '1');
       }
     });

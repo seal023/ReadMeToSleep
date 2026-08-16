@@ -2,14 +2,13 @@ import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Alert, TouchableOpacity,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { getSensitiveWords, saveSensitiveWords } from '@/lib/storage';
+import { router } from 'expo-router';
+import { getSensitiveWords, saveSensitiveWords } from '@/services/storage';
 
 const RACCO_SLEEPING = '🦝💤';
 const RACCO_IDLE = '🦝';
 
 export default function ParentIndex() {
-  const router = useRouter();
   const [mode, setMode] = useState<'setup' | 'unlock'>('setup');
   const [digits1, setDigits1] = useState('');
   const [digits2, setDigits2] = useState('');
@@ -47,7 +46,7 @@ export default function ParentIndex() {
       setDigits2('');
       return;
     }
-    await saveSensitiveWords({ hasSetup: true });
+    await saveSensitiveWords({ words: [], phrases: [], hasSetup: true, pin: digits1 });
     router.push('/(parent)/hub');
   };
 
@@ -130,10 +129,7 @@ export default function ParentIndex() {
           {/* Pin dots */}
           <View style={styles.dotsRow}>
             {[0,1,2,3].map(i => (
-              <View key={i} style={[
-                styles.dot,
-                i < pinEntry.length && styles.dotFilled,
-              ]} />
+              <View key={i} style={i < pinEntry.length ? styles.dotFilled : styles.dot} />
             ))}
           </View>
           {/* Number pad */}
@@ -202,7 +198,7 @@ const styles = StyleSheet.create({
   key: {
     width: 66, height: 56, borderRadius: 28,
     backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
-    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: {width:0,height:2},
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
     elevation: 2,
   },
   keyEmpty: { width: 66, height: 56 },

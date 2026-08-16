@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
-import storage from '../../services/storage';
+import { getSensitiveWords, saveSensitiveWords } from '../../services/storage';
 
 export default function SensitiveWordsScreen() {
   const { t } = useLanguage();
@@ -17,7 +17,7 @@ export default function SensitiveWordsScreen() {
   }, []);
 
   async function load() {
-    const data = await storage.getSensitiveWords();
+    const data = await getSensitiveWords();
     const combined: string[] = [
       ...data.words.map(w => ({ label: w, tag: 'w' })),
       ...data.phrases.map(p => ({ label: p, tag: 'p' })),
@@ -26,7 +26,7 @@ export default function SensitiveWordsScreen() {
   }
 
   async function save(sepWords: string[], sepPhrases: string[]) {
-    await storage.saveSensitiveWords({ words: sepWords, phrases: sepPhrases });
+    await saveSensitiveWords({ words: sepWords, phrases: sepPhrases });
   }
 
   function getSepLists(label: string) {
@@ -69,7 +69,6 @@ export default function SensitiveWordsScreen() {
     const sepWords: string[] = [];
     const sepPhrases: string[] = [];
     for (const label of allWords) {
-      // 简单启发：带空格的算短语，否则算词
       sepWords.push(label);
     }
     await save(sepWords, sepPhrases);
@@ -84,7 +83,6 @@ export default function SensitiveWordsScreen() {
         </View>
         <Text style={styles.title}>{t('settings.sensitiveWords.title') || '敏感词管理'}</Text>
 
-        {/* 词列表 */}
         <View style={styles.listHeader}>
           <Text style={styles.sectionTitle}>
             {(t('settings.sensitiveWords.list') || '当前词库')}（{allWords.length}）
@@ -107,7 +105,6 @@ export default function SensitiveWordsScreen() {
           ))}
         </View>
 
-        {/* 添加区 */}
         <Text style={styles.sectionTitle}>{t('settings.sensitiveWords.add') || '添加新词'}</Text>
         <View style={styles.addRow}>
           <TextInput
@@ -121,10 +118,9 @@ export default function SensitiveWordsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 批量导入 */}
         <Text style={styles.sectionTitle}>{t('settings.sensitiveWords.batch') || '批量导入'}</Text>
         <TextInput
-          style={[styles.input, styles.multilineInput]}
+          style={styles.multilineInput}
           value={batchText}
           onChangeText={setBatchText}
           placeholder={t('settings.sensitiveWords.batchPlaceholder') || '每行一个或用逗号分隔'}
@@ -136,14 +132,11 @@ export default function SensitiveWordsScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* 返回列表 */}
       <View style={styles.backBar}>
         <TouchableOpacity style={styles.backBtn} onPress={() => {
           if (typeof (global as any).router?.back === 'function') {
-            // @ts-expect-error expo-router type issue
             (global as any).router.back();
           } else {
-            // @ts-expect-error
             require('expo-router').useRouter().back();
           }
         }}>
@@ -154,11 +147,8 @@ export default function SensitiveWordsScreen() {
   );
 }
 
-const S = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F6FA' },
-});
-
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F5F6FA' },
   scroll: { padding: 20, paddingBottom: 80 },
   raccoWrap: { alignItems: 'center', marginVertical: 16 },
   title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 16, color: '#333' },
@@ -171,7 +161,7 @@ const styles = StyleSheet.create({
   deleteIcon: { fontSize: 18, marginLeft: 8 },
   addRow: { flexDirection: 'row', marginBottom: 12 },
   input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: '#fff', marginRight: 8 },
-  multilineInput: { height: 80, textAlignVertical: 'top', marginBottom: 8 },
+  multilineInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: '#fff', height: 80, textAlignVertical: 'top', marginBottom: 8 },
   addBtn: { backgroundColor: '#4A90D9', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   saveBtn: { backgroundColor: '#52C41A', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },

@@ -26,8 +26,8 @@ const Racco: React.FC<RaccoProps> = ({
   useEffect(() => {
     if (state === 'idle') {
       const l = Animated.loop(Animated.sequence([
-        Animated.timing(blink, { toValue: 0, duration: 150, delay: 2500, useNativeDriver: true }),
-        Animated.timing(blink, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.timing(blink, { toValue: 0, duration: 150, delay: 2500, useNativeDriver: false }),
+        Animated.timing(blink, { toValue: 1, duration: 150, useNativeDriver: false }),
       ]));
       l.start(); return () => l.stop();
     }
@@ -36,8 +36,8 @@ const Racco: React.FC<RaccoProps> = ({
 
   useEffect(() => {
     const l = Animated.loop(Animated.sequence([
-      Animated.timing(breathe, { toValue: 1.03, duration: 1500, useNativeDriver: true }),
-      Animated.timing(breathe, { toValue: 0.97, duration: 1500, useNativeDriver: true }),
+      Animated.timing(breathe, { toValue: 1.03, duration: 1500, useNativeDriver: false }),
+      Animated.timing(breathe, { toValue: 0.97, duration: 1500, useNativeDriver: false }),
     ]));
     l.start(); return () => l.stop();
   }, [breathe]);
@@ -56,8 +56,8 @@ const Racco: React.FC<RaccoProps> = ({
   useEffect(() => {
     if (state === 'sleeping') {
       const l = Animated.loop(Animated.sequence([
-        Animated.timing(zzzV, { toValue: 1, duration: 1200, useNativeDriver: true }),
-        Animated.timing(zzzV, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(zzzV, { toValue: 1, duration: 1200, useNativeDriver: false }),
+        Animated.timing(zzzV, { toValue: 0, duration: 400, useNativeDriver: false }),
       ]));
       l.start(); return () => l.stop();
     }
@@ -67,8 +67,8 @@ const Racco: React.FC<RaccoProps> = ({
   useEffect(() => {
     if (state === 'happy') {
       const l = Animated.loop(Animated.sequence([
-        Animated.timing(starV, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(starV, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+        Animated.timing(starV, { toValue: 1, duration: 600, useNativeDriver: false }),
+        Animated.timing(starV, { toValue: 0.3, duration: 600, useNativeDriver: false }),
       ]));
       l.start(); return () => l.stop();
     }
@@ -231,7 +231,7 @@ const S = StyleSheet.create({
   patch: { backgroundColor: '#555', borderRadius: 20, padding: 4, alignItems: 'center', justifyContent: 'center' },
   tail: { position: 'absolute', alignItems: 'flex-end', transform: [{ rotate: '-30deg' }] },
   capWrap: { position: 'absolute', alignItems: 'center' },
-  bubble: { backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2, maxWidth: 240, alignItems: 'center' },
+  bubble: { backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)', elevation: 2, maxWidth: 240, alignItems: 'center' },
   bubbleText: { color: '#555', textAlign: 'center' },
   arrow: { width: 0, height: 0, borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#fff', marginTop: 2 },
 });

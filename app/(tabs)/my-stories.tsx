@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { getStories, deleteStory } from '../../services/storage';
 import { getProgress } from '../../services/storage';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -29,7 +29,6 @@ const BADGES = [
 ];
 
 export default function MyStoriesScreen() {
-  const router = useRouter();
   const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>('created');
   const [stories, setStories] = useState<Story[]>([]);
@@ -175,12 +174,11 @@ export default function MyStoriesScreen() {
               <EmptyState emoji="🎤" text="还没有录音故事" />
             }
           />
-          <TouchableOpacity
-            style={styles.recordBtn}
-            onPress={() => router.push('/(tabs)/create')}
-          >
-            <Text style={styles.recordBtnText}>🎤 开始录音</Text>
-          </TouchableOpacity>
+          <Link href="/(tabs)/create" asChild>
+            <TouchableOpacity style={styles.recordBtn}>
+              <Text style={styles.recordBtnText}>🎤 开始录音</Text>
+            </TouchableOpacity>
+          </Link>
         </View>
       )}
 
@@ -260,10 +258,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 12,
     padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
     elevation: 2,
   },
   cardMain: {

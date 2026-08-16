@@ -1,12 +1,11 @@
-import { useRouter } from 'expo-router';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Racco } from '../components/common/Racco';
+import { router } from 'expo-router';
+import Racco from '../components/common/Racco';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChildTitle } from '../types';
 import { useState } from 'react';
 
 export default function IndexScreen() {
-  const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
   const [childTitle] = useState(
     () => ChildTitle[Math.floor(Math.random() * ChildTitle.length)]
@@ -14,6 +13,14 @@ export default function IndexScreen() {
 
   const toggleLanguage = () => {
     setLanguage(language === 'zh' ? 'en' : 'zh');
+  };
+
+  const handleChildMode = () => {
+    router.push('/(tabs)');
+  };
+
+  const handleParentMode = () => {
+    router.push('/(parent)');
   };
 
   return (
@@ -34,8 +41,8 @@ export default function IndexScreen() {
 
       <View style={styles.buttons}>
         <TouchableOpacity
-          style={[styles.card, { backgroundColor: '#FFE0B2' }]}
-          onPress={() => router.push('/(tabs)')}
+          style={styles.childCard}
+          onPress={handleChildMode}
           activeOpacity={0.8}
         >
           <Text style={styles.cardEmoji}>🎮</Text>
@@ -45,8 +52,8 @@ export default function IndexScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.card, { backgroundColor: '#E8F5E9' }]}
-          onPress={() => router.push('/(parent)')}
+          style={styles.parentCard}
+          onPress={handleParentMode}
           activeOpacity={0.8}
         >
           <Text style={styles.cardEmoji}>👨‍👩‍👧‍👦</Text>
@@ -93,16 +100,23 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 16,
   },
-  card: {
+  childCard: {
     borderRadius: 16,
     padding: 24,
     flexDirection: 'row',
     alignItems: 'center',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+    backgroundColor: '#FFE0B2',
+  },
+  parentCard: {
+    borderRadius: 16,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+    backgroundColor: '#E8F5E9',
   },
   cardEmoji: {
     fontSize: 32,

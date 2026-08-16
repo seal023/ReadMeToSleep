@@ -1,5 +1,16 @@
 export type RaccoState = 'idle' | 'talking' | 'listening' | 'thinking' | 'happy' | 'sleeping';
-export type ChildTitle = 'Little Star' | 'Champion' | 'Adventurer' | 'Dreamer' | 'Storyteller' | 'Sweetie';
+
+export const ChildTitle = [
+  'Little Star',
+  'Champion',
+  'Adventurer',
+  'Dreamer',
+  'Storyteller',
+  'Sweetie'
+] as const;
+
+export type ChildTitleType = typeof ChildTitle[number];
+
 export type Language = 'zh' | 'en';
 export type TabName = 'home' | 'create' | 'library' | 'my-stories' | 'settings';
 
@@ -30,6 +41,8 @@ export interface Progress {
 export interface SensitiveWords {
   words: string[];
   phrases: string[];
+  hasSetup?: boolean;
+  pin?: string;
 }
 
 export interface LanguageContextType {

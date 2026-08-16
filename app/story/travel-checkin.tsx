@@ -103,7 +103,7 @@ export default function TravelCheckinScreen() {
     const animations = confetti.map((_, i) =>
       Animated.timing(confettiAnims.current[i], {
         toValue: 1, duration: 1500, delay: confetti[i].delay,
-        useNativeDriver: true,
+        useNativeDriver: false,
       })
     );
     Animated.parallel(animations).start();
@@ -327,8 +327,7 @@ const styles = StyleSheet.create({
   // Card
   card: {
     backgroundColor: '#FFF', borderRadius: 24, padding: 24, alignItems: 'center',
-    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6,
+    elevation: 2, boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
   },
   cardEmoji: { fontSize: 56, marginBottom: 16 },
   cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 8 },

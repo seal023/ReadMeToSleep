@@ -5,7 +5,7 @@ import {
 import * as Audio from 'expo-av';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
-import storage from '../../services/storage';
+import { getStories, saveStory, deleteStory } from '../../services/storage';
 import type { Story } from '../../types';
 
 export default function ChildRecordingsScreen() {
@@ -17,13 +17,13 @@ export default function ChildRecordingsScreen() {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const all = await storage.getStories();
+    const all = await getStories();
     setRecordings(all.filter(s => s.type === 'recording' || s.audioUri));
   }
 
   async function toggleLike(story: Story) {
     const updated = { ...story, isLiked: !story.isLiked };
-    await storage.saveStory(updated);
+    await saveStory(updated);
     setRecordings(prev => prev.map(s => s.id === story.id ? updated : s));
   }
 
@@ -63,7 +63,7 @@ export default function ChildRecordingsScreen() {
       [
         { text: t('common.cancel') || '取消', style: 'cancel' },
         { text: t('common.delete') || '删除', style: 'destructive', onPress: async () => {
-          await storage.deleteStory(story.id);
+          await deleteStory(story.id);
           setRecordings(prev => prev.filter(s => s.id !== story.id));
         }},
       ],
@@ -109,13 +109,13 @@ export default function ChildRecordingsScreen() {
             </View>
             <View style={styles.cardActions}>
               <TouchableOpacity
-                style={[styles.actionBtn, playingId === story.id && styles.playingBtn]}
+                style={playingId === story.id ? styles.playingBtn : styles.actionBtn}
                 onPress={() => playRecording(story)}
               >
                 <Text style={styles.actionText}>{playingId === story.id ? '⏸ 暂停' : '▶ 播放'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, styles.deleteBtn]} onPress={() => handleDelete(story)}>
-                <Text style={[styles.actionText, styles.deleteText]}>🗑 删除</Text>
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(story)}>
+                <Text style={styles.deleteText}>🗑 删除</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -132,17 +132,15 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyText: { fontSize: 15, color: '#aaa', textAlign: 'center' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)', elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 17, fontWeight: '600', flex: 1, marginRight: 8 },
   cardMeta: { flexDirection: 'row', marginTop: 6, marginBottom: 10 },
   metaText: { fontSize: 13, color: '#999' },
   cardActions: { flexDirection: 'row', gap: 10 },
   actionBtn: { flex: 1, backgroundColor: '#4A90D9', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
-  playingBtn: { backgroundColor: '#6AB0F3' },
-  deleteBtn: { backgroundColor: '#FFF0F0' },
+  playingBtn: { flex: 1, backgroundColor: '#6AB0F3', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  deleteBtn: { flex: 1, backgroundColor: '#FFF0F0', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
   actionText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  deleteText: { color: '#E53935' },
+  deleteText: { fontSize: 14, fontWeight: '600', color: '#E53935' },
 });
-
-
