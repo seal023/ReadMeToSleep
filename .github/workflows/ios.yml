@@ -54,9 +54,7 @@ jobs:
           -scheme ReadMeToSleep \
           -archivePath build/ReadMeToSleep.xcarchive \
           -destination 'generic/platform=iOS' \
-          -allowProvisioningUpdates \
-          DEVELOPMENT_TEAM=4C362B27Q4 \
-          PROVISIONING_PROFILE_SPECIFIER=ReadMeToSleep_Distribution
+          -allowProvisioningUpdates
     
     - name: Export IPA
       run: |
