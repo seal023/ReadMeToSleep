@@ -34,9 +34,12 @@ jobs:
         echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > ~/tmp/profile.mobileprovision
         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
         cp ~/tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-        sudo security import ~/tmp/cert.p12 -k /Library/Keychains/System.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-        sudo security set-key-partition-list -S apple-tool:,apple: -s -k "" /Library/Keychains/System.keychain
-        security unlock-keychain -p "" /Library/Keychains/System.keychain
+        security create-keychain -p "" ~/tmp/build.keychain
+        security default-keychain -s ~/tmp/build.keychain
+        security unlock-keychain -p "" ~/tmp/build.keychain
+        security import ~/tmp/cert.p12 -k ~/tmp/build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/tmp/build.keychain
+        security list-keychains -d user -s ~/tmp/build.keychain
     
     - name: Prebuild iOS
       run: npx expo prebuild --platform ios --clean
