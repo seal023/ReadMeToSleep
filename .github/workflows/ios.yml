@@ -55,7 +55,10 @@ jobs:
           -workspace ReadMeToSleep.xcworkspace \
           -scheme ReadMeToSleep \
           -archivePath build/ReadMeToSleep.xcarchive \
-          -destination 'generic/platform=iOS'
+          -destination 'generic/platform=iOS' \
+          -allowProvisioningUpdates \
+          DEVELOPMENT_TEAM=4C362B27Q4 \
+          PROVISIONING_PROFILE_SPECIFIER=ReadMeToSleep_Distribution
     
     - name: Export IPA
       run: |
@@ -63,7 +66,8 @@ jobs:
         xcodebuild -exportArchive \
           -archivePath build/ReadMeToSleep.xcarchive \
           -exportPath build \
-          -exportOptionsPlist ../ExportOptions.plist
+          -exportOptionsPlist ../ExportOptions.plist \
+          -allowProvisioningUpdates
     
     - name: Upload to App Store
       env:
