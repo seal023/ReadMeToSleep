@@ -29,9 +29,6 @@ prepare_react_native_project!
 target 'ReadMeToSleep' do
   use_expo_modules!
 
-  # 🔧 锁定 lottie-ios 版本，解决版本冲突
-  pod 'lottie-ios', '4.6.0'
-
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
   else
