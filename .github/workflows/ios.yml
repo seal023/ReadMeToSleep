@@ -1,0 +1,77 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+    
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Setup certificates
+      env:
+        CERTIFICATE_BASE64: ${{ secrets.CERTIFICATE_BASE64 }}
+        CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        BUNDLE_ID: ${{ secrets.BUNDLE_ID }}
+      run: |
+        mkdir -p ~/tmp
+        echo "$CERTIFICATE_BASE64" | base64 --decode > ~/tmp/cert.p12
+        echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > ~/tmp/profile.mobileprovision
+        security create-keychain -p "" ~/tmp/build.keychain
+        security default-keychain -s ~/tmp/build.keychain
+        security unlock-keychain -p "" ~/tmp/build.keychain
+        security import ~/tmp/cert.p12 -k ~/tmp/build.keychain -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -s -k "" ~/tmp/build.keychain
+        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+        cp ~/tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+    
+    - name: Prebuild iOS
+      run: npx expo prebuild --platform ios --clean
+    
+    - name: Install Pods
+      run: |
+        cd ios
+        pod install
+    
+    - name: Build and Archive
+      run: |
+        cd ios
+        xcodebuild archive \
+          -workspace ReadMeToSleep.xcworkspace \
+          -scheme ReadMeToSleep \
+          -archivePath build/ReadMeToSleep.xcarchive \
+          -destination 'generic/platform=iOS'
+    
+    - name: Export IPA
+      run: |
+        cd ios
+        xcodebuild -exportArchive \
+          -archivePath build/ReadMeToSleep.xcarchive \
+          -exportPath build \
+          -exportOptionsPlist ../ExportOptions.plist
+    
+    - name: Upload to App Store
+      env:
+        APP_STORE_CONNECT_USERNAME: ${{ secrets.APP_STORE_CONNECT_USERNAME }}
+        APP_STORE_CONNECT_PASSWORD: ${{ secrets.APP_STORE_CONNECT_PASSWORD }}
+      run: |
+        cd ios
+        xcodebuild -uploadIPA \
+          -archivePath build/ReadMeToSleep.xcarchive \
+          -exportOptionsPlist ../ExportOptions.plist \
+          -allowProvisioningUpdates
