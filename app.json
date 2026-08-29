@@ -35,7 +35,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-av",
       "expo-file-system"
     ]
   }
