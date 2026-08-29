@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert,
 } from 'react-native';
-import * as Audio from 'expo-av';
+import { AudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getStories, saveStory, deleteStory } from '../../services/storage';
@@ -12,9 +12,17 @@ export default function ChildRecordingsScreen() {
   const { t } = useLanguage();
   const [recordings, setRecordings] = useState<Story[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
 
   useEffect(() => { load(); }, []);
+
+  // 组件卸载时停止播放
+  useEffect(() => {
+    return () => {
+      playerRef.current?.remove();
+      playerRef.current = null;
+    };
+  }, []);
 
   async function load() {
     const all = await getStories();
@@ -30,26 +38,37 @@ export default function ChildRecordingsScreen() {
   async function playRecording(story: Story) {
     if (!story.audioUri) return;
 
-    if (playingId === story.id && sound) {
-      await sound.stopAsync();
+    // 如果正在播放同一个，暂停
+    if (playingId === story.id && playerRef.current) {
+      playerRef.current.pause();
       setPlayingId(null);
-      setSound(null);
       return;
     }
 
-    if (sound) {
-      await sound.unloadAsync();
+    // 停止之前的
+    if (playerRef.current) {
+      playerRef.current.remove();
+      playerRef.current = null;
     }
     setPlayingId(null);
 
     try {
-      const { sound: s } = await Audio.Sound.createAsync(
-        { uri: story.audioUri },
-        { shouldPlay: true },
-        { onPlaybackStatusUpdate: () => {} },
-      );
-      setSound(s);
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        staysActiveInBackground: false,
+      });
+
+      const player = new AudioPlayer({ uri: story.audioUri });
+      playerRef.current = player;
+      player.play();
       setPlayingId(story.id);
+
+      // 播放结束后重置状态
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (!status.isLoaded || status.didJustFinish) {
+          setPlayingId(null);
+        }
+      });
     } catch (e) {
       console.error('播放失败:', e);
       Alert.alert('播放失败', '无法加载音频');
@@ -63,6 +82,12 @@ export default function ChildRecordingsScreen() {
       [
         { text: t('common.cancel') || '取消', style: 'cancel' },
         { text: t('common.delete') || '删除', style: 'destructive', onPress: async () => {
+          // 如果正在播放被删除的录音，先停
+          if (playingId === story.id && playerRef.current) {
+            playerRef.current.remove();
+            playerRef.current = null;
+            setPlayingId(null);
+          }
           await deleteStory(story.id);
           setRecordings(prev => prev.filter(s => s.id !== story.id));
         }},
