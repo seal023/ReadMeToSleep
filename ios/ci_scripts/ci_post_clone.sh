@@ -1,14 +1,19 @@
-#!/bin/bash
+#!/bin/sh
 set -e
-echo "=== ci_post_clone.sh started ==="
-echo "Current directory: $(pwd)"
-echo "Listing files in ios directory:"
-ls -la ios/ || echo "ios directory not found"
+set -x
 
-echo "Checking if pod is installed:"
-which pod || echo "pod not found in PATH"
+echo "PWD=$(pwd)"
+echo "CI_WORKSPACE=$CI_WORKSPACE"
 
-echo "Installing Pods..."
+cd "$CI_WORKSPACE"
+
+brew install node || true
+node -v
+npm -v
+
+npm install
+
 cd ios
-pod install --verbose
-echo "=== ci_post_clone.sh completed ==="l completed."
+pod install --repo-update
+
+echo "=== DONE ==="
