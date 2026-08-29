@@ -16,7 +16,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.readmetosleep.app",
+      "bundleIdentifier": "com.seal023.ReadMeToSleep",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Generate stories about your location (data stays on device)",
         "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)"

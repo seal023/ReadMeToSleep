@@ -36,4 +36,5 @@ yarn-error.*
 
 # generated native folders
 /android
+ios/
 ios/Pods/
