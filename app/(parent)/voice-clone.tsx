@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert } from 'react-native';
-import * as Audio from 'expo-av';
+import { AudioRecorder, setAudioModeAsync, requestPermissionsAsync } from 'expo-audio';
 
 type CloneTarget = 'mom' | 'dad' | 'grandma';
 
@@ -17,15 +17,11 @@ export default function VoiceClonePage() {
   const [target, setTarget] = useState<CloneTarget>('mom');
   const [step, setStep] = useState<'select' | 'recording' | 'preview' | 'done'>('select');
   const [duration, setDuration] = useState(0);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recorder, setRecorder] = useState<AudioRecorder | null>(null);
   const [uri, setUri] = useState<string | null>(null);
   const [waveData, setWaveData] = useState<number[]>([]);
-  const [isRecordingWeb, setIsRecordingWeb] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const audioStreamRef = useRef<MediaStream | null>(null);
 
   const raccoState = step === 'recording' ? 'listening' : step === 'select' ? 'idle' : 'happy';
 
@@ -45,11 +41,8 @@ export default function VoiceClonePage() {
 
   useEffect(() => {
     return () => {
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
+      if (recorder) {
+        recorder.remove();
       }
     };
   }, []);
@@ -59,119 +52,43 @@ export default function VoiceClonePage() {
 
   const startRecording = async () => {
     try {
-      if (Platform.OS === 'web') {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          Alert.alert('录音失败', '当前浏览器不支持录音功能');
-          return;
-        }
-        
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: { 
-            sampleRate: 44100,
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true
-          } 
-        });
-        
-        audioStreamRef.current = stream;
-        
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-          ? 'audio/webm' 
-          : MediaRecorder.isTypeSupported('audio/mp4') 
-            ? 'audio/mp4' 
-            : 'audio/wav';
-        
-        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
-        audioChunksRef.current = [];
-        
-        mediaRecorderRef.current.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            audioChunksRef.current.push(e.data);
-          }
-        };
-        
-        mediaRecorderRef.current.onerror = (e) => {
-          console.error('MediaRecorder error:', e);
-          setIsRecordingWeb(false);
-          Alert.alert('录音失败', '录音过程中发生错误');
-        };
-        
-        mediaRecorderRef.current.onstop = () => {
-          try {
-            const blob = new Blob(audioChunksRef.current, { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            setUri(url);
-            setWaveData(generateWaveform());
-          } catch (err) {
-            console.error('Create audio URL error:', err);
-          }
-        };
-        
-        mediaRecorderRef.current.start(100);
-        setIsRecordingWeb(true);
-        setStep('recording');
-      } else {
-        const permissionResult = await Audio.requestPermissionsAsync();
-        if (permissionResult.status !== 'granted') {
-          Alert.alert('录音失败', '请授予麦克风权限');
-          return;
-        }
-        
-        await Audio.setAudioModeAsync({ 
-          allowsRecording: true, 
-          playThroughEarpiece: false,
-          staysActiveInBackground: true,
-        });
-        
-        const rec = new Audio.Recording();
-        await rec.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
-        await rec.startAsync();
-        setRecording(rec);
-        setStep('recording');
+      const permission = await requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('录音失败', '请授予麦克风权限');
+        return;
       }
+
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        staysActiveInBackground: false,
+      });
+
+      const rec = new AudioRecorder();
+      rec.prepareToRecordAsync();
+      rec.record();
+      setRecorder(rec);
+      setStep('recording');
     } catch (err: any) {
       console.error('Recording error:', err);
-      const errorMsg = err.message || '无法访问麦克风，请检查权限设置';
-      Alert.alert('录音失败', errorMsg);
+      Alert.alert('录音失败', err.message || '无法访问麦克风');
     }
   };
 
   const stopRecording = async () => {
-    if (Platform.OS === 'web') {
-      if (mediaRecorderRef.current && isRecordingWeb) {
-        try {
-          mediaRecorderRef.current.stop();
-          setIsRecordingWeb(false);
-          
-          if (audioStreamRef.current) {
-            audioStreamRef.current.getTracks().forEach(track => track.stop());
-            audioStreamRef.current = null;
-          }
-          
-          setTimeout(() => {
-            setStep('preview');
-          }, 500);
-        } catch (err) {
-          console.error('Stop recording error:', err);
-          setIsRecordingWeb(false);
-          setStep('preview');
-        }
+    if (recorder) {
+      try {
+        await recorder.stop();
+        const uriPath = recorder.uri;
+        setUri(uriPath || null);
+        setWaveData(generateWaveform());
+      } catch (err) {
+        console.error('Stop recording error:', err);
       }
-    } else {
-      if (recording) {
-        try {
-          await recording.stopAndUnloadAsync();
-          const uriPath = recording.getURI();
-          setUri(uriPath);
-          setWaveData(generateWaveform());
-        } catch (err) {
-          console.error('Stop recording error:', err);
-        }
-        setRecording(null);
-        setStep('preview');
-      }
+      recorder.remove();
+      setRecorder(null);
     }
+    setStep('preview');
   };
 
   const handleDone = async () => {
