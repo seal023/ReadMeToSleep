@@ -28,14 +28,19 @@
         "backgroundColor": "#FFF5E6"
       },
       "package": "com.readmetosleep.app",
-      "permissions": ["ACCESS_FINE_LOCATION", "RECORD_AUDIO", "INTERNET"]
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "RECORD_AUDIO",
+        "INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-file-system"
+      "expo-file-system",
+      "expo-audio"
     ]
   }
 }
