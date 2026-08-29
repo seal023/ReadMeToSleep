@@ -2,10 +2,13 @@
 set -e
 set -x
 
-echo "PWD=$(pwd)"
-echo "CI_WORKSPACE=$CI_WORKSPACE"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-cd "$CI_WORKSPACE"
+cd "$REPO_DIR"
+
+echo "PWD=$(pwd)"
+ls -la
 
 brew install node || true
 node -v
