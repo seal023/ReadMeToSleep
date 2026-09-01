@@ -36,5 +36,6 @@ yarn-error.*
 
 # generated native folders
 /android
-ios/
-ios/Pods/
+# 忽略 prebuild 生成的原生代码，但保留 Xcode Cloud 的 ci_scripts 脚本
+ios/*
+!ios/ci_scripts

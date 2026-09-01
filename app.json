@@ -4,7 +4,7 @@
     "slug": "readmetosleep",
     "version": "1.0.0",
     "privacy": "unlisted",
-    "description": "All data stored locally. No personal info collected.",
+    "description": "AI bedtime stories for kids aged 3-8. Story themes you type are sent to our AI service to generate the story. Everything else stays on your device.",
     "orientation": "portrait",
     "scheme": "readmetosleep",
     "icon": "./assets/icon.png",
@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.seal023.ReadMeToSleep",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Generate stories about your location (data stays on device)",
-        "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)"
+        "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

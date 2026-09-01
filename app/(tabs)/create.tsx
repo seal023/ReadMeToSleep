@@ -9,8 +9,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { generateStory } from '@/services/openclaw';
-import { saveStory } from '@/services/storage';
+import { generateStory } from '@/services/ai';
+import { saveStory, getSensitiveWords } from '@/services/storage';
 import { useLanguage } from '@/hooks/useLanguage';
 import Racco from '@/components/common/Racco';
 import type { Story, Language, RaccoState } from '@/types';
@@ -35,11 +35,14 @@ export default function CreateScreen() {
     setGenerating(true);
     setRaccoState('thinking');
     try {
+      // 读取家长设置的敏感词，交给 AI 主动规避
+      const sensitive = await getSensitiveWords();
       const result = await generateStory({
         theme,
         protagonist,
         details,
         language: storyLang,
+        sensitiveWords: [...sensitive.words, ...sensitive.phrases],
       });
       const story: Story = {
         id: Date.now().toString(),

@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
 import { getStory, saveProgress, getProgress } from '../../services/storage';
-import { askQuestion } from '../../services/openclaw';
+import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import type { Story } from '../../types';
 
@@ -155,7 +155,8 @@ export default function StoryPlayScreen() {
     if (!childQuestion.trim()) return;
     setIsAsking(true);
     try {
-      const answer = await askQuestion(childQuestion);
+      // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
+      const answer = await askQuestion(story?.content ?? '', childQuestion);
       setAiAnswer(answer);
     } catch {
       setAiAnswer('嗯，这个问题我还不太清楚呢～');
