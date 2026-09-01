@@ -15,25 +15,29 @@ import type { GenerateStoryParams, StoryGenerateResult } from '../types';
  *   3. 每日调用额度保护，防止 Key 被盗刷产生额外费用。
  *   4. 三级降级：JSON 解析失败 → 纯文本兜底 → 内置故事库，保证任何情况下都能讲故事。
  *
- * ⚠️ 安全提示：当前 API Key 写在客户端代码里，存在被反编译提取的风险。
- *    正式上架前强烈建议改为自建后端代理转发，客户端只持有短期签名令牌。
+ * ⚠️ 安全说明：API Key 已从源码移除，只通过环境变量注入，绝不写死在代码里。
+ *    - 本地开发：复制到 .env（已被 gitignore，不会提交）
+ *    - Xcode Cloud / EBA 构建：在 Xcode Cloud 工作流的环境变量里配置同名变量
+ *    - 上架前强烈建议改为自建后端代理转发，客户端只持有短期签名令牌
+ *    - 由于历史提交（3188c05）曾含 Key，建议到阿里云控制台轮换该 Key 使旧值失效
  */
 
 // ---------------------------------------------------------------------------
 // 配置
 // ---------------------------------------------------------------------------
 
-/** 优先读取构建期注入的环境变量，未配置时回落到下方内置值 */
+/** 构建期注入的环境变量（Expo 会把 EXPO_PUBLIC_* 烧录进客户端包） */
 const ENV_API_KEY = (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_API_KEY as
   | string
   | undefined;
 
 export const AI_CONFIG = {
-  baseUrl: 'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com',
+  baseUrl:
+    (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_BASE_URL ||
+    'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com',
   chatPath: '/compatible-mode/v1/chat/completions',
-  apiKey:
-    ENV_API_KEY ||
-    'sk-ws-H.IRLMRX.ef5O.MEUCIQCnQdFgB_jGXufYJIVjjUIcbEKa7zv3_s2bo6eqLeR4tAIgJU-yhoIKPynfDIuRZyNfgFyQuBNwvDwHmw1_aPmiVjE',
+  /** 仅来自环境变量；未配置时为空，generateStory 会自动降级到内置故事库 */
+  apiKey: ENV_API_KEY ?? '',
   model: 'qwen-plus',
   timeoutMs: 90_000,
   maxTokens: 3072,
@@ -119,6 +123,10 @@ async function chat(
   user: string,
   temperature: number
 ): Promise<string> {
+  if (!AI_CONFIG.apiKey) {
+    // 未配置 Key：不发起网络请求，让上层降级到内置故事库
+    throw new Error('AI_API_KEY_NOT_CONFIGURED');
+  }
   const res = await axios.post(
     `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`,
     {
