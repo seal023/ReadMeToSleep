@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,19 +9,8 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import {
-  FALLBACK_PRICES,
-  isIapSupported,
-  loadOffers,
-  openManageSubscriptions,
-  purchasePlan,
-  refreshEntitlement,
-  restorePurchasesAsync,
-  type Entitlement,
-  type PaidPlan,
-  type Plan,
-  type PlanOffer,
-} from '@/services/iap';
+import { useIAP } from '@/hooks/useIAP';
+import type { PaidPlan, Plan } from '@/services/iap';
 
 // ---------------------------------------------------------------------------
 // ⚠️ 上架前必须替换为真实可访问的 URL（Apple 对订阅类 App 的硬性要求 3.1.2）
@@ -29,6 +18,14 @@ import {
 // ---------------------------------------------------------------------------
 const TERMS_URL = 'https://example.com/readmetosleep/terms.html';
 const PRIVACY_URL = 'https://example.com/readmetosleep/privacy.html';
+
+// ---------------------------------------------------------------------------
+// 定价文案（与 App Store Connect 商品一致：月度 $4.99 / 年度 $24.99 预付）
+//   年度折算：$24.99 / 12 ≈ $2.08 每月
+//   相比按月订阅：$4.99 × 12 = $59.88 → 省 (59.88-24.99)/59.88 ≈ 58%
+// ---------------------------------------------------------------------------
+const MONTHLY_EQUIVALENT = '$2.08';
+const YEARLY_SAVING = '省 58%';
 
 type FeatureRow = {
   feature: string;
@@ -65,108 +62,62 @@ function formatDate(ms: number): string {
 }
 
 export default function SubscriptionPage() {
-  /** 用户当前实际拥有的方案（来自 App Store 校验） */
-  const [activePlan, setActivePlan] = useState<Plan>('free');
   /** 用户在卡片上选中的方案（尚未购买） */
   const [selected, setSelected] = useState<PaidPlan>('yearly');
-  const [offers, setOffers] = useState<PlanOffer[] | null>(null);
-  const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [initializing, setInitializing] = useState(true);
 
-  // 进入页面时：拉取真实价格 + 校验订阅状态
-  useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      if (!isIapSupported) {
-        if (alive) setInitializing(false);
-        return;
-      }
-      try {
-        const [loadedOffers, current] = await Promise.all([
-          loadOffers(),
-          refreshEntitlement(),
-        ]);
-        if (!alive) return;
-        setOffers(loadedOffers);
-        setEntitlement(current);
-        if (current && current.expiryMs > Date.now()) setActivePlan(current.plan);
-      } catch (err) {
-        console.warn('[Subscription] init failed:', err);
-      } finally {
-        if (alive) setInitializing(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const priceOf = useCallback(
-    (plan: PaidPlan, suffix: string) => {
-      const offer = offers?.find((o) => o.plan === plan);
-      const price = offer?.displayPrice || FALLBACK_PRICES[plan];
-      return `${price}${suffix}`;
-    },
-    [offers]
-  );
+  const {
+    initializing,
+    busy,
+    offers,
+    entitlement,
+    isSubscribed,
+    activePlan,
+    supported,
+    priceOf,
+    purchase,
+    restore,
+    manage,
+  } = useIAP();
 
   const handlePurchase = async () => {
-    if (!isIapSupported) {
+    if (!supported) {
       Alert.alert('提示', '此功能需要使用正式构建版本，开发环境暂不支持购买。');
       return;
     }
-    if (busy) return;
-
-    setBusy(true);
     try {
-      const result = await purchasePlan(selected);
-      setEntitlement(result);
-      setActivePlan(result.plan);
-      Alert.alert('订阅成功 🎉', '感谢你的支持，会员权益已生效。');
+      const result = await purchase(selected);
+      if (!result) return; // 用户取消，不打扰
+      Alert.alert(
+        '订阅成功 🎉',
+        `已开通「${STATUS_MAP[result.plan].label}」，有效期至 ${formatDate(result.expiryMs)}。`
+      );
     } catch (err) {
-      const cancelled = (err as { userCancelled?: boolean } | null)?.userCancelled;
-      if (!cancelled) {
-        Alert.alert('购买未完成', (err as Error)?.message || '请稍后重试');
-      }
-    } finally {
-      setBusy(false);
+      Alert.alert('购买未完成', (err as Error)?.message || '请稍后重试');
     }
   };
 
   const handleRestore = async () => {
-    if (!isIapSupported) {
+    if (!supported) {
       Alert.alert('提示', '此功能需要使用正式构建版本，开发环境暂不支持恢复购买。');
       return;
     }
-    if (busy) return;
-
-    setBusy(true);
     try {
-      const restored = await restorePurchasesAsync();
-      if (restored && restored.expiryMs > Date.now()) {
-        setEntitlement(restored);
-        setActivePlan(restored.plan);
+      const restored = await restore();
+      if (restored) {
         Alert.alert(
           '恢复成功 ✅',
           `已恢复「${STATUS_MAP[restored.plan].label}」，有效期至 ${formatDate(restored.expiryMs)}。`
         );
       } else {
-        setEntitlement(null);
-        setActivePlan('free');
         Alert.alert('未找到订阅', '当前 Apple ID 下没有有效的订阅记录。');
       }
     } catch (err) {
       Alert.alert('恢复失败', (err as Error)?.message || '请检查网络后重试');
-    } finally {
-      setBusy(false);
     }
   };
 
   const handleManage = async () => {
-    const opened = await openManageSubscriptions();
+    const opened = await manage();
     if (!opened) {
       Alert.alert('提示', '无法打开订阅管理，请在 iOS「设置 → Apple ID → 订阅」中管理。');
     }
@@ -181,7 +132,7 @@ export default function SubscriptionPage() {
   };
 
   const status = STATUS_MAP[activePlan];
-  const isSubscribed = activePlan !== 'free' && !!entitlement && entitlement.expiryMs > Date.now();
+  const usingShopPrice = !!offers;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -223,6 +174,9 @@ export default function SubscriptionPage() {
 
       {/* 选择方案 */}
       <Text style={styles.sectionTitle}>选择方案</Text>
+      {!usingShopPrice && supported && (
+        <Text style={styles.priceHint}>暂时无法获取商店价格，以下为参考价</Text>
+      )}
       <View style={styles.planCards}>
         <TouchableOpacity
           style={[styles.planCard, selected === 'monthly' && styles.planActive]}
@@ -230,8 +184,9 @@ export default function SubscriptionPage() {
           disabled={busy}
         >
           <Text style={styles.planName}>月度会员</Text>
-          <Text style={styles.planPrice}>{priceOf('monthly', '/月')}</Text>
-          <Text style={styles.planDesc}>灵活订阅，随时取消</Text>
+          <Text style={styles.planPrice}>{priceOf('monthly')}</Text>
+          <Text style={styles.planUnit}>每月</Text>
+          <Text style={styles.planDesc}>自动续订，随时取消</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -240,11 +195,12 @@ export default function SubscriptionPage() {
           disabled={busy}
         >
           <View style={styles.bestBadge}>
-            <Text style={styles.bestText}>省 40%</Text>
+            <Text style={styles.bestText}>{YEARLY_SAVING}</Text>
           </View>
           <Text style={styles.planName}>年度会员</Text>
-          <Text style={styles.planPrice}>{priceOf('yearly', '/年')}</Text>
-          <Text style={styles.planDesc}>约 ¥14/月，最划算</Text>
+          <Text style={styles.planPrice}>{priceOf('yearly')}</Text>
+          <Text style={styles.planUnit}>每年</Text>
+          <Text style={styles.planDesc}>约 {MONTHLY_EQUIVALENT}/月，一次性预付</Text>
         </TouchableOpacity>
       </View>
 
@@ -279,8 +235,9 @@ export default function SubscriptionPage() {
       <View style={styles.legalBox}>
         <Text style={styles.legalText}>
           · 确认购买后，费用将从你的 Apple ID 账户扣除。{'\n'}·
-          订阅会在当前周期结束前 24 小时内自动续订，除非提前至少 24 小时关闭自动续订。
-          {'\n'}· 可在 Apple ID 账户设置中管理或取消订阅。
+          月度订阅会在当前周期结束前 24 小时内自动续订，除非提前至少 24 小时关闭自动续订。
+          {'\n'}· 年度订阅为一次性预付，到期后不会自动续订。{'\n'}·
+          可在 Apple ID 账户设置中管理或取消订阅。
         </Text>
         <View style={styles.legalLinks}>
           <TouchableOpacity onPress={() => openLink(TERMS_URL)}>
@@ -300,6 +257,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f0ff' },
   content: { padding: 20, paddingBottom: 40 },
   sectionTitle: { fontSize: 17, fontWeight: '600', color: '#4a3080', marginVertical: 8 },
+  priceHint: { fontSize: 11, color: '#999', marginBottom: 8, textAlign: 'center' },
   statusCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -347,8 +305,9 @@ const styles = StyleSheet.create({
   },
   bestText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   planName: { fontSize: 16, fontWeight: '600', color: '#2d1b69', marginTop: 6 },
-  planPrice: { fontSize: 22, fontWeight: 'bold', color: '#6c5ce7', marginVertical: 6 },
-  planDesc: { fontSize: 12, color: '#999', textAlign: 'center' },
+  planPrice: { fontSize: 22, fontWeight: 'bold', color: '#6c5ce7', marginVertical: 2 },
+  planUnit: { fontSize: 12, color: '#999' },
+  planDesc: { fontSize: 12, color: '#999', textAlign: 'center', marginTop: 6 },
   buyBtn: {
     backgroundColor: '#6c5ce7',
     borderRadius: 14,

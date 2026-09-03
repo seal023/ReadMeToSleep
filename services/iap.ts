@@ -11,8 +11,9 @@
  *   - finishTransaction({ purchase })        完成交易（不完成会在每次启动重放）
  *
  * 商品 ID（需与 App Store Connect 中创建的订阅商品完全一致）：
- *   com.seal023.ReadMeToSleep.monthly
- *   com.seal023.ReadMeToSleep.yearly
+ *   com.seal023.ReadMeToSleep.mor   （月度，$4.99/月）
+ *   com.seal023.ReadMeToSleep.yea   （年度，$24.99/年，预付模式）
+ * 订阅群组 ID：22351191（仅 ASC 后台使用，代码无需引用）
  */
 
 import { Platform } from 'react-native';
@@ -41,15 +42,22 @@ export type Plan = 'free' | 'monthly' | 'yearly';
 export type PaidPlan = Exclude<Plan, 'free'>;
 
 export const PRODUCT_IDS: Record<PaidPlan, string> = {
-  monthly: 'com.seal023.ReadMeToSleep.monthly',
-  yearly: 'com.seal023.ReadMeToSleep.yearly',
+  monthly: 'com.seal023.ReadMeToSleep.mor',
+  yearly: 'com.seal023.ReadMeToSleep.yea',
 };
 
-/** 商店拉取失败时的兜底展示价（App Store Connect 里请按此价格档配置） */
+/**
+ * 商店拉取失败时的兜底展示价。
+ * 与 App Store Connect 中创建的两个商品保持一致（月度 $4.99 / 年度 $24.99 预付）。
+ * 注意：兜底价只用于 UI 展示，实际扣款金额永远以 App Store 返回为准。
+ */
 export const FALLBACK_PRICES: Record<PaidPlan, string> = {
-  monthly: '¥28',
-  yearly: '¥168',
+  monthly: '$4.99',
+  yearly: '$24.99',
 };
+
+/** 兜底币种（与 ASC 商品定价币种一致） */
+export const FALLBACK_CURRENCY = 'USD';
 
 const ENTITLEMENT_KEY = 'rms_entitlement';
 const ALL_SKUS = [PRODUCT_IDS.monthly, PRODUCT_IDS.yearly];
@@ -75,7 +83,7 @@ export interface Entitlement {
 export interface PlanOffer {
   plan: PaidPlan;
   productId: string;
-  /** 商店返回的本地化价格，如 "¥28" */
+  /** 商店返回的本地化价格，如 "$4.99"（已按用户 App Store 地区本地化） */
   displayPrice: string;
   currency: string;
   title: string;
@@ -127,11 +135,12 @@ export async function loadOffers(): Promise<PlanOffer[] | null> {
       .filter((p) => p && typeof p.id === 'string')
       .map<PlanOffer>((p) => {
         const plan = planFromProductId(p.id);
+        const fallbackPlan = plan ?? 'monthly';
         return {
-          plan: plan ?? 'monthly',
+          plan: fallbackPlan,
           productId: p.id,
-          displayPrice: p.displayPrice || FALLBACK_PRICES[plan ?? 'monthly'],
-          currency: p.currency || 'CNY',
+          displayPrice: p.displayPrice || FALLBACK_PRICES[fallbackPlan],
+          currency: p.currency || FALLBACK_CURRENCY,
           title: p.title || '',
           description: p.description || '',
         };
