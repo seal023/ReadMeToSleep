@@ -5,8 +5,10 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getProgress, saveProgress } from '../../services/storage';
+import { checkCheckInGate } from '../../services/entitlement';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useEntitlement } from '../../hooks/useEntitlement';
 import type { Language } from '../../types';
 
 const { width } = Dimensions.get('window');
@@ -83,6 +85,7 @@ export default function TravelCheckinScreen() {
   const [badge, setBadge] = useState<{ emoji: string; label: string } | null>(null);
   const [confetti, setConfetti] = useState<{ x: number; color: string; delay: number }[]>([]);
   const confettiAnims = useRef<Animated.Value[]>([]);
+  const { snapshot, refresh, showPaywall } = useEntitlement();
 
   // Generate confetti
   useEffect(() => {
@@ -110,7 +113,11 @@ export default function TravelCheckinScreen() {
   }, [step, confetti]);
 
   // Simulate location
-  const handleStart = () => {
+  const handleStart = async () => {
+    // 打卡额度门禁（会员不限）。放在流程入口，避免用户走完一圈才发现不能打卡
+    const gate = await checkCheckInGate();
+    if (!showPaywall(gate)) return;
+
     const loc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
     setLocation(language === 'en' ? loc.en : `${loc.cn}·${loc.place}`);
     setStep('generate');
@@ -147,6 +154,7 @@ export default function TravelCheckinScreen() {
 
     const newBadges = newBadge ? [...progress.badges, newBadge.emoji] : progress.badges;
     await saveProgress({ ...progress, checkIns: newCheckIns, badges: newBadges });
+    await refresh();
 
     setBadge(newBadge);
     setStep('success');
@@ -212,6 +220,13 @@ export default function TravelCheckinScreen() {
             <Text style={styles.cardDesc}>
               {language === 'en' ? 'We\'ll create a story about your location' : '我们会为你生成一个关于那个地方的故事'}
             </Text>
+            {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null && (
+              <Text style={styles.quota}>
+                {language === 'en'
+                  ? `${snapshot.checkInsRemaining} check-ins left · Unlimited with membership`
+                  : `还可打卡 ${snapshot.checkInsRemaining} 次 · 会员不限`}
+              </Text>
+            )}
             <TouchableOpacity style={styles.primaryBtn} onPress={handleStart}>
               <Text style={styles.primaryBtnText}>
                 {language === 'en' ? 'Start Check-in' : '开始打卡'}
@@ -308,6 +323,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF5E6' },
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
   header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
+  quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },
 
   // Step indicator
   stepRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 32 },

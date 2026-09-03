@@ -11,7 +11,9 @@ import {
 import { useRouter } from 'expo-router';
 import { generateStory } from '@/services/ai';
 import { saveStory, getSensitiveWords } from '@/services/storage';
+import { checkStoryGate, recordStoryGenerated } from '@/services/entitlement';
 import { useLanguage } from '@/hooks/useLanguage';
+import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import type { Story, Language, RaccoState } from '@/types';
 
@@ -25,13 +27,18 @@ export default function CreateScreen() {
   const [storyLang, setStoryLang] = useState<Language>('zh');
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
+  const { snapshot, refresh, showPaywall } = useEntitlement();
 
   const handleGenerate = async () => {
     if (!theme.trim()) {
       Alert.alert('提示', '请输入故事主题');
       return;
     }
-    
+
+    // 每日额度门禁（会员不限）
+    const gate = await checkStoryGate();
+    if (!showPaywall(gate)) return;
+
     setGenerating(true);
     setRaccoState('thinking');
     try {
@@ -55,6 +62,8 @@ export default function CreateScreen() {
         createdAt: new Date().toISOString(),
       };
       await saveStory(story);
+      await recordStoryGenerated();
+      await refresh();
       setRaccoState('happy');
       router.push(`/story/${story.id}`);
     } catch (e) {
@@ -123,6 +132,12 @@ export default function CreateScreen() {
         ))}
       </View>
 
+      {snapshot && !snapshot.premium && snapshot.storiesRemaining !== null && (
+        <Text style={styles.quota}>
+          今日剩余 {snapshot.storiesRemaining} 个故事 · 会员不限量
+        </Text>
+      )}
+
       <TouchableOpacity
         style={generating ? styles.btnDisabled : styles.btn}
         onPress={handleGenerate}
@@ -153,6 +168,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   icon: { fontSize: 22, marginRight: 10, marginTop: 2 },
+  quota: {
+    fontSize: 12,
+    color: '#8D6E63',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
   input: { flex: 1, fontSize: 16, color: '#333', padding: 0 },
   inputMultiline: { flex: 1, fontSize: 16, color: '#333', padding: 0, minHeight: 60, textAlignVertical: 'top' },
   langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 16, gap: 12 },

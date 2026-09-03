@@ -34,12 +34,18 @@ type FeatureRow = {
   yearly: boolean | string;
 };
 
+/**
+ * ⚠️ 这张表必须与代码实际行为严格一致——Apple 会按 Guideline 2.3.1
+ *    （描述与实际不符）抽查。之前表里的「离线下载」「自定义角色皮肤」
+ *    在项目中根本不存在实现，属不实描述，已移除。
+ *
+ *    额度常量定义在 services/entitlement.ts：
+ *      FREE_DAILY_STORY_LIMIT = 1、FREE_TOTAL_CHECKIN_LIMIT = 3
+ */
 const FEATURES: FeatureRow[] = [
   { feature: '每日故事数', free: '1个', monthly: '无限', yearly: '无限' },
   { feature: '克隆声音', free: false, monthly: true, yearly: true },
   { feature: '旅行打卡', free: '3次', monthly: '无限', yearly: '无限' },
-  { feature: '离线下载', free: false, monthly: true, yearly: true },
-  { feature: '自定义角色皮肤', free: false, monthly: false, yearly: true },
   { feature: '家长控制面板', free: true, monthly: true, yearly: true },
 ];
 
