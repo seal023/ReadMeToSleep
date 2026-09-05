@@ -16,8 +16,8 @@ import type { PaidPlan, Plan } from '@/services/iap';
 // ⚠️ 上架前必须替换为真实可访问的 URL（Apple 对订阅类 App 的硬性要求 3.1.2）
 //    建议托管到 GitHub Pages / Vercel 等静态站点
 // ---------------------------------------------------------------------------
-const TERMS_URL = 'https://example.com/readmetosleep/terms.html';
-const PRIVACY_URL = 'https://example.com/readmetosleep/privacy.html';
+const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
+const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 
 // ---------------------------------------------------------------------------
 // 定价文案（与 App Store Connect 商品一致：月度 $4.99 / 年度 $24.99 预付）
