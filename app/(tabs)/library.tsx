@@ -13,22 +13,23 @@ import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 
+// 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
 const TAGS = [
-  { label: '动物', emoji: '🐾' },
-  { label: '冒险', emoji: '🏰' },
-  { label: '友情', emoji: '🤝' },
-  { label: '魔法', emoji: '✨' },
+  { label: '童话', emoji: '📖' },
   { label: '成长', emoji: '🌱' },
-  { label: '自然', emoji: '🌿' },
+  { label: '寓言', emoji: '🦉' },
+  { label: '动物', emoji: '🐾' },
+  { label: '睡前', emoji: '🌙' },
+  { label: '自然', emoji: '🍃' },
 ];
 
 const TAG_EMOJI: Record<string, string> = {
-  动物: '🐾',
-  冒险: '🏰',
-  友情: '🤝',
-  魔法: '✨',
+  童话: '📖',
   成长: '🌱',
-  自然: '🌿',
+  寓言: '🦉',
+  动物: '🐾',
+  睡前: '🌙',
+  自然: '🍃',
 };
 
 type TabKey = 'classic' | 'ai' | 'travel';

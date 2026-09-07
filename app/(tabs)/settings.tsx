@@ -1,8 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
+import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { useLanguage } from '../../hooks/useLanguage';
+
+/** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
+const APP_VERSION: string =
+  (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
@@ -69,9 +74,8 @@ export default function SettingsScreen() {
           <Text style={styles.cardIcon}>ℹ️</Text>
           <View style={styles.aboutInfo}>
             <Text style={styles.cardText}>{t('settings.about')}</Text>
-            <Text style={styles.aboutSub}>
-              {t('settings.about.version')} · {t('settings.about.description')}
-            </Text>
+            <Text style={styles.aboutSub}>{t('settings.about.description')}</Text>
+            <Text style={styles.versionBadge}>v{APP_VERSION}</Text>
           </View>
         </View>
       </View>
@@ -142,5 +146,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
     marginTop: 4,
+  },
+  versionBadge: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#8D6E63',
+    backgroundColor: '#FFF1DC',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
 });
