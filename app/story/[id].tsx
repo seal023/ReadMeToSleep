@@ -73,10 +73,29 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
+  // 听完一个故事：记入已听列表 + 刷新连续天数（奖励机制的数据基础）
   useEffect(() => {
-    if (phase === 'finished' && story) {
-      saveProgress({ storyId: story.id, completed: true, date: new Date().toISOString() });
-    }
+    if (phase !== 'finished' || !story) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await getProgress();
+        if (cancelled) return;
+        if (!p.listenedStories.includes(story.id)) {
+          p.listenedStories.push(story.id);
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        if (p.lastListenDate !== today) {
+          const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          p.streakDays = p.lastListenDate === yesterday ? p.streakDays + 1 : 1;
+          p.lastListenDate = today;
+        }
+        await saveProgress(p);
+      } catch (err) {
+        console.error('Save progress error:', err);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [phase, story]);
 
   const handlePlay = () => {

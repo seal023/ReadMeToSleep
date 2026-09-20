@@ -1,8 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, Progress, SensitiveWords } from '../types';
-import { MOCK_STORIES } from '../data/classic-stories/mock-stories';
+// 经典故事正文：100 篇公共版权故事，按 25 篇一册分卷存放
+import classic1 from '../data/classic-stories/zh/1-25.json';
+import classic2 from '../data/classic-stories/zh/26-50.json';
+import classic3 from '../data/classic-stories/zh/51-75.json';
+import classic4 from '../data/classic-stories/zh/76-100.json';
 
-const CLASSIC_STORIES_DATA = MOCK_STORIES;
+interface ClassicStoryRaw {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  duration: number;
+  source: string;
+}
+
+/** 100 篇经典故事正文（离线，随包体分发） */
+const CLASSIC_STORIES_DATA: ClassicStoryRaw[] = [
+  ...(classic1 as ClassicStoryRaw[]),
+  ...(classic2 as ClassicStoryRaw[]),
+  ...(classic3 as ClassicStoryRaw[]),
+  ...(classic4 as ClassicStoryRaw[]),
+];
 
 const KEYS = {
   STORIES: 'rms_stories',
@@ -45,20 +64,18 @@ export async function getStory(id: string): Promise<Story | null> {
   const found = stories.find(s => s.id === id);
   if (found) return found;
 
-  for (const data of CLASSIC_STORIES_DATA) {
-    const classicStory = data.find((s: any) => s.id === id);
-    if (classicStory) {
-      return {
-        id: classicStory.id,
-        title: classicStory.title,
-        content: classicStory.content,
-        language: 'zh' as const,
-        type: 'classic' as const,
-        tags: classicStory.tags || [],
-        duration: classicStory.duration || 0,
-        createdAt: new Date().toISOString(),
-      };
-    }
+  const classicStory = CLASSIC_STORIES_DATA.find(s => s.id === id);
+  if (classicStory) {
+    return {
+      id: classicStory.id,
+      title: classicStory.title,
+      content: classicStory.content,
+      language: 'zh' as const,
+      type: 'classic' as const,
+      tags: classicStory.tags || [],
+      duration: classicStory.duration || 0,
+      createdAt: new Date().toISOString(),
+    };
   }
   return null;
 }

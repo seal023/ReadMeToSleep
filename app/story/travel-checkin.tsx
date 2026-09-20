@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { getProgress, saveProgress } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
 import Racco from '../../components/common/Racco';
+import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import type { Language } from '../../types';
@@ -15,15 +16,22 @@ const { width } = Dimensions.get('window');
 
 type Step = 'locate' | 'generate' | 'play' | 'success';
 
+/**
+ * 卡通地图上的打卡点。
+ * x / y 为 0-100 的百分比坐标，由经纬度线性换算而来：
+ *   x = (经度 - 73) / (135 - 73) * 100
+ *   y = (53 - 纬度) / (53 - 18) * 100
+ * 只保证相对方位正确，不追求地理精度（儿童向示意地图）。
+ */
 const LOCATIONS = [
-  { cn: '北京市', place: '故宫', en: 'Beijing · Forbidden City' },
-  { cn: '上海市', place: '外滩', en: 'Shanghai · The Bund' },
-  { cn: '西安市', place: '兵马俑', en: "Xi'an · Terracotta Warriors" },
-  { cn: '成都市', place: '大熊猫基地', en: 'Chengdu · Panda Base' },
-  { cn: '杭州市', place: '西湖', en: 'Hangzhou · West Lake' },
-  { cn: '桂林市', place: '漓江', en: 'Guilin · Li River' },
-  { cn: '拉萨市', place: '布达拉宫', en: 'Lhasa · Potala Palace' },
-  { cn: '大理市', place: '洱海', en: 'Dali · Erhai Lake' },
+  { cn: '北京', place: '故宫', en: 'Beijing · Forbidden City', emoji: '🏯', x: 70.0, y: 37.4 },
+  { cn: '上海', place: '外滩', en: 'Shanghai · The Bund', emoji: '🌃', x: 78.2, y: 62.3 },
+  { cn: '西安', place: '兵马俑', en: "Xi'an · Terracotta Warriors", emoji: '🗿', x: 57.9, y: 53.4 },
+  { cn: '成都', place: '大熊猫基地', en: 'Chengdu · Panda Base', emoji: '🐼', x: 50.2, y: 64.0 },
+  { cn: '杭州', place: '西湖', en: 'Hangzhou · West Lake', emoji: '🛶', x: 76.1, y: 64.9 },
+  { cn: '桂林', place: '漓江', en: 'Guilin · Li River', emoji: '⛰️', x: 60.2, y: 79.1 },
+  { cn: '拉萨', place: '布达拉宫', en: 'Lhasa · Potala Palace', emoji: '🏔️', x: 29.2, y: 66.6 },
+  { cn: '大理', place: '洱海', en: 'Dali · Erhai Lake', emoji: '🌊', x: 43.9, y: 78.3 },
 ];
 
 const STORIES: Record<string, { title: string; content: string }> = {
@@ -80,12 +88,31 @@ export default function TravelCheckinScreen() {
   const { language, t } = useLanguage();
   const [step, setStep] = useState<Step>('locate');
   const [location, setLocation] = useState('');
+  const [selectedLoc, setSelectedLoc] = useState<typeof LOCATIONS[number] | null>(null);
+  const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
   const [story, setStory] = useState<{ title: string; content: string } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [badge, setBadge] = useState<{ emoji: string; label: string } | null>(null);
   const [confetti, setConfetti] = useState<{ x: number; color: string; delay: number }[]>([]);
   const confettiAnims = useRef<Animated.Value[]>([]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
+
+  // 读取历史打卡，地图上已去过的地方显示金色星星
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await getProgress();
+        if (cancelled) return;
+        // checkIns 里存的是展示名（如「北京·故宫」），这里统一按城市名匹配
+        const places = p.checkIns.map((c) => c.location.split('·')[0].trim());
+        setVisitedPlaces(places);
+      } catch {
+        // 读不到就当没有历史，不影响打卡
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [step]);
 
   // Generate confetti
   useEffect(() => {
@@ -112,13 +139,15 @@ export default function TravelCheckinScreen() {
     Animated.parallel(animations).start();
   }, [step, confetti]);
 
-  // Simulate location
+  // 从地图上选好地点后开始打卡
   const handleStart = async () => {
+    if (!selectedLoc) return;
+
     // 打卡额度门禁（会员不限）。放在流程入口，避免用户走完一圈才发现不能打卡
     const gate = await checkCheckInGate();
     if (!showPaywall(gate)) return;
 
-    const loc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+    const loc = selectedLoc;
     setLocation(language === 'en' ? loc.en : `${loc.cn}·${loc.place}`);
     setStep('generate');
     // Simulate story generation (2s)
@@ -159,6 +188,17 @@ export default function TravelCheckinScreen() {
     setBadge(newBadge);
     setStep('success');
   };
+
+  // 地图数据：把 LOCATIONS 转成 CartoonMap 需要的格式，并标出已打卡的
+  const mapSpots: MapSpot[] = LOCATIONS.map((l) => ({
+    id: l.place,
+    name: l.cn,
+    place: l.place,
+    emoji: l.emoji,
+    x: l.x,
+    y: l.y,
+    visited: visitedPlaces.includes(l.cn),
+  }));
 
   // Step indicator
   const stepIdx = stepConfig.findIndex(s => s.key === step);
@@ -213,13 +253,31 @@ export default function TravelCheckinScreen() {
         {/* ── Step: Locate ── */}
         {step === 'locate' && (
           <View style={styles.card}>
-            <Text style={styles.cardEmoji}>🌍</Text>
+            <Text style={styles.cardEmoji}>🗺️</Text>
             <Text style={styles.cardTitle}>
-              {language === 'en' ? 'Where do you want to check in today?' : '今天想去哪里打卡？'}
+              {language === 'en' ? 'Tap a pin to pick a place' : '点一下地图上的小图钉'}
             </Text>
             <Text style={styles.cardDesc}>
-              {language === 'en' ? 'We\'ll create a story about your location' : '我们会为你生成一个关于那个地方的故事'}
+              {language === 'en'
+                ? 'We\'ll tell a story about that place'
+                : '我们会为那个地方讲一个故事'}
             </Text>
+
+            <CartoonMap
+              spots={mapSpots}
+              selectedId={selectedLoc ? selectedLoc.place : null}
+              onSelect={(spot) =>
+                setSelectedLoc(LOCATIONS.find((l) => l.place === spot.id) ?? null)
+              }
+              hint={
+                selectedLoc
+                  ? (language === 'en'
+                      ? `Selected: ${selectedLoc.en}`
+                      : `已选好：${selectedLoc.cn}·${selectedLoc.place}`)
+                  : (language === 'en' ? 'No place picked yet' : '还没选地点哦～')
+              }
+            />
+
             {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null && (
               <Text style={styles.quota}>
                 {language === 'en'
@@ -227,9 +285,15 @@ export default function TravelCheckinScreen() {
                   : `还可打卡 ${snapshot.checkInsRemaining} 次 · 会员不限`}
               </Text>
             )}
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleStart}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, !selectedLoc && styles.primaryBtnDisabled]}
+              onPress={handleStart}
+              disabled={!selectedLoc}
+            >
               <Text style={styles.primaryBtnText}>
-                {language === 'en' ? 'Start Check-in' : '开始打卡'}
+                {selectedLoc
+                  ? (language === 'en' ? 'Start Check-in' : `去 ${selectedLoc.cn} 打卡`)
+                  : (language === 'en' ? 'Pick a place first' : '先选一个地方吧')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -296,6 +360,7 @@ export default function TravelCheckinScreen() {
               onPress={() => {
                 setStep('locate');
                 setLocation('');
+                setSelectedLoc(null);
                 setStory(null);
                 setBadge(null);
                 setConfetti([]);
@@ -366,6 +431,7 @@ const styles = StyleSheet.create({
     elevation: 2, marginTop: 8,
   },
   primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
+  primaryBtnDisabled: { backgroundColor: '#D8CFC5', elevation: 0 },
   playBtn: {
     backgroundColor: '#7C4DFF', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 32,
     elevation: 2,
