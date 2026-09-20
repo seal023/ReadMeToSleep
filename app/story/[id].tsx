@@ -14,6 +14,8 @@ import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
 import { getStory, saveProgress, getProgress } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
+import { RewardAnimation } from '../../components/ui/RewardAnimation';
+import { getLevel, getNewBadges, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
 
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished';
@@ -42,6 +44,9 @@ export default function StoryPlayScreen() {
   const [isAsking, setIsAsking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 奖励：升级 / 新解锁的勋章（需求 5）
+  const [levelUp, setLevelUp] = useState<LevelRule | null>(null);
+  const [newBadge, setNewBadge] = useState<BadgeRule | null>(null);
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -73,24 +78,53 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
-  // 听完一个故事：记入已听列表 + 刷新连续天数（奖励机制的数据基础）
+  // 听完一个故事：记入已听列表 + 刷新连续天数 + 结算等级与勋章（需求 5）
+  // 放在 completed（故事讲完）而非 finished（答完题），听完立刻给正反馈
   useEffect(() => {
-    if (phase !== 'finished' || !story) return;
+    if (phase !== 'completed' || !story) return;
     let cancelled = false;
     (async () => {
       try {
         const p = await getProgress();
         if (cancelled) return;
+
+        const beforeLevel = getLevel(p.listenedStories.length);
+
         if (!p.listenedStories.includes(story.id)) {
           p.listenedStories.push(story.id);
         }
+
+        // 连续天数：只在跨天时更新，避免同一天反复听被重复计数
         const today = new Date().toISOString().slice(0, 10);
         if (p.lastListenDate !== today) {
           const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
           p.streakDays = p.lastListenDate === yesterday ? p.streakDays + 1 : 1;
           p.lastListenDate = today;
         }
+
+        // 结算勋章
+        const fresh = getNewBadges(
+          {
+            listenedCount: p.listenedStories.length,
+            streakDays: p.streakDays,
+            checkInCount: p.checkIns.length,
+          },
+          p.badges,
+        );
+        if (fresh.length) {
+          p.badges = [...p.badges, ...fresh.map((b) => b.id)];
+        }
+
         await saveProgress(p);
+        if (cancelled) return;
+
+        // 升级优先展示，其次才是新勋章
+        const afterLevel = getLevel(p.listenedStories.length);
+        if (afterLevel.level > beforeLevel.level) {
+          setLevelUp(afterLevel);
+        } else if (fresh.length) {
+          setNewBadge(fresh[0]);
+        }
       } catch (err) {
         console.error('Save progress error:', err);
       }
@@ -266,13 +300,33 @@ export default function StoryPlayScreen() {
 
   if (phase === 'completed') {
     return (
-      <View style={styles.completedContainer}>
-        <Racco state="happy" size={150} />
-        <Text style={styles.completedText}>故事讲完啦！🎉</Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setPhase('qa_round1'); }}>
-          <Text style={styles.primaryBtnText}>进入提问环节</Text>
-        </TouchableOpacity>
-      </View>
+      <>
+        <View style={styles.completedContainer}>
+          <Racco state="happy" size={150} />
+          <Text style={styles.completedText}>故事讲完啦！🎉</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setPhase('qa_round1'); }}>
+            <Text style={styles.primaryBtnText}>进入提问环节</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 需求 2/5：升级与新勋章用动画展现。升级优先，播完再显示勋章 */}
+        <RewardAnimation
+          visible={!!levelUp}
+          emoji={levelUp?.emoji ?? '🎉'}
+          title="升级啦！"
+          subtitle={levelUp ? `第 ${levelUp.level} 级 · ${levelUp.name}` : ''}
+          desc="继续听故事，解锁更多惊喜"
+          onDone={() => setLevelUp(null)}
+        />
+        <RewardAnimation
+          visible={!levelUp && !!newBadge}
+          emoji={newBadge?.emoji ?? '🏅'}
+          title="获得新勋章！"
+          subtitle={newBadge?.name ?? ''}
+          desc={newBadge?.desc}
+          onDone={() => setNewBadge(null)}
+        />
+      </>
     );
   }
 

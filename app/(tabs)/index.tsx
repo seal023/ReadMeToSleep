@@ -1,8 +1,16 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  useWindowDimensions,
+} from 'react-native';
 import { router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
+import { LevelCard } from '../../components/ui/LevelCard';
 import type { RaccoState } from '../../types';
 
 const TITLES = ['Little Star', 'Champion', 'Adventurer', 'Dreamer', 'Storyteller', 'Sweetie'] as const;
@@ -21,7 +29,10 @@ export default function HomeTab() {
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
 
-  const raccoSize = Dimensions.get('window').width * 0.4;
+  const { width: screenW } = useWindowDimensions();
+  // iPad 横屏（以及大屏）视为宽屏：内容限宽居中，浣熊不要占满整个高度
+  const isWide = screenW >= 768;
+  const raccoSize = isWide ? screenW * 0.18 : screenW * 0.4;
 
   const handleRaccoPress = () => {
     const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];
@@ -29,16 +40,25 @@ export default function HomeTab() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.greetingSection}>
-        <Text style={styles.greetingText}>
-          {t(getGreetingKey())}, {title} ✨
-        </Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, isWide && styles.contentWide]}
+    >
+      {/* 问候 + 浣熊：iPad 横屏时左右并排，避免竖向留白过多 */}
+      <View style={[styles.topArea, isWide && styles.topAreaWide]}>
+        <View style={[styles.greetingSection, isWide && styles.greetingSectionWide]}>
+          <Text style={[styles.greetingText, isWide && styles.greetingTextWide]}>
+            {t(getGreetingKey())}, {title} ✨
+          </Text>
+        </View>
+
+        <TouchableOpacity activeOpacity={0.7} onPress={handleRaccoPress} style={styles.raccoWrap}>
+          <Racco state={raccoState} size={raccoSize} />
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity activeOpacity={0.7} onPress={handleRaccoPress} style={styles.raccoWrap}>
-        <Racco state={raccoState} size={raccoSize} />
-      </TouchableOpacity>
+      {/* 需求 5：等级与奖励进度 */}
+      <LevelCard />
 
       <TouchableOpacity
         style={styles.recCard}
@@ -103,6 +123,28 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 40,
+  },
+  // iPad 横屏：内容限宽居中，避免在超宽屏上被拉得太散
+  contentWide: {
+    width: '100%',
+    maxWidth: 900,
+    alignSelf: 'center',
+    paddingBottom: 48,
+  },
+
+  topArea: {},
+  topAreaWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  greetingSectionWide: {
+    flex: 1,
+    paddingTop: 24,
+    paddingBottom: 0,
+  },
+  greetingTextWide: {
+    fontSize: 28,
   },
 
   greetingSection: {
