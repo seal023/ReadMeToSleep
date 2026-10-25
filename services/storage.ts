@@ -28,7 +28,13 @@ const KEYS = {
   PROGRESS: 'rms_progress',
   SENSITIVE_WORDS: 'rms_sensitive_words',
   VOICE: 'rms_voice',
+  PARENT_COMMENTS: 'rms_parent_comments',
 };
+
+export interface ParentComment {
+  text: string;
+  updatedAt: string;
+}
 
 const DEFAULT_PROGRESS: Progress = {
   listenedStories: [],
@@ -111,4 +117,19 @@ export async function saveVoiceSetting(voiceId: string): Promise<void> {
 export async function getVoiceSetting(): Promise<string> {
   const val = await AsyncStorage.getItem(KEYS.VOICE);
   return val || 'system';
+}
+
+/** 家长给孩子写的悄悄话（按故事 id 存） */
+export async function saveParentComment(storyId: string, text: string): Promise<void> {
+  const raw = await AsyncStorage.getItem(KEYS.PARENT_COMMENTS);
+  const map: Record<string, ParentComment> = raw ? JSON.parse(raw) : {};
+  map[storyId] = { text, updatedAt: new Date().toISOString() };
+  await AsyncStorage.setItem(KEYS.PARENT_COMMENTS, JSON.stringify(map));
+}
+
+export async function getParentComment(storyId: string): Promise<ParentComment | null> {
+  const raw = await AsyncStorage.getItem(KEYS.PARENT_COMMENTS);
+  if (!raw) return null;
+  const map: Record<string, ParentComment> = JSON.parse(raw);
+  return map[storyId] ?? null;
 }

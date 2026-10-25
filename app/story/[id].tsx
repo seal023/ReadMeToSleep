@@ -8,10 +8,11 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
-import { getStory, saveProgress, getProgress } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, type ParentComment } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -48,6 +49,9 @@ export default function StoryPlayScreen() {
   // 奖励：升级 / 新解锁的勋章（需求 5）
   const [levelUp, setLevelUp] = useState<LevelRule | null>(null);
   const [newBadge, setNewBadge] = useState<BadgeRule | null>(null);
+  // 家长悄悄话（需求 2：家长评语以动画展现）
+  const [parentComment, setParentComment] = useState<ParentComment | null>(null);
+  const commentOpacity = useRef(new Animated.Value(0)).current;
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -132,6 +136,25 @@ export default function StoryPlayScreen() {
     })();
     return () => { cancelled = true; };
   }, [phase, story]);
+
+  // 加载家长悄悄话（需求 2）：故事载入后即读取，存在则以淡入动画展示
+  useEffect(() => {
+    if (!story) return;
+    let cancelled = false;
+    (async () => {
+      const c = await getParentComment(story.id);
+      if (cancelled) return;
+      if (c?.text) {
+        setParentComment(c);
+        Animated.timing(commentOpacity, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }).start();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [story, commentOpacity]);
 
   const handlePlay = () => {
     if (!story) return;
@@ -430,6 +453,13 @@ export default function StoryPlayScreen() {
       <Racco state="sleeping" size={150} />
       <Text style={styles.finishedText}>晚安，好梦 🌙</Text>
 
+      {parentComment?.text ? (
+        <Animated.View style={[styles.parentCommentCard, { opacity: commentOpacity }]}>
+          <Text style={styles.parentCommentTitle}>💌 爸爸妈妈的悄悄话</Text>
+          <Text style={styles.parentCommentText}>{parentComment.text}</Text>
+        </Animated.View>
+      ) : null}
+
       <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)')}>
         <Text style={styles.finishedBtnIcon}>🏠</Text>
         <Text style={styles.finishedBtnText}>返回首页</Text>
@@ -539,4 +569,16 @@ const styles = StyleSheet.create({
   },
   finishedBtnIcon: { fontSize: 20, marginRight: 10 },
   finishedBtnText: { fontSize: 15, color: '#5D4037', fontWeight: '600' },
+  parentCommentCard: {
+    backgroundColor: '#FFF8E1',
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 20,
+    maxWidth: 320,
+    borderWidth: 2,
+    borderColor: '#FFE0B2',
+    alignItems: 'center',
+  },
+  parentCommentTitle: { fontSize: 16, fontWeight: 'bold', color: '#F57C00', marginBottom: 8 },
+  parentCommentText: { fontSize: 15, color: '#5D4037', lineHeight: 24, textAlign: 'center' },
 });
