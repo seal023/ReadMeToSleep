@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import type { RaccoState } from '../../types';
 
 const TITLES = ['Little Star', 'Champion', 'Adventurer', 'Dreamer', 'Storyteller', 'Sweetie'] as const;
@@ -40,10 +41,11 @@ export default function HomeTab() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, isWide && styles.contentWide]}
-    >
+    <CartoonScreen gradient="day" decor>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, isWide && styles.contentWide]}
+      >
       {/* 问候 + 浣熊：iPad 横屏时左右并排，避免竖向留白过多 */}
       <View style={[styles.topArea, isWide && styles.topAreaWide]}>
         <View style={[styles.greetingSection, isWide && styles.greetingSectionWide]}>
@@ -112,14 +114,14 @@ export default function HomeTab() {
           <Text style={styles.emptyText}>{t('home.noStories')}</Text>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF5E6',
   },
   content: {
     paddingBottom: 40,

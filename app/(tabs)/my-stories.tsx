@@ -11,6 +11,7 @@ import { Link, router } from 'expo-router';
 import { getStories, deleteStory } from '../../services/storage';
 import { getProgress } from '../../services/storage';
 import { useLanguage } from '../../hooks/useLanguage';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import type { Story, Progress } from '../../types';
 
 type Tab = 'created' | 'recorded' | 'checkins';
@@ -134,7 +135,8 @@ export default function MyStoriesScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <CartoonScreen gradient="day" decor>
+      <View style={styles.container}>
       {/* Tab bar */}
       <View style={styles.tabBar}>
         {TABS.map(t => (
@@ -216,14 +218,14 @@ export default function MyStoriesScreen() {
           />
         </View>
       )}
-    </View>
+      </View>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF8F0',
   },
   tabBar: {
     flexDirection: 'row',

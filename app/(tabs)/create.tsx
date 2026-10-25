@@ -15,6 +15,7 @@ import { checkStoryGate, recordStoryGenerated } from '@/services/entitlement';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
+import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import type { Story, Language, RaccoState } from '@/types';
 
 export default function CreateScreen() {
@@ -75,7 +76,8 @@ export default function CreateScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <CartoonScreen gradient="day" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.raccoWrap}>
         <Racco
           state={generating ? 'thinking' : raccoState}
@@ -148,12 +150,13 @@ export default function CreateScreen() {
           {generating ? '⏳ ...' : '✨ 生成故事 / Generate Story'}
         </Text>
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF5E6' },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
   title: { fontSize: 24, color: '#5D4037', textAlign: 'center', marginBottom: 20, fontWeight: '700' },

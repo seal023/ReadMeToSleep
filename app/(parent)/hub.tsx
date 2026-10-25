@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { router } from 'expo-router';
 import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { COLORS, FONT } from '../../constants/theme';
 
 interface CardDef {
   icon: string;
@@ -37,28 +40,32 @@ export default function ParentHub() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.racco}>🦝</Text>
-      <Text style={styles.header}>家长模式</Text>
-      <View style={styles.grid}>
-        {CARDS.map((card, i) => (
-          <TouchableOpacity key={i} style={{ ...styles.card, width: cardWidth }} onPress={() => handleCardPress(card)}>
-            <Text style={styles.icon}>{card.icon}</Text>
-            <Text style={styles.cardTitle}>{card.title}</Text>
-            <Text style={styles.desc}>{card.desc}</Text>
-            <Text style={styles.arrow}>›</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+    <CartoonScreen gradient="day" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.raccoWrap}>
+          <Racco state="idle" size={110} />
+        </View>
+        <Text style={styles.header}>家长模式</Text>
+        <View style={styles.grid}>
+          {CARDS.map((card, i) => (
+            <TouchableOpacity key={i} style={{ ...styles.card, width: cardWidth }} onPress={() => handleCardPress(card)}>
+              <Text style={styles.icon}>{card.icon}</Text>
+              <Text style={styles.cardTitle}>{card.title}</Text>
+              <Text style={styles.desc}>{card.desc}</Text>
+              <Text style={styles.arrow}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF5E6' },
+  container: { flex: 1 },
   scrollContent: { paddingBottom: 32 },
-  racco: { fontSize: 80, textAlign: 'center', paddingTop: 16, marginBottom: 4 },
-  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#333', marginBottom: 20 },
+  raccoWrap: { alignItems: 'center', paddingTop: 16, marginBottom: 4 },
+  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: COLORS.text, marginBottom: 20, fontFamily: FONT.rounded },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -66,8 +73,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
     padding: 20,
     marginVertical: 6,
     boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
@@ -76,7 +83,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   icon: { fontSize: 36, marginBottom: 8 },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: '#222', marginBottom: 4 },
-  desc: { fontSize: 13, color: '#888', flex: 1 },
-  arrow: { position: 'absolute', bottom: 20, right: 20, fontSize: 24, color: '#ccc' },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: COLORS.text, marginBottom: 4 },
+  desc: { fontSize: 13, color: COLORS.textSub, flex: 1 },
+  arrow: { position: 'absolute', bottom: 20, right: 20, fontSize: 24, color: COLORS.textLight },
 });

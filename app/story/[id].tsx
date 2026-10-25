@@ -15,6 +15,7 @@ import { getStory, saveProgress, getProgress } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { getLevel, getNewBadges, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
 
@@ -219,21 +220,25 @@ export default function StoryPlayScreen() {
 
   if (error) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.errorText}>❌ {error}</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>← 返回</Text>
-        </TouchableOpacity>
-      </View>
+      <CartoonScreen gradient="day" decor>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>❌ {error}</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+            <Text style={styles.backBtnText}>← 返回</Text>
+          </TouchableOpacity>
+        </View>
+      </CartoonScreen>
     );
   }
 
   if (phase === 'loading') {
     return (
-      <View style={styles.loadingContainer}>
-        <Racco state="thinking" size={120} />
-        <Text style={styles.loadingText}>正在准备故事...</Text>
-      </View>
+      <CartoonScreen gradient="day" decor>
+        <View style={styles.loadingContainer}>
+          <Racco state="thinking" size={120} />
+          <Text style={styles.loadingText}>正在准备故事...</Text>
+        </View>
+      </CartoonScreen>
     );
   }
 
@@ -242,7 +247,8 @@ export default function StoryPlayScreen() {
     const progressWidth = `${progress}%`;
     
     return (
-      <View style={styles.container}>
+      <CartoonScreen gradient="day" decor>
+        <View style={styles.container}>
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backBtnText}>←</Text>
@@ -295,11 +301,13 @@ export default function StoryPlayScreen() {
           <Racco state="talking" size={60} />
         </View>
       </View>
+      </CartoonScreen>
     );
   }
 
   if (phase === 'completed') {
     return (
+      <CartoonScreen gradient="day" decor>
       <>
         <View style={styles.completedContainer}>
           <Racco state="happy" size={150} />
@@ -327,6 +335,7 @@ export default function StoryPlayScreen() {
           onDone={() => setNewBadge(null)}
         />
       </>
+      </CartoonScreen>
     );
   }
 
@@ -334,6 +343,7 @@ export default function StoryPlayScreen() {
     const q = qaQuestions[qaIndex];
     
     return (
+      <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
         <Text style={styles.qaRoundTitle}>问答时间 🧠 ({qaIndex + 1}/{qaQuestions.length})</Text>
         <Text style={styles.qaQuestion}>{q.question}</Text>
@@ -365,11 +375,13 @@ export default function StoryPlayScreen() {
           <Text style={styles.feedbackText}>{qaFeedback}</Text>
         ) : null}
       </View>
+      </CartoonScreen>
     );
   }
 
   if (phase === 'qa_round2') {
     return (
+      <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
         <Text style={styles.qaRoundTitle}>你的问题时间 💬</Text>
         <Text style={styles.qaQuestion}>你有什么想问的？</Text>
@@ -408,10 +420,12 @@ export default function StoryPlayScreen() {
           <Text style={styles.primaryBtnText}>完成</Text>
         </TouchableOpacity>
       </View>
+      </CartoonScreen>
     );
   }
 
   return (
+    <CartoonScreen gradient="day" decor>
     <View style={styles.finishedContainer}>
       <Racco state="sleeping" size={150} />
       <Text style={styles.finishedText}>晚安，好梦 🌙</Text>
@@ -431,14 +445,15 @@ export default function StoryPlayScreen() {
         <Text style={styles.finishedBtnText}>我来讲故事（即将上线）</Text>
       </TouchableOpacity>
     </View>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF5E6', padding: 20 },
-  loadingContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
-  completedContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
-  finishedContainer: { flex: 1, backgroundColor: '#FFF5E6', padding: 20, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, padding: 20 },
+  loadingContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  completedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  finishedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontSize: 16, color: '#888', marginTop: 16 },
   errorText: { fontSize: 18, color: '#c00', marginBottom: 20 },
   backBtn: { padding: 8 },

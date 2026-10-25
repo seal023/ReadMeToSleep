@@ -10,6 +10,9 @@ import {
   Linking,
 } from 'react-native';
 import { useIAP } from '@/hooks/useIAP';
+import Racco from '@/components/common/Racco';
+import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { COLORS, FONT } from '@/constants/theme';
 import type { PaidPlan, Plan } from '@/services/iap';
 
 // ---------------------------------------------------------------------------
@@ -141,7 +144,13 @@ export default function SubscriptionPage() {
   const usingShopPrice = !!offers;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <CartoonScreen gradient="candy" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Racco 吉祥物 */}
+      <View style={styles.raccoTop}>
+        <Racco state="happy" size={90} />
+      </View>
+
       {/* 当前订阅状态 */}
       <View style={styles.statusCard}>
         <Text style={styles.statusLabel}>当前订阅</Text>
@@ -255,14 +264,16 @@ export default function SubscriptionPage() {
           </TouchableOpacity>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f0ff' },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
-  sectionTitle: { fontSize: 17, fontWeight: '600', color: '#4a3080', marginVertical: 8 },
+  raccoTop: { alignItems: 'center', marginBottom: 8 },
+  sectionTitle: { fontSize: 17, fontWeight: '600', color: COLORS.purple, marginVertical: 8, fontFamily: FONT.rounded },
   priceHint: { fontSize: 11, color: '#999', marginBottom: 8, textAlign: 'center' },
   statusCard: {
     backgroundColor: '#fff',

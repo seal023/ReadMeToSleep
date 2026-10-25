@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { AudioRecorder, setAudioModeAsync, requestPermissionsAsync } from 'expo-audio';
+import Racco from '@/components/common/Racco';
+import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
 
 type CloneTarget = 'mom' | 'dad' | 'grandma';
@@ -133,24 +136,25 @@ export default function VoiceClonePage() {
   // 门禁未放行时不渲染功能 UI，避免免费用户看到可操作界面却点不动
   if (gatePassed !== true) {
     return (
-      <View style={styles.gateWrap}>
-        {gatePassed === null ? (
-          <ActivityIndicator size="large" color="#6c5ce7" />
-        ) : (
-          <Text style={styles.gateText}>声音克隆为会员专属功能</Text>
-        )}
-      </View>
+      <CartoonScreen gradient="candy" decor>
+        <View style={styles.gateWrap}>
+          {gatePassed === null ? (
+            <ActivityIndicator size="large" color="#6c5ce7" />
+          ) : (
+            <Text style={styles.gateText}>声音克隆为会员专属功能</Text>
+          )}
+        </View>
+      </CartoonScreen>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <CartoonScreen gradient="candy" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>声音克隆</Text>
 
       <View style={styles.raccoRow}>
-        <Text style={{ fontSize: 32 }}>
-          {raccoState === 'idle' ? '🦝' : raccoState === 'listening' ? '🦝🎧' : '🦝✨'}
-        </Text>
+        <Racco state={raccoState} size={56} />
         <Text style={styles.raccoText}>
           {step === 'select' && '选择你想克隆的声音'}
           {step === 'recording' && 'Racco 正在聆听...请保持稳定朗读'}
@@ -230,19 +234,20 @@ export default function VoiceClonePage() {
           <Text style={styles.successSub}>通常需要几分钟处理时间。</Text>
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f0ff' },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
-  gateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f0ff' },
-  gateText: { fontSize: 15, color: '#6b5b95', marginTop: 12 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#2d1b69', marginBottom: 8 },
+  gateWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  gateText: { fontSize: 15, color: COLORS.textSub, marginTop: 12 },
+  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.purple, marginBottom: 8, fontFamily: FONT.rounded },
   raccoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  raccoText: { fontSize: 15, color: '#666', marginLeft: 8 },
-  sectionTitle: { fontSize: 17, fontWeight: '600', color: '#4a3080', marginVertical: 8 },
+  raccoText: { fontSize: 15, color: COLORS.textSub, marginLeft: 8 },
+  sectionTitle: { fontSize: 17, fontWeight: '600', color: COLORS.purple, marginVertical: 8, fontFamily: FONT.rounded },
   guide: { fontSize: 14, color: '#e67e22', marginVertical: 4 },
   segmented: { flexDirection: 'row', backgroundColor: '#e8e0f0', borderRadius: 12, padding: 4, marginBottom: 12 },
   segmentBtn: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10 },

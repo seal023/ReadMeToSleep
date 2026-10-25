@@ -1,5 +1,8 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { COLORS, FONT } from '../../constants/theme';
 
 // Placeholder data source — replace with actual storage calls in production
 // const progress = await storage.getProgress();
@@ -37,10 +40,11 @@ const RACCO_IDLE_SIZE = 80;
 
 export default function StatisticsPage() {
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <CartoonScreen gradient="candy" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Racco idle at top */}
       <View style={styles.raccoTop}>
-        <Text style={{ fontSize: RACCO_IDLE_SIZE }}>🦝</Text>
+        <Racco state="idle" size={RACCO_IDLE_SIZE} />
         <Text style={styles.raccoLabel}>让我来看看你的数据！</Text>
       </View>
 
@@ -91,32 +95,33 @@ export default function StatisticsPage() {
       <Text style={styles.sourceNote}>
         数据来源：storage.getProgress() + storage.getStories()
       </Text>
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f0ff' },
+  container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   raccoTop: { alignItems: 'center', marginBottom: 16 },
-  raccoLabel: { fontSize: 14, color: '#999', marginTop: 4 },
-  sectionTitle: { fontSize: 17, fontWeight: '600', color: '#4a3080', marginVertical: 12 },
+  raccoLabel: { fontSize: 14, color: COLORS.textSub, marginTop: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: '600', color: COLORS.purple, marginVertical: 12, fontFamily: FONT.rounded },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 },
-  card: { width: '48%', backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, alignItems: 'center' },
+  card: { width: '48%', backgroundColor: COLORS.card, borderRadius: 18, padding: 16, marginBottom: 12, alignItems: 'center' },
   cardIcon: { fontSize: 28, marginBottom: 4 },
-  cardValue: { fontSize: 26, fontWeight: 'bold', color: '#2d1b69' },
-  cardLabel: { fontSize: 12, color: '#999', marginTop: 2 },
-  chartContainer: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12 },
+  cardValue: { fontSize: 26, fontWeight: 'bold', color: COLORS.purple },
+  cardLabel: { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
+  chartContainer: { backgroundColor: COLORS.card, borderRadius: 18, padding: 16, marginBottom: 12 },
   chartArea: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 140 },
   barGroup: { alignItems: 'center', flex: 1 },
-  bar: { width: 20, backgroundColor: '#6c5ce7', borderRadius: 6, marginBottom: 4 },
-  barLabel: { fontSize: 10, color: '#999' },
-  barValue: { fontSize: 10, fontWeight: '600', color: '#2d1b69', marginBottom: 2 },
+  bar: { width: 20, backgroundColor: COLORS.purple, borderRadius: 6, marginBottom: 4 },
+  barLabel: { fontSize: 10, color: COLORS.textSub },
+  barValue: { fontSize: 10, fontWeight: '600', color: COLORS.purple, marginBottom: 2 },
   hScroll: { marginBottom: 12, paddingLeft: 4 },
-  hBarCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginRight: 12, alignItems: 'center', minWidth: 90 },
-  hBarMonth: { fontSize: 12, color: '#333', marginBottom: 6 },
-  hBarTrack: { height: 10, backgroundColor: '#e8e0f0', borderRadius: 5, overflow: 'hidden' },
-  hBarFill: { height: '100%', backgroundColor: '#00b894', borderRadius: 5 },
-  hBarCount: { fontSize: 11, color: '#00b894', marginTop: 4, fontWeight: '600' },
-  sourceNote: { fontSize: 11, color: '#bbb', textAlign: 'center', marginTop: 8 },
+  hBarCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 12, marginRight: 12, alignItems: 'center', minWidth: 90 },
+  hBarMonth: { fontSize: 12, color: COLORS.text, marginBottom: 6 },
+  hBarTrack: { height: 10, backgroundColor: COLORS.purpleLight, borderRadius: 5, overflow: 'hidden' },
+  hBarFill: { height: '100%', backgroundColor: COLORS.mint, borderRadius: 5 },
+  hBarCount: { fontSize: 11, color: COLORS.mint, marginTop: 4, fontWeight: '600' },
+  sourceNote: { fontSize: 11, color: COLORS.textLight, textAlign: 'center', marginTop: 8 },
 });

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import Racco from '../components/common/Racco';
+import { CartoonScreen } from '../components/ui/CartoonScreen';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChildTitle } from '../types';
 import { useState } from 'react';
@@ -24,7 +25,8 @@ export default function IndexScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <CartoonScreen gradient="day" decor>
+      <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.appName}>{t('app.name')}</Text>
         <Text style={styles.tagline}>{t('app.tagline')}</Text>
@@ -66,14 +68,14 @@ export default function IndexScreen() {
           {language === 'zh' ? '🌐 English' : '🌐 中文'}
         </Text>
       </TouchableOpacity>
-    </View>
+      </View>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF5E6',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 
@@ -96,7 +97,8 @@ export default function LibraryScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <CartoonScreen gradient="day" decor>
+      <View style={styles.container}>
       <View style={styles.header}>
         <Racco state="idle" size={100} />
         <View style={styles.searchBox}>
@@ -171,12 +173,13 @@ export default function LibraryScreen() {
           </View>
         }
       />
-    </View>
+      </View>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF5E6' },
+  container: { flex: 1 },
   header: { alignItems: 'center', paddingTop: 16, paddingBottom: 8 },
   searchBox: {
     flexDirection: 'row', alignItems: 'center',

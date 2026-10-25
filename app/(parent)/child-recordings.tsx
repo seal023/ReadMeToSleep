@@ -4,8 +4,10 @@ import {
 } from 'react-native';
 import { AudioPlayer, setAudioModeAsync } from 'expo-audio';
 import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getStories, saveStory, deleteStory } from '../../services/storage';
+import { COLORS, FONT } from '../../constants/theme';
 import type { Story } from '../../types';
 
 export default function ChildRecordingsScreen() {
@@ -107,7 +109,8 @@ export default function ChildRecordingsScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <CartoonScreen gradient="day" decor>
+      <ScrollView style={styles.scrollRoot} contentContainerStyle={styles.scroll}>
       <View style={styles.raccoWrap}>
         <Racco state="happy" size={100} />
       </View>
@@ -146,26 +149,28 @@ export default function ChildRecordingsScreen() {
           </View>
         ))
       )}
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollRoot: { flex: 1 },
   scroll: { padding: 20, paddingBottom: 40 },
   raccoWrap: { alignItems: 'center', marginVertical: 16 },
-  title: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 16, color: '#333' },
+  title: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 16, color: COLORS.text, fontFamily: FONT.rounded },
   emptyState: { alignItems: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
-  emptyText: { fontSize: 15, color: '#aaa', textAlign: 'center' },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)', elevation: 2 },
+  emptyText: { fontSize: 15, color: COLORS.textLight, textAlign: 'center' },
+  card: { backgroundColor: COLORS.card, borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)', elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontSize: 17, fontWeight: '600', flex: 1, marginRight: 8 },
+  cardTitle: { fontSize: 17, fontWeight: '600', flex: 1, marginRight: 8, color: COLORS.text },
   cardMeta: { flexDirection: 'row', marginTop: 6, marginBottom: 10 },
-  metaText: { fontSize: 13, color: '#999' },
+  metaText: { fontSize: 13, color: COLORS.textSub },
   cardActions: { flexDirection: 'row', gap: 10 },
-  actionBtn: { flex: 1, backgroundColor: '#4A90D9', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
-  playingBtn: { flex: 1, backgroundColor: '#6AB0F3', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
-  deleteBtn: { flex: 1, backgroundColor: '#FFF0F0', borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  actionBtn: { flex: 1, backgroundColor: COLORS.skyBlue, borderRadius: 14, paddingVertical: 8, alignItems: 'center' },
+  playingBtn: { flex: 1, backgroundColor: COLORS.purple, borderRadius: 14, paddingVertical: 8, alignItems: 'center' },
+  deleteBtn: { flex: 1, backgroundColor: COLORS.pinkLight, borderRadius: 14, paddingVertical: 8, alignItems: 'center' },
   actionText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  deleteText: { fontSize: 14, fontWeight: '600', color: '#E53935' },
+  deleteText: { fontSize: 14, fontWeight: '600', color: COLORS.pink },
 });

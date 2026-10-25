@@ -8,6 +8,7 @@ import { getProgress, saveProgress } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
 import Racco from '../../components/common/Racco';
 import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import type { Language } from '../../types';
@@ -242,7 +243,8 @@ export default function TravelCheckinScreen() {
     ));
 
   return (
-    <View style={styles.container}>
+    <CartoonScreen gradient="day" decor wide={false}>
+      <View style={styles.container}>
       {/* Background confetti */}
       {step === 'success' && renderConfetti()}
 
@@ -379,13 +381,14 @@ export default function TravelCheckinScreen() {
           </View>
         )}
       </ScrollView>
-    </View>
+      </View>
+    </CartoonScreen>
   );
 }
 
 // ─── Styles ────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF5E6' },
+  container: { flex: 1 },
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
   header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
   quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },

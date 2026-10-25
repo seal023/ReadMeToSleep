@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'rea
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
@@ -31,7 +32,8 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <CartoonScreen gradient="day" decor>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.raccoWrap}>
         <Racco
           state="idle"
@@ -79,14 +81,14 @@ export default function SettingsScreen() {
           </View>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFF5E6',
   },
   content: {
     paddingHorizontal: 20,

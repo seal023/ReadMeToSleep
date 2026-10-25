@@ -3,8 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import Racco from '../../components/common/Racco';
+import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getSensitiveWords, saveSensitiveWords } from '../../services/storage';
+import { COLORS, FONT } from '../../constants/theme';
 
 export default function SensitiveWordsScreen() {
   const { t } = useLanguage();
@@ -76,7 +78,8 @@ export default function SensitiveWordsScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+    <CartoonScreen gradient="day" decor>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.raccoWrap}>
           <Racco state="idle" size={80} />
@@ -143,30 +146,31 @@ export default function SensitiveWordsScreen() {
           <Text style={styles.backBtnText}>{t('common.back') || '← 返回列表'}</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </CartoonScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F6FA' },
+  container: { flex: 1 },
   scroll: { padding: 20, paddingBottom: 80 },
   raccoWrap: { alignItems: 'center', marginVertical: 16 },
-  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 16, color: '#333' },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 16, color: COLORS.text, fontFamily: FONT.rounded },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: '#555' },
-  listWrap: { minHeight: 60, maxHeight: 300, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, backgroundColor: '#fff', marginBottom: 16, overflow: 'hidden' },
-  emptyText: { textAlign: 'center', paddingVertical: 24, color: '#aaa', fontSize: 14 },
-  wordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  wordLabel: { fontSize: 15, flex: 1 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: COLORS.text, fontFamily: FONT.rounded },
+  listWrap: { minHeight: 60, maxHeight: 300, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 14, backgroundColor: COLORS.card, marginBottom: 16, overflow: 'hidden' },
+  emptyText: { textAlign: 'center', paddingVertical: 24, color: COLORS.textLight, fontSize: 14 },
+  wordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  wordLabel: { fontSize: 15, flex: 1, color: COLORS.text },
   deleteIcon: { fontSize: 18, marginLeft: 8 },
   addRow: { flexDirection: 'row', marginBottom: 12 },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: '#fff', marginRight: 8 },
-  multilineInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: '#fff', height: 80, textAlignVertical: 'top', marginBottom: 8 },
-  addBtn: { backgroundColor: '#4A90D9', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, justifyContent: 'center' },
+  input: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, marginRight: 8, color: COLORS.text },
+  multilineInput: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', marginBottom: 8, color: COLORS.text },
+  addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  saveBtn: { backgroundColor: '#52C41A', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  saveBtn: { backgroundColor: COLORS.mint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
   saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  backBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', padding: 16 },
+  backBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.divider, padding: 16 },
   backBtn: { alignSelf: 'center' },
-  backBtnText: { fontSize: 15, color: '#4A90D9', fontWeight: '600' },
+  backBtnText: { fontSize: 15, color: COLORS.orange, fontWeight: '600' },
 });
