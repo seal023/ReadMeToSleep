@@ -6,6 +6,7 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
+import { enrollVoice, isVoiceCloneConfigured } from '@/services/voiceClone';
 
 type CloneTarget = 'mom' | 'dad' | 'grandma';
 
@@ -25,6 +26,8 @@ export default function VoiceClonePage() {
   const [recorder, setRecorder] = useState<AudioRecorder | null>(null);
   const [uri, setUri] = useState<string | null>(null);
   const [waveData, setWaveData] = useState<number[]>([]);
+  const [cloning, setCloning] = useState(false);
+  const [cloneMsg, setCloneMsg] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
 
@@ -124,6 +127,13 @@ export default function VoiceClonePage() {
   };
 
   const handleDone = async () => {
+    if (uri) {
+      setCloning(true);
+      setCloneMsg(null);
+      const res = await enrollVoice(uri, target);
+      setCloning(false);
+      setCloneMsg(res.message);
+    }
     setStep('done');
   };
 
@@ -229,9 +239,16 @@ export default function VoiceClonePage() {
 
       {step === 'done' && (
         <View style={styles.successCard}>
-          <Text style={{ fontSize: 48 }}>🎉</Text>
-          <Text style={styles.successText}>声音克隆已提交！</Text>
-          <Text style={styles.successSub}>通常需要几分钟处理时间。</Text>
+          <Text style={{ fontSize: 48 }}>{cloning ? '⏳' : '🎉'}</Text>
+          <Text style={styles.successText}>
+            {cloning ? '正在提交克隆…' : (cloneMsg || '声音克隆已提交！')}
+          </Text>
+          {!cloning && isVoiceCloneConfigured() === false && (
+            <Text style={styles.successSub}>提示：Xcode Cloud 尚未配置声音克隆密钥，本次仅为本地演示。</Text>
+          )}
+          {!cloning && isVoiceCloneConfigured() && (
+            <Text style={styles.successSub}>通常需要几分钟处理时间，之后即可在「妈妈/爸爸/外婆」音色中使用。</Text>
+          )}
         </View>
       )}
       </ScrollView>

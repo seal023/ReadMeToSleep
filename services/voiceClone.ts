@@ -1,0 +1,146 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+/**
+ * 家长声音克隆服务（需求 4：AI 模仿家长声音陪伴孩子）
+ * ---------------------------------------------------------------------------
+ * 数据来源：构建期通过 EXPO_PUBLIC_* 注入，密钥绝不写死在源码里。
+ *   - EXPO_PUBLIC_VOICE_ENROLL_URL    声音复刻（音色注册）端点
+ *   - EXPO_PUBLIC_VOICE_WORKSPACE_ID  百炼 workspace id
+ *   - EXPO_PUBLIC_AI_BASE_URL         克隆音色 TTS 合成端点（复用百炼 MaaS 端点）
+ *   - EXPO_PUBLIC_AI_API_KEY          鉴权（Bearer）
+ *
+ * ⚠️ 本文件是「把录音传上去 + 拿音色 id + 用该音色合成语音」的骨架。
+ *    阿里云百炼 / 通义听悟声音复刻（CosyVoice）的精确请求/响应结构，
+ *    请以你在阿里云控制台实际开通的 API 文档为准（端点、字段会随版本变动）。
+ *    未配置任何一项时，所有函数都会安全降级，不会让 App 崩溃。
+ *
+ * 接入位置：
+ *   - 注册：app/(parent)/voice-clone.tsx 的「确认并提交克隆」按钮调用 enrollVoice()
+ *   - 合成：services/tts.ts 在「妈妈/爸爸/外婆」被选中且本地存有音色 id 时调用
+ *           synthesizeWithClonedVoice()（集成点已预留，待真实端点确认后打通）
+ */
+
+const ENROLL_URL =
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_VOICE_ENROLL_URL as string | undefined;
+const WORKSPACE_ID =
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | undefined;
+const TTS_BASE_URL =
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
+const AI_API_KEY =
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_API_KEY as string | undefined;
+
+export type CloneTarget = 'mom' | 'dad' | 'grandma';
+
+const STORAGE_KEY = (target: CloneTarget) => `rms_voice_clone_${target}`;
+
+export interface VoiceCloneResult {
+  ok: boolean;
+  voiceId?: string;
+  message: string;
+}
+
+/** 是否已配置声音克隆所需的端点与 workspace（缺一项即视为未配置） */
+export function isVoiceCloneConfigured(): boolean {
+  return Boolean(ENROLL_URL && WORKSPACE_ID);
+}
+
+/** 读取本地缓存的克隆音色 id（null = 尚未克隆） */
+export async function getClonedVoiceId(target: CloneTarget): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(STORAGE_KEY(target));
+  } catch {
+    return null;
+  }
+}
+
+/** 缓存克隆得到的音色 id，供 TTS 复用 */
+export async function saveClonedVoiceId(target: CloneTarget, voiceId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY(target), voiceId);
+  } catch {
+    /* 存储异常不应阻断流程 */
+  }
+}
+
+/**
+ * 上传家长录音，注册克隆音色。
+ * @param audioUri 录音文件本地路径（expo-audio 录制产物，通常为 .m4a）
+ * @param target   克隆对象（妈妈 / 爸爸 / 外婆）
+ */
+export async function enrollVoice(audioUri: string, target: CloneTarget): Promise<VoiceCloneResult> {
+  if (!isVoiceCloneConfigured()) {
+    return {
+      ok: false,
+      message: '声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL / VOICE_WORKSPACE_ID）',
+    };
+  }
+  try {
+    const formData = new FormData();
+    // React Native 的 FormData 支持 { uri, name, type } 形式附加本地文件
+    formData.append('file', {
+      uri: audioUri,
+      name: `voice_${target}.m4a`,
+      type: 'audio/m4a',
+    } as unknown as Blob);
+    formData.append('workspace_id', WORKSPACE_ID as string);
+    formData.append('target', target);
+
+    const res = await fetch(ENROLL_URL as string, {
+      method: 'POST',
+      headers: {
+        // 鉴权头以你实际百炼/通义控制台要求为准；此处以 Bearer 为例
+        Authorization: `Bearer ${AI_API_KEY ?? ''}`,
+        'X-Workspace-Id': WORKSPACE_ID as string,
+      },
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+      return { ok: false, message: data?.message || `注册失败（HTTP ${res.status}）` };
+    }
+
+    const voiceId = data?.voice_id || data?.voiceId || data?.id;
+    if (voiceId) {
+      await saveClonedVoiceId(target, String(voiceId));
+      return { ok: true, voiceId: String(voiceId), message: '音色克隆成功！' };
+    }
+    return { ok: false, message: '注册成功但未返回音色 id' };
+  } catch (err: any) {
+    return { ok: false, message: err?.message || '注册过程出错' };
+  }
+}
+
+/**
+ * 用克隆音色合成语音（TTS）。
+ * 合成端点/字段以你实际开通的百炼 API 为准；下面为 OpenAI 兼容
+ * 「audio speech」风格骨架，待真实端点确认后替换 TTS_BASE_URL 与 path。
+ * @returns 音频二进制（调用方用 expo-av / expo-audio 播放）；未配置或失败返回 null
+ */
+export async function synthesizeWithClonedVoice(
+  text: string,
+  target: CloneTarget
+): Promise<ArrayBuffer | null> {
+  const voiceId = await getClonedVoiceId(target);
+  if (!voiceId || !TTS_BASE_URL) return null;
+  try {
+    const res = await fetch(`${TTS_BASE_URL}/compatible-mode/v1/audio/speech`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${AI_API_KEY ?? ''}`,
+        'X-Workspace-Id': WORKSPACE_ID ?? '',
+      },
+      body: JSON.stringify({
+        model: 'cosyvoice-v1',
+        input: text,
+        voice: voiceId,
+        response_format: 'mp3',
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
