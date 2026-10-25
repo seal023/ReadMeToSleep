@@ -29,6 +29,7 @@ const KEYS = {
   SENSITIVE_WORDS: 'rms_sensitive_words',
   VOICE: 'rms_voice',
   PARENT_COMMENTS: 'rms_parent_comments',
+  VOICE_GUIDANCE: 'rms_voice_guidance',
 };
 
 export interface ParentComment {
@@ -117,6 +118,16 @@ export async function saveVoiceSetting(voiceId: string): Promise<void> {
 export async function getVoiceSetting(): Promise<string> {
   const val = await AsyncStorage.getItem(KEYS.VOICE);
   return val || 'system';
+}
+
+/** 语音引导（开机提问）开关：默认关闭 */
+export async function getVoiceGuidance(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(KEYS.VOICE_GUIDANCE);
+  return val === '1';
+}
+
+export async function setVoiceGuidance(on: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.VOICE_GUIDANCE, on ? '1' : '0');
 }
 
 /** 家长给孩子写的悄悄话（按故事 id 存） */

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { getVoiceGuidance } from '../../services/storage';
+import { textToSpeech } from '../../services/tts';
 import type { RaccoState } from '../../types';
 
 const TITLES = ['Little Star', 'Champion', 'Adventurer', 'Dreamer', 'Storyteller', 'Sweetie'] as const;
@@ -29,6 +31,7 @@ export default function HomeTab() {
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
+  const [guideVisible, setGuideVisible] = useState(false);
 
   const { width: screenW } = useWindowDimensions();
   // iPad 横屏（以及大屏）视为宽屏：内容限宽居中，浣熊不要占满整个高度
@@ -38,6 +41,26 @@ export default function HomeTab() {
   const handleRaccoPress = () => {
     const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];
     setRaccoState(next);
+  };
+
+  // 需求 3 占位：开启「语音引导」后，小浣熊用 TTS 语音提问并给予预设快捷操作
+  // （真实语音识别待接入 STT 后启用，目前可点选）
+  useEffect(() => {
+    let mounted = true;
+    getVoiceGuidance().then((on) => {
+      if (!mounted) return;
+      if (on) {
+        setGuideVisible(true);
+        textToSpeech('你想听什么故事呀？点点下面的按钮告诉小浣熊～', 'system');
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const speakGuide = () => {
+    textToSpeech('你想听什么故事呀？点点下面的按钮告诉小浣熊～', 'system');
   };
 
   return (
@@ -58,6 +81,36 @@ export default function HomeTab() {
           <Racco state={raccoState} size={raccoSize} />
         </TouchableOpacity>
       </View>
+
+      {/* 需求 3 占位：语音引导卡片（开启语音引导时显示） */}
+      {guideVisible && (
+        <View style={styles.guideCard}>
+          <View style={styles.guideTop}>
+            <Racco state="listening" size={64} />
+            <View style={styles.guideBubble}>
+              <Text style={styles.guideText}>🎤 你想做什么呀？</Text>
+              <TouchableOpacity onPress={speakGuide} style={styles.guideReplay}>
+                <Text style={styles.guideReplayText}>🔁 再听一遍</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.guideActions}>
+            <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')}>
+              <Text style={styles.guideBtnEmoji}>📚</Text>
+              <Text style={styles.guideBtnLabel}>听故事</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')}>
+              <Text style={styles.guideBtnEmoji}>✈️</Text>
+              <Text style={styles.guideBtnLabel}>去打卡</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.guideBtn} onPress={() => setGuideVisible(false)}>
+              <Text style={styles.guideBtnEmoji}>😴</Text>
+              <Text style={styles.guideBtnLabel}>我再想想</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.guideHint}>语音识别将于接入 STT 后启用，现在可点选。</Text>
+        </View>
+      )}
 
       {/* 需求 5：等级与奖励进度 */}
       <LevelCard />
@@ -269,5 +322,69 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#BDBDBD',
+  },
+
+  // 需求 3 占位：语音引导卡片
+  guideCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginBottom: 20,
+    padding: 16,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 3,
+  },
+  guideTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  guideBubble: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  guideText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#5D4037',
+  },
+  guideReplay: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    backgroundColor: '#FFF1DC',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  guideReplayText: {
+    fontSize: 12,
+    color: '#8D6E63',
+    fontWeight: '600',
+  },
+  guideActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  guideBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#E8F1FF',
+  },
+  guideBtnEmoji: {
+    fontSize: 26,
+    marginBottom: 4,
+  },
+  guideBtnLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3B6FB0',
+  },
+  guideHint: {
+    fontSize: 11,
+    color: '#BDBDBD',
+    textAlign: 'center',
+    marginTop: 10,
   },
 });

@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
+import { getVoiceGuidance, setVoiceGuidance } from '../../services/storage';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
 const APP_VERSION: string =
@@ -12,6 +13,16 @@ const APP_VERSION: string =
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
+  const [voiceGuidance, setVoiceGuidanceState] = useState(false);
+
+  useEffect(() => {
+    getVoiceGuidance().then(setVoiceGuidanceState);
+  }, []);
+
+  const toggleVoiceGuidance = async (val: boolean) => {
+    setVoiceGuidanceState(val);
+    await setVoiceGuidance(val);
+  };
 
   const toggleLanguage = () => {
     setLanguage(language === 'zh' ? 'en' : 'zh');
@@ -62,6 +73,18 @@ export default function SettingsScreen() {
         </View>
         <Text style={styles.cardValue}>{t('settings.voice.system')}</Text>
       </TouchableOpacity>
+
+      {/* 需求 3 占位：语音引导开关（真实语音识别待接入 STT） */}
+      <View style={styles.card}>
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>🎤</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>语音引导（开机提问）</Text>
+            <Text style={styles.cardSub}>开启后，小浣熊会用语音问你想做什么。可随时关闭。</Text>
+          </View>
+        </View>
+        <Switch value={voiceGuidance} onValueChange={toggleVoiceGuidance} />
+      </View>
 
       <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)')}>
         <View style={styles.cardLeft}>
@@ -130,6 +153,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     fontWeight: '600',
+  },
+  cardTextWrap: {
+    flex: 1,
+  },
+  cardSub: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 3,
   },
   cardValue: {
     fontSize: 15,
