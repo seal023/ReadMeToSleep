@@ -41,7 +41,12 @@
     "plugins": [
       "expo-router",
       "expo-file-system",
-      "expo-audio"
+      "expo-audio",
+      ["expo-build-properties", {
+        "ios": {
+          "enableSceneSupport": true
+        }
+      }]
     ]
   }
 }
