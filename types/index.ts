@@ -65,4 +65,6 @@ export interface StoryGenerateResult {
   title: string;
   content: string;
   duration: number;
+  /** true = 本次结果来自本地兜底故事库（AI 不可用），UI 可据此提示 */
+  fallback?: boolean;
 }

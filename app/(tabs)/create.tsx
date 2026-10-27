@@ -32,7 +32,7 @@ export default function CreateScreen() {
 
   const handleGenerate = async () => {
     if (!theme.trim()) {
-      Alert.alert('提示', '请输入故事主题');
+      Alert.alert(t('create.alert.title'), t('create.alert.themeRequired'));
       return;
     }
 
@@ -62,6 +62,10 @@ export default function CreateScreen() {
         duration: result.duration,
         createdAt: new Date().toISOString(),
       };
+      if (result.fallback) {
+        // AI 不可用（如未配置 Key），已用主题化本地兜底，明确告知用户
+        Alert.alert(t('create.alert.title'), t('create.aiUnavailable'));
+      }
       await saveStory(story);
       await recordStoryGenerated();
       await refresh();
@@ -70,7 +74,7 @@ export default function CreateScreen() {
     } catch (e) {
       console.error('Generate story error:', e);
       setRaccoState('idle');
-      Alert.alert(t('common.error'), '生成故事失败，请重试');
+      Alert.alert(t('common.error'), t('create.genFailed'));
     }
     setGenerating(false);
   };
@@ -92,7 +96,7 @@ export default function CreateScreen() {
         <Text style={styles.icon}>🌟</Text>
         <TextInput
           style={styles.input}
-          placeholder="太空探险 / Space adventure"
+          placeholder={t('create.ph.theme')}
           value={theme}
           onChangeText={setTheme}
         />
@@ -102,7 +106,7 @@ export default function CreateScreen() {
         <Text style={styles.icon}>🐰</Text>
         <TextInput
           style={styles.input}
-          placeholder="小兔子 / Little rabbit"
+          placeholder={t('create.ph.protagonist')}
           value={protagonist}
           onChangeText={setProtagonist}
         />
@@ -112,7 +116,7 @@ export default function CreateScreen() {
         <Text style={styles.icon}>✨</Text>
         <TextInput
           style={styles.inputMultiline}
-          placeholder="找到魔法星球 / Found a magic planet"
+          placeholder={t('create.ph.details')}
           value={details}
           onChangeText={setDetails}
           multiline
@@ -136,7 +140,7 @@ export default function CreateScreen() {
 
       {snapshot && !snapshot.premium && snapshot.storiesRemaining !== null && (
         <Text style={styles.quota}>
-          今日剩余 {snapshot.storiesRemaining} 个故事 · 会员不限量
+          {t('create.quota').replace('{n}', String(snapshot.storiesRemaining))}
         </Text>
       )}
 
@@ -147,7 +151,7 @@ export default function CreateScreen() {
         activeOpacity={0.8}
       >
         <Text style={styles.btnText}>
-          {generating ? '⏳ ...' : '✨ 生成故事 / Generate Story'}
+          {generating ? '⏳ ...' : `✨ ${t('create.submit')}`}
         </Text>
       </TouchableOpacity>
       </ScrollView>

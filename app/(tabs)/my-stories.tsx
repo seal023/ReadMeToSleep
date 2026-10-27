@@ -16,17 +16,17 @@ import type { Story, Progress } from '../../types';
 
 type Tab = 'created' | 'recorded' | 'checkins';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'created', label: '📝 AI生成' },
-  { key: 'recorded', label: '🎤 我的录音' },
-  { key: 'checkins', label: '🚩 旅行打卡' },
+const TABS: { key: Tab; labelKey: string }[] = [
+  { key: 'created', labelKey: 'myStories.tab.created' },
+  { key: 'recorded', labelKey: 'myStories.tab.recorded' },
+  { key: 'checkins', labelKey: 'myStories.tab.checkins' },
 ];
 
 const BADGES = [
-  { key: 'flag', emoji: '🚩', label: '小红旗' },
-  { key: 'bronze', emoji: '🏅', label: '铜奖章' },
-  { key: 'silver', emoji: '🥈', label: '银奖章' },
-  { key: 'gold', emoji: '🥇', label: '金奖章' },
+  { key: 'flag', emoji: '🚩', labelKey: 'badge.flag' },
+  { key: 'bronze', emoji: '🏅', labelKey: 'badge.bronze' },
+  { key: 'silver', emoji: '🥈', labelKey: 'badge.silver' },
+  { key: 'gold', emoji: '🥇', labelKey: 'badge.gold' },
 ];
 
 export default function MyStoriesScreen() {
@@ -52,7 +52,7 @@ export default function MyStoriesScreen() {
   const fmtDuration = (sec: number) => {
     if (!sec) return '';
     const m = Math.floor(sec / 60);
-    return m > 0 ? `${m}分钟` : `${sec}秒`;
+    return m > 0 ? `${m} ${t('common.minute')}` : `${sec} ${t('common.second')}`;
   };
 
   const fmtDate = (iso: string) => {
@@ -62,10 +62,10 @@ export default function MyStoriesScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('确认删除', '确定要删除这个故事吗？', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('myStories.confirmTitle'), t('myStories.confirmMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '删除',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: async () => {
           await deleteStory(id);
@@ -139,14 +139,14 @@ export default function MyStoriesScreen() {
       <View style={styles.container}>
       {/* Tab bar */}
       <View style={styles.tabBar}>
-        {TABS.map(t => (
+        {TABS.map(tabItem => (
           <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, tab === t.key && styles.tabActive]}
-            onPress={() => setTab(t.key)}
+            key={tabItem.key}
+            style={[styles.tab, tab === tabItem.key && styles.tabActive]}
+            onPress={() => setTab(tabItem.key)}
           >
-            <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>
-              {t.label}
+            <Text style={[styles.tabLabel, tab === tabItem.key && styles.tabLabelActive]}>
+              {t(tabItem.labelKey)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -160,7 +160,7 @@ export default function MyStoriesScreen() {
           renderItem={renderCreatedItem}
           contentContainerStyle={filtered.length === 0 ? { flex: 1 } : undefined}
           ListEmptyComponent={
-            <EmptyState emoji="📝" text="还没有AI生成的故事" />
+            <EmptyState emoji="📝" text={t('myStories.empty.created')} />
           }
         />
       )}
@@ -173,12 +173,12 @@ export default function MyStoriesScreen() {
             renderItem={renderRecordedItem}
             contentContainerStyle={filtered.length === 0 ? { flex: 1 } : undefined}
             ListEmptyComponent={
-              <EmptyState emoji="🎤" text="还没有录音故事" />
+              <EmptyState emoji="🎤" text={t('myStories.empty.recorded')} />
             }
           />
           <Link href="/(tabs)/create" asChild>
             <TouchableOpacity style={styles.recordBtn}>
-              <Text style={styles.recordBtnText}>🎤 开始录音</Text>
+              <Text style={styles.recordBtnText}>🎤 {t('myStories.startRecord')}</Text>
             </TouchableOpacity>
           </Link>
         </View>
@@ -188,7 +188,7 @@ export default function MyStoriesScreen() {
         <View style={{ flex: 1 }}>
           {/* 勋章墙 */}
           <View style={styles.badgeSection}>
-            <Text style={styles.badgeTitle}>🏆 勋章墙</Text>
+            <Text style={styles.badgeTitle}>🏆 {t('myStories.badgeWall')}</Text>
             <View style={styles.badgeRow}>
               {BADGES.map(b => {
                 const earned = progress?.badges.includes(b.key);
@@ -198,7 +198,7 @@ export default function MyStoriesScreen() {
                       {b.emoji}
                     </Text>
                     <Text style={[styles.badgeLabel, !earned && styles.badgeLabelLocked]}>
-                      {b.label}
+                      {t(b.labelKey)}
                     </Text>
                   </View>
                 );
@@ -213,7 +213,7 @@ export default function MyStoriesScreen() {
             renderItem={renderCheckin}
             contentContainerStyle={(progress?.checkIns?.length ?? 0) === 0 ? { flex: 1 } : undefined}
             ListEmptyComponent={
-              <EmptyState emoji="🚩" text="还没有旅行打卡记录" />
+              <EmptyState emoji="🚩" text={t('myStories.empty.checkins')} />
             }
           />
         </View>

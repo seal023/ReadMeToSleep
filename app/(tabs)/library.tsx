@@ -16,13 +16,23 @@ import storiesIndex from '../../data/classic-stories/stories-index.json';
 
 // 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
 const TAGS = [
-  { label: '童话', emoji: '📖' },
-  { label: '成长', emoji: '🌱' },
-  { label: '寓言', emoji: '🦉' },
-  { label: '动物', emoji: '🐾' },
-  { label: '睡前', emoji: '🌙' },
-  { label: '自然', emoji: '🍃' },
+  { key: 'cat.fairy', zh: '童话', emoji: '📖' },
+  { key: 'cat.growth', zh: '成长', emoji: '🌱' },
+  { key: 'cat.fable', zh: '寓言', emoji: '🦉' },
+  { key: 'cat.animal', zh: '动物', emoji: '🐾' },
+  { key: 'cat.bedtime', zh: '睡前', emoji: '🌙' },
+  { key: 'cat.nature', zh: '自然', emoji: '🍃' },
 ];
+
+// 故事数据中的中文分类 → i18n key（英文界面下卡片标签也能本地化）
+const TAG_KEY: Record<string, string> = {
+  童话: 'cat.fairy',
+  成长: 'cat.growth',
+  寓言: 'cat.fable',
+  动物: 'cat.animal',
+  睡前: 'cat.bedtime',
+  自然: 'cat.nature',
+};
 
 const TAG_EMOJI: Record<string, string> = {
   童话: '📖',
@@ -34,10 +44,10 @@ const TAG_EMOJI: Record<string, string> = {
 };
 
 type TabKey = 'classic' | 'ai' | 'travel';
-const TABS: { key: TabKey; label: string }[] = [
-  { key: 'classic', label: '经典故事' },
-  { key: 'ai', label: 'AI生成' },
-  { key: 'travel', label: '旅行打卡' },
+const TABS: { key: TabKey; labelKey: string }[] = [
+  { key: 'classic', labelKey: 'library.tab.classic' },
+  { key: 'ai', labelKey: 'library.tab.ai' },
+  { key: 'travel', labelKey: 'library.tab.travel' },
 ];
 
 interface StoryItem {
@@ -50,7 +60,7 @@ interface StoryItem {
 
 export default function LibraryScreen() {
   const router = useRouter();
-  const { language } = useLanguage();
+  const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabKey>('classic');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -66,7 +76,7 @@ export default function LibraryScreen() {
     return list;
   }, [activeTab, activeTag, search]);
 
-  const fmtDuration = (sec: number) => `${Math.floor(sec / 60)}分钟`;
+  const fmtDuration = (sec: number) => `${Math.floor(sec / 60)} ${t('common.minute')}`;
 
   const renderCard = ({ item }: { item: StoryItem }) => (
     <TouchableOpacity
@@ -84,7 +94,7 @@ export default function LibraryScreen() {
         <View style={styles.tagRow}>
           {item.tags.map(tag => (
             <Text key={tag} style={styles.tag}>
-              {tag}
+              {t(TAG_KEY[tag] ?? tag)}
             </Text>
           ))}
           <Text style={styles.duration}>{fmtDuration(item.duration)}</Text>
@@ -105,7 +115,7 @@ export default function LibraryScreen() {
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索故事..."
+            placeholder={t('library.search')}
             placeholderTextColor="#999"
             value={search}
             onChangeText={setSearch}
@@ -126,7 +136,7 @@ export default function LibraryScreen() {
             onPress={() => { setActiveTab(tab.key); setActiveTag(null); }}
           >
             <Text style={activeTab === tab.key ? styles.tabLabelActive : styles.tabLabel}>
-              {tab.label}
+              {t(tab.labelKey)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -144,17 +154,17 @@ export default function LibraryScreen() {
             onPress={() => setActiveTag(null)}
           >
             <Text style={!activeTag ? styles.tagChipTextActive : styles.tagChipText}>
-              全部
+              {t('library.all')}
             </Text>
           </TouchableOpacity>
           {TAGS.map(tag => (
             <TouchableOpacity
-              key={tag.label}
-              style={activeTag === tag.label ? styles.tagChipActive : styles.tagChip}
-              onPress={() => setActiveTag(activeTag === tag.label ? null : tag.label)}
+              key={tag.zh}
+              style={activeTag === tag.zh ? styles.tagChipActive : styles.tagChip}
+              onPress={() => setActiveTag(activeTag === tag.zh ? null : tag.zh)}
             >
-              <Text style={activeTag === tag.label ? styles.tagChipTextActive : styles.tagChipText}>
-                {tag.emoji} {tag.label}
+              <Text style={activeTag === tag.zh ? styles.tagChipTextActive : styles.tagChipText}>
+                {tag.emoji} {t(tag.key)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -169,7 +179,7 @@ export default function LibraryScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>📚</Text>
-            <Text style={styles.emptyText}>暂无故事</Text>
+            <Text style={styles.emptyText}>{t('library.empty')}</Text>
           </View>
         }
       />

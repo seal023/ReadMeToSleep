@@ -18,7 +18,8 @@ import { isPremium, type Plan } from './iap';
 // 免费额度（改这里会自动同步到 UI 文案）
 // ---------------------------------------------------------------------------
 
-export const FREE_DAILY_STORY_LIMIT = 1;
+// 测试期放开每日上限（999），上架前改回 1
+export const FREE_DAILY_STORY_LIMIT = 999;
 export const FREE_TOTAL_CHECKIN_LIMIT = 3;
 
 const USAGE_KEY = 'rms_daily_usage';

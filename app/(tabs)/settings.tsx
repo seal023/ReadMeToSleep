@@ -59,7 +59,7 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.card} onPress={toggleLanguage}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>🌐</Text>
-          <Text style={styles.cardText}>Language / 语言</Text>
+          <Text style={styles.cardText}>{t('settings.language')}</Text>
         </View>
         <Text style={styles.cardValue}>
           {language === 'zh' ? '中文' : 'English'}
@@ -79,8 +79,8 @@ export default function SettingsScreen() {
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>🎤</Text>
           <View style={styles.cardTextWrap}>
-            <Text style={styles.cardText}>语音引导（开机提问）</Text>
-            <Text style={styles.cardSub}>开启后，小浣熊会用语音问你想做什么。可随时关闭。</Text>
+            <Text style={styles.cardText}>{t('settings.voiceGuide.title')}</Text>
+            <Text style={styles.cardSub}>{t('settings.voiceGuide.hint')}</Text>
           </View>
         </View>
         <Switch value={voiceGuidance} onValueChange={toggleVoiceGuidance} />

@@ -43,10 +43,10 @@ export const AI_CONFIG = {
   maxTokens: 3072,
 };
 
-/** 每日调用额度（防止 Key 被滥用） */
+/** 每日调用额度（防止 Key 被滥用）——测试期放开 story 上限，上架前改回 8 */
 const DAILY_QUOTA = {
-  story: 8,
-  qa: 20,
+  story: 999,
+  qa: 999,
 } as const;
 
 type QuotaKind = keyof typeof DAILY_QUOTA;
@@ -237,24 +237,32 @@ const FALLBACK_STORIES: Record<string, { title: string; content: string; duratio
       '在一座古老的城堡后面，有一个神秘的魔法花园。花园里种满了会发光的花朵，每一朵花都是一个小精灵的家。\n\n有一天，小女孩莉莉无意中发现了这个花园。小精灵们热情地欢迎她，带她参观了花园里的每一个角落。她们一起在彩虹桥上跳舞，在水晶湖边唱歌，还品尝了用月光做成的蛋糕。\n\n夜幕降临，小精灵们送给莉莉一颗发光的种子，并告诉她："只要你用心呵护它，它就会长出世界上最美的花。"\n\n莉莉把种子带回了家，每天都细心地浇水、施肥。不久，种子发芽了，长出了一朵美丽的花朵，花瓣上闪烁着星星的光芒。\n\n从此以后，每当莉莉想念小精灵们的时候，她就会看看窗外的魔法花，心里感到温暖又幸福。晚安，魔法花园里的小精灵们！',
     duration: 5,
   },
+  sea: {
+    title: '航海的小船',
+    content:
+      '在蔚蓝的大海边，停着一艘小小的帆船，它的名字叫丁丁号。丁丁号每天最大的愿望，就是出海去看一看远方的世界。\n\n有一天清晨，海风轻轻吹来，丁丁号扬起了白色的船帆，出发啦！海水在船边唱歌，浪花跳着欢快的舞蹈，海鸥在天上为它引路。\n\n航行到半路，天色渐渐暗了下来，丁丁号有点害怕。这时，天上的星星们眨着眼睛对它说："别怕，我们一直在这里为你照亮回家的路。"\n\n丁丁号鼓起勇气，继续向前航行。不久，它发现了一座美丽的小岛，岛上住着许多友好的小鱼和小海龟。大家一起在浅浅的海水里玩耍，听着海浪轻轻的摇篮曲。\n\n夜深了，月亮升起来，把银色的光洒在海面上，像铺了一条亮晶晶的小路。丁丁号慢慢地停进温暖的港湾，收起船帆，甜甜地睡着了。\n\n小朋友们，只要勇敢又不怕黑，就能看到最美的风景。现在闭上眼睛，让小船带着你，一起飘进甜甜的梦里吧。晚安！',
+    duration: 4,
+  },
 };
 
 function pickFallbackStory(theme: string, protagonist: string): StoryGenerateResult {
   const t = theme || '';
   let picked = FALLBACK_STORIES.default;
-  if (/太空|space|星星|star|月亮|moon|宇航/i.test(t)) picked = FALLBACK_STORIES.space;
+  if (/航海|航行|海洋|大海|海|船|帆船|冒险|sail|sea|ocean|ship|boat|adventure/i.test(t)) picked = FALLBACK_STORIES.sea;
+  else if (/太空|space|星星|star|月亮|moon|宇航/i.test(t)) picked = FALLBACK_STORIES.space;
   else if (/动物|animal|森林|forest|小熊|兔子|小猫/i.test(t)) picked = FALLBACK_STORIES.animal;
   else if (/魔法|magic|精灵|fairy|仙子|城堡/i.test(t)) picked = FALLBACK_STORIES.magic;
 
   let content = picked.content;
   if (protagonist && protagonist.trim()) {
-    content = content.replace(/小兔子|乐乐|莉莉/g, protagonist.trim());
+    content = content.replace(/丁丁|小兔子|乐乐|莉莉/g, protagonist.trim());
   }
 
   return {
     title: protagonist ? `${protagonist}的${picked.title}` : picked.title,
     content,
     duration: picked.duration,
+    fallback: true,
   };
 }
 
@@ -314,9 +322,10 @@ export async function generateStory(
     .join('\n');
 
   const user = [
-    `请创作一个睡前故事：`,
+    `请创作一个睡前故事。`,
+    `【最重要的要求】故事必须紧紧围绕下面用户给出的主题来写，主题是什么就写什么，绝不能替换或偏离主题。`,
     `主题：${theme || '温馨的睡前时光'}`,
-    protagonist ? `主角：${protagonist}` : '',
+    protagonist ? `主角：${protagonist}（必须以它作为故事的主角）` : '',
     details ? `需要包含的细节：${details}` : '',
   ]
     .filter(Boolean)

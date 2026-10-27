@@ -27,7 +27,7 @@ function getGreetingKey(): string {
 }
 
 export default function HomeTab() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
@@ -51,7 +51,7 @@ export default function HomeTab() {
       if (!mounted) return;
       if (on) {
         setGuideVisible(true);
-        textToSpeech('你想听什么故事呀？点点下面的按钮告诉小浣熊～', 'system');
+        textToSpeech(t('home.guide.prompt'), 'system', language);
       }
     });
     return () => {
@@ -60,7 +60,7 @@ export default function HomeTab() {
   }, []);
 
   const speakGuide = () => {
-    textToSpeech('你想听什么故事呀？点点下面的按钮告诉小浣熊～', 'system');
+    textToSpeech(t('home.guide.prompt'), 'system', language);
   };
 
   return (
@@ -88,27 +88,27 @@ export default function HomeTab() {
           <View style={styles.guideTop}>
             <Racco state="listening" size={64} />
             <View style={styles.guideBubble}>
-              <Text style={styles.guideText}>🎤 你想做什么呀？</Text>
+              <Text style={styles.guideText}>🎤 {t('home.guide.text')}</Text>
               <TouchableOpacity onPress={speakGuide} style={styles.guideReplay}>
-                <Text style={styles.guideReplayText}>🔁 再听一遍</Text>
+                <Text style={styles.guideReplayText}>🔁 {t('home.guide.replay')}</Text>
               </TouchableOpacity>
             </View>
           </View>
           <View style={styles.guideActions}>
             <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')}>
               <Text style={styles.guideBtnEmoji}>📚</Text>
-              <Text style={styles.guideBtnLabel}>听故事</Text>
+              <Text style={styles.guideBtnLabel}>{t('home.guide.listen')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')}>
               <Text style={styles.guideBtnEmoji}>✈️</Text>
-              <Text style={styles.guideBtnLabel}>去打卡</Text>
+              <Text style={styles.guideBtnLabel}>{t('home.guide.travel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.guideBtn} onPress={() => setGuideVisible(false)}>
               <Text style={styles.guideBtnEmoji}>😴</Text>
-              <Text style={styles.guideBtnLabel}>我再想想</Text>
+              <Text style={styles.guideBtnLabel}>{t('home.guide.think')}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.guideHint}>语音识别将于接入 STT 后启用，现在可点选。</Text>
+          <Text style={styles.guideHint}>{t('home.guide.hint')}</Text>
         </View>
       )}
 

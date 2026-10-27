@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useLanguage } from '../../hooks/useLanguage';
 import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
 import { getStory, saveProgress, getProgress, getParentComment, type ParentComment } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
@@ -23,15 +24,16 @@ import type { Story } from '../../types';
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished';
 
 const qaQuestions = [
-  { type: 'choice' as const, question: '故事里的主角是谁？', options: ['小兔子', '小熊'], answer: 0 },
-  { type: 'choice' as const, question: '主角去了哪里？', options: ['魔法星球', '海底世界'], answer: 0 },
-  { type: 'voice' as const, question: '你最喜欢故事的哪个部分？' },
+  { type: 'choice' as const, questionKey: 'story.qa.q1', options: ['story.qa.q1.a', 'story.qa.q1.b'], answer: 0 },
+  { type: 'choice' as const, questionKey: 'story.qa.q2', options: ['story.qa.q2.a', 'story.qa.q2.b'], answer: 0 },
+  { type: 'voice' as const, questionKey: 'story.qa.q3' },
 ];
 
 const { width } = Dimensions.get('window');
 
 export default function StoryPlayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t } = useLanguage();
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [story, setStory] = useState<Story | null>(null);
@@ -57,21 +59,21 @@ export default function StoryPlayScreen() {
 
   useEffect(() => {
     if (!id) {
-      setError('故事ID无效');
+      setError(t('story.error.invalid'));
       return;
     }
     (async () => {
       try {
         const s = await getStory(id);
         if (!s) {
-          setError('故事不存在');
+          setError(t('story.error.notFound'));
           return;
         }
         setStory(s);
         setPhase('playing');
       } catch (err) {
         console.error('Load story error:', err);
-        setError('加载故事失败');
+        setError(t('story.error.loadFailed'));
       }
     })();
   }, [id]);
@@ -158,7 +160,7 @@ export default function StoryPlayScreen() {
 
   const handlePlay = () => {
     if (!story) return;
-    textToSpeech(story.content, selectedVoice);
+    textToSpeech(story.content, selectedVoice, story?.language ?? 'zh');
     setIsPlaying(true);
 
     const totalDuration = story.content.length * 80;
@@ -201,7 +203,7 @@ export default function StoryPlayScreen() {
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
-    setQaFeedback('太棒了！Great job! 🎉');
+    setQaFeedback(t('story.qa.greatJob'));
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -216,7 +218,7 @@ export default function StoryPlayScreen() {
     setIsRecording(true);
     setTimeout(() => {
       setIsRecording(false);
-      setQaFeedback('太棒了！Great job! 🎉');
+      setQaFeedback(t('story.qa.greatJob'));
       setTimeout(() => {
         setQaFeedback('');
         if (qaIndex < qaQuestions.length - 1) {
@@ -236,7 +238,7 @@ export default function StoryPlayScreen() {
       const answer = await askQuestion(story?.content ?? '', childQuestion);
       setAiAnswer(answer);
     } catch {
-      setAiAnswer('嗯，这个问题我还不太清楚呢～');
+      setAiAnswer(t('story.qa.unknown'));
     }
     setIsAsking(false);
   };
@@ -247,7 +249,7 @@ export default function StoryPlayScreen() {
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>❌ {error}</Text>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backBtnText}>← 返回</Text>
+            <Text style={styles.backBtnText}>{t('common.back')}</Text>
           </TouchableOpacity>
         </View>
       </CartoonScreen>
@@ -259,7 +261,7 @@ export default function StoryPlayScreen() {
       <CartoonScreen gradient="day" decor>
         <View style={styles.loadingContainer}>
           <Racco state="thinking" size={120} />
-          <Text style={styles.loadingText}>正在准备故事...</Text>
+          <Text style={styles.loadingText}>{t('story.loading')}</Text>
         </View>
       </CartoonScreen>
     );
@@ -276,12 +278,12 @@ export default function StoryPlayScreen() {
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backBtnText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{story?.title ?? '故事'}</Text>
+          <Text style={styles.title}>{story?.title ?? t('story.defaultTitle')}</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView style={styles.storyScroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.storyText}>{story?.content ?? '加载中...'}</Text>
+          <Text style={styles.storyText}>{story?.content ?? t('story.contentLoading')}</Text>
         </ScrollView>
 
         <TouchableOpacity style={styles.progressBar} onPress={handleProgressTap} activeOpacity={0.8}>
@@ -301,9 +303,9 @@ export default function StoryPlayScreen() {
         </View>
 
         <View style={styles.voiceRow}>
-          <Text style={styles.voiceLabel}>🔊 {currentVoice?.name ?? '默认'}</Text>
+          <Text style={styles.voiceLabel}>🔊 {currentVoice?.name ?? t('story.voice.default')}</Text>
           <TouchableOpacity onPress={() => setShowVoicePicker(!showVoicePicker)}>
-            <Text style={styles.voiceToggle}>{showVoicePicker ? '收起' : '切换'}</Text>
+            <Text style={styles.voiceToggle}>{showVoicePicker ? t('story.voice.collapse') : t('story.voice.switch')}</Text>
           </TouchableOpacity>
         </View>
         {showVoicePicker && (
@@ -334,9 +336,9 @@ export default function StoryPlayScreen() {
       <>
         <View style={styles.completedContainer}>
           <Racco state="happy" size={150} />
-          <Text style={styles.completedText}>故事讲完啦！🎉</Text>
+          <Text style={styles.completedText}>{t('story.completed.text')}</Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setPhase('qa_round1'); }}>
-            <Text style={styles.primaryBtnText}>进入提问环节</Text>
+            <Text style={styles.primaryBtnText}>{t('story.completed.enterQa')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -344,15 +346,15 @@ export default function StoryPlayScreen() {
         <RewardAnimation
           visible={!!levelUp}
           emoji={levelUp?.emoji ?? '🎉'}
-          title="升级啦！"
-          subtitle={levelUp ? `第 ${levelUp.level} 级 · ${levelUp.name}` : ''}
-          desc="继续听故事，解锁更多惊喜"
+          title={t('reward.levelUp')}
+          subtitle={levelUp ? `Lv.${levelUp.level} · ${levelUp.name}` : ''}
+          desc={t('reward.keepGoing')}
           onDone={() => setLevelUp(null)}
         />
         <RewardAnimation
           visible={!levelUp && !!newBadge}
           emoji={newBadge?.emoji ?? '🏅'}
-          title="获得新勋章！"
+          title={t('reward.newBadge')}
           subtitle={newBadge?.name ?? ''}
           desc={newBadge?.desc}
           onDone={() => setNewBadge(null)}
@@ -368,14 +370,14 @@ export default function StoryPlayScreen() {
     return (
       <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
-        <Text style={styles.qaRoundTitle}>问答时间 🧠 ({qaIndex + 1}/{qaQuestions.length})</Text>
-        <Text style={styles.qaQuestion}>{q.question}</Text>
+        <Text style={styles.qaRoundTitle}>{t('story.qa.roundTitle')} 🧠 ({qaIndex + 1}/{qaQuestions.length})</Text>
+        <Text style={styles.qaQuestion}>{t(q.questionKey)}</Text>
 
         {q.type === 'choice' && q.options && (
           <View style={styles.optionsWrap}>
             {q.options.map((opt, i) => (
               <TouchableOpacity key={i} style={styles.optionCard} onPress={() => handleChoiceAnswer(i)}>
-                <Text style={styles.optionText}>{opt}</Text>
+                <Text style={styles.optionText}>{t(opt)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -389,7 +391,7 @@ export default function StoryPlayScreen() {
               disabled={isRecording}
             >
               <Text style={styles.micIcon}>🎤</Text>
-              <Text style={styles.micLabel}>{isRecording ? '录音中...' : '按住说话'}</Text>
+              <Text style={styles.micLabel}>{isRecording ? t('story.qa.recording') : t('story.qa.pressToTalk')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -406,8 +408,8 @@ export default function StoryPlayScreen() {
     return (
       <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
-        <Text style={styles.qaRoundTitle}>你的问题时间 💬</Text>
-        <Text style={styles.qaQuestion}>你有什么想问的？</Text>
+        <Text style={styles.qaRoundTitle}>{t('story.qa.yourQaTime')} 💬</Text>
+        <Text style={styles.qaQuestion}>{t('story.qa.yourQuestion')}</Text>
 
         <TouchableOpacity
           style={isRecording ? styles.micBtnActive : styles.micBtn}
@@ -415,20 +417,20 @@ export default function StoryPlayScreen() {
             setIsRecording(true);
             setTimeout(() => {
               setIsRecording(false);
-              setChildQuestion('为什么小兔子要去魔法星球？');
+              setChildQuestion(t('story.qa.whySample'));
             }, 2000);
           }}
           disabled={isRecording}
         >
           <Text style={styles.micIcon}>🎤</Text>
-          <Text style={styles.micLabel}>{isRecording ? '录音中...' : '按住说话'}</Text>
+          <Text style={styles.micLabel}>{isRecording ? t('story.qa.recording') : t('story.qa.pressToTalk')}</Text>
         </TouchableOpacity>
 
         {childQuestion ? (
           <View style={styles.childQWrap}>
             <Text style={styles.childQ}>🧒 {childQuestion}</Text>
             <TouchableOpacity style={styles.askBtn} onPress={handleChildQuestion} disabled={isAsking}>
-              <Text style={styles.askBtnText}>{isAsking ? '思考中...' : '问 AI'}</Text>
+              <Text style={styles.askBtnText}>{isAsking ? t('story.qa.thinking') : t('story.qa.askAi')}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -440,7 +442,7 @@ export default function StoryPlayScreen() {
         ) : null}
 
         <TouchableOpacity style={styles.primaryBtn2} onPress={() => setPhase('finished')}>
-          <Text style={styles.primaryBtnText}>完成</Text>
+          <Text style={styles.primaryBtnText}>{t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </View>
       </CartoonScreen>
@@ -451,28 +453,28 @@ export default function StoryPlayScreen() {
     <CartoonScreen gradient="day" decor>
     <View style={styles.finishedContainer}>
       <Racco state="sleeping" size={150} />
-      <Text style={styles.finishedText}>晚安，好梦 🌙</Text>
+      <Text style={styles.finishedText}>{t('story.finished.text')} 🌙</Text>
 
       {parentComment?.text ? (
         <Animated.View style={[styles.parentCommentCard, { opacity: commentOpacity }]}>
-          <Text style={styles.parentCommentTitle}>💌 爸爸妈妈的悄悄话</Text>
+          <Text style={styles.parentCommentTitle}>💌 {t('story.parentComment.title')}</Text>
           <Text style={styles.parentCommentText}>{parentComment.text}</Text>
         </Animated.View>
       ) : null}
 
       <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)')}>
         <Text style={styles.finishedBtnIcon}>🏠</Text>
-        <Text style={styles.finishedBtnText}>返回首页</Text>
+        <Text style={styles.finishedBtnText}>{t('story.finished.home')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)/create')}>
         <Text style={styles.finishedBtnIcon}>🔄</Text>
-        <Text style={styles.finishedBtnText}>再听一个</Text>
+        <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.finishedBtnDisabled}>
         <Text style={styles.finishedBtnIcon}>🎤</Text>
-        <Text style={styles.finishedBtnText}>我来讲故事（即将上线）</Text>
+        <Text style={styles.finishedBtnText}>{t('story.finished.record')}</Text>
       </TouchableOpacity>
     </View>
     </CartoonScreen>
