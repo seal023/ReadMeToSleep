@@ -112,7 +112,12 @@ export default function VoiceClonePage() {
         name: err?.name,
         stack: err?.stack,
       });
-      Alert.alert('录音失败', err?.message || '无法访问麦克风');
+      Alert.alert(
+        '录音失败（诊断）',
+        `name: ${err?.name ?? '无'}\nmessage: ${err?.message ?? '无'}\n${
+          err?.stack ? String(err.stack).slice(0, 240) : ''
+        }`
+      );
     }
   };
 

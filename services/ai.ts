@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GenerateStoryParams, StoryGenerateResult } from '../types';
+import { Alert } from 'react-native';
 
 /**
  * AI 服务层 —— 阿里云百炼（DashScope OpenAI 兼容模式）
@@ -128,6 +129,7 @@ async function chat(
 ): Promise<string> {
   if (!AI_CONFIG.apiKey) {
     // 未配置 Key：不发起网络请求，让上层降级到内置故事库
+    Alert.alert('AI 未配置', 'EXPO_PUBLIC_AI_API_KEY 为空，AI 将降级到本地故事');
     throw new Error('AI_API_KEY_NOT_CONFIGURED');
   }
   let res;
@@ -161,6 +163,20 @@ async function chat(
       hasKey: !!AI_CONFIG.apiKey,
       message: err?.message,
     });
+    Alert.alert(
+      'AI 请求失败（诊断）',
+      `status: ${status ?? '无'}\n` +
+        `url: ${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}\n` +
+        `hasKey: ${!!AI_CONFIG.apiKey}\n` +
+        `message: ${err?.message ?? '无'}\n` +
+        `data: ${
+          typeof data === 'string'
+            ? data.slice(0, 200)
+            : data
+            ? JSON.stringify(data).slice(0, 200)
+            : '无'
+        }`
+    );
     throw err;
   }
 
