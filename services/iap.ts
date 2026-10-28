@@ -213,7 +213,9 @@ export async function purchasePlan(plan: PaidPlan): Promise<Entitlement> {
     });
 
     requestPurchase({
-      request: { ios: { sku }, android: { skus: [sku] } },
+      // v16 官方推荐字段名是 apple / google（ios / android 虽 deprecated 但仍支持；
+      // 实测当前版本用 ios/android 会报 "sku property is required"，故用 apple/google）
+      request: { apple: { sku }, google: { skus: [sku] } },
       type: 'subs',
     }).catch((err) => {
       settle(() => reject(toFriendlyError(err)));

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File } from 'expo-file-system/next';
 
 /**
  * 家长声音克隆服务（需求 4：AI 模仿家长声音陪伴孩子）
@@ -73,12 +74,11 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
   }
   try {
     const formData = new FormData();
-    // React Native 的 FormData 支持 { uri, name, type } 形式附加本地文件
-    formData.append('file', {
-      uri: audioUri,
-      name: `voice_${target}.m4a`,
-      type: 'audio/m4a',
-    } as unknown as Blob);
+    // ⚠️ SDK 57 的 Expo fetch 是 WinterCG 实现，FormData 只接受 string / Blob /
+    // 带 bytes() 方法的对象，不再支持 RN 传统的 { uri, name, type } 文件对象
+    // （会抛 `Unsupported FormDataPart implementation`）。必须用 expo-file-system
+    // 的 File 类（实现 Blob，带 bytes()）包装本地文件。
+    formData.append('file', new File(audioUri));
     formData.append('workspace_id', WORKSPACE_ID as string);
     formData.append('target', target);
 
