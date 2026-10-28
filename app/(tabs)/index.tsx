@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
@@ -89,9 +89,19 @@ export default function HomeTab() {
     };
   }, []);
 
-  useEffect(() => {
-    getChildName().then(setChildName);
-  }, []);
+  // 用 useFocusEffect：每次回到首页（从设置页改完名字返回）都重新读取，
+  // 否则 tab 不卸载、首次加载的缓存会让问候语里的名字不更新
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getChildName().then((n) => {
+        if (alive) setChildName(n);
+      });
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
 
   const greeting = (() => {
     const base = t(getGreetingKey());

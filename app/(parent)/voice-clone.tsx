@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { AudioRecorder, RecordingPresets, setAudioModeAsync, requestPermissionsAsync } from 'expo-audio';
+import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
@@ -23,7 +23,10 @@ export default function VoiceClonePage() {
   const [target, setTarget] = useState<CloneTarget>('mom');
   const [step, setStep] = useState<'select' | 'recording' | 'preview' | 'done'>('select');
   const [duration, setDuration] = useState(0);
-  const [recorder, setRecorder] = useState<AudioRecorder | null>(null);
+  // ⚠️ expo-audio 的 AudioRecorder 只能由 useAudioRecorder Hook 创建，
+  // 不能用 new AudioRecorder()（那会得到一个方法未初始化、运行期报
+  // "undefined is not a function" 的空壳对象）
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [uri, setUri] = useState<string | null>(null);
   const [waveData, setWaveData] = useState<number[]>([]);
   const [cloning, setCloning] = useState(false);
@@ -74,20 +77,12 @@ export default function VoiceClonePage() {
     };
   }, [step]);
 
-  useEffect(() => {
-    return () => {
-      if (recorder) {
-        recorder.remove();
-      }
-    };
-  }, []);
-
   const generateWaveform = () =>
     Array.from({ length: 40 }, () => Math.random() * 40 + 5);
 
   const startRecording = async () => {
     try {
-      const permission = await requestPermissionsAsync();
+      const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('录音失败', '请授予麦克风权限');
         return;
@@ -99,12 +94,8 @@ export default function VoiceClonePage() {
         staysActiveInBackground: false,
       });
 
-      const rec = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
-      await rec.prepareToRecordAsync();
-      // ⚠️ 必须 await：record() 返回 Promise，不 await 时其 rejection 不会被
-      // 外层 try/catch 捕获，导致"点了录音立刻失败"却看不到原因
-      await rec.record();
-      setRecorder(rec);
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
       setStep('recording');
     } catch (err: any) {
       console.error('[voice-clone] Recording error:', {
@@ -122,17 +113,13 @@ export default function VoiceClonePage() {
   };
 
   const stopRecording = async () => {
-    if (recorder) {
-      try {
-        await recorder.stop();
-        const uriPath = recorder.uri;
-        setUri(uriPath || null);
-        setWaveData(generateWaveform());
-      } catch (err) {
-        console.error('Stop recording error:', err);
-      }
-      recorder.remove();
-      setRecorder(null);
+    try {
+      await audioRecorder.stop();
+      const uriPath = audioRecorder.uri;
+      setUri(uriPath || null);
+      setWaveData(generateWaveform());
+    } catch (err) {
+      console.error('Stop recording error:', err);
     }
     setStep('preview');
   };

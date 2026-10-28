@@ -43,7 +43,11 @@ export default function SettingsScreen() {
   };
 
   const toggleLanguage = () => {
-    setLanguage(language === 'zh' ? 'en' : 'zh');
+    Alert.alert(t('settings.language'), t('settings.language.hint'), [
+      { text: '中文', onPress: () => setLanguage('zh') },
+      { text: 'English', onPress: () => setLanguage('en') },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
   };
 
   const selectVoice = async (voiceId: string) => {

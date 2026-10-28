@@ -213,7 +213,7 @@ export async function purchasePlan(plan: PaidPlan): Promise<Entitlement> {
     });
 
     requestPurchase({
-      request: { apple: { sku }, google: { skus: [sku] } },
+      request: { ios: { sku }, android: { skus: [sku] } },
       type: 'subs',
     }).catch((err) => {
       settle(() => reject(toFriendlyError(err)));
