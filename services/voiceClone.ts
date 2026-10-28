@@ -20,14 +20,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  *           synthesizeWithClonedVoice()（集成点已预留，待真实端点确认后打通）
  */
 
-const ENROLL_URL =
-  (globalThis as any)?.process?.env?.EXPO_PUBLIC_VOICE_ENROLL_URL as string | undefined;
-const WORKSPACE_ID =
-  (globalThis as any)?.process?.env?.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | undefined;
-const TTS_BASE_URL =
-  (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
-const AI_API_KEY =
-  (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_API_KEY as string | undefined;
+// ⚠️ 必须用 process.env.EXPO_PUBLIC_X 字面量，Metro 才能静态内联（见 ai.ts 顶部说明）
+const ENROLL_URL = process.env.EXPO_PUBLIC_VOICE_ENROLL_URL as string | undefined;
+const WORKSPACE_ID = process.env.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | undefined;
+const TTS_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
+const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
 
 export type CloneTarget = 'mom' | 'dad' | 'grandma';
 

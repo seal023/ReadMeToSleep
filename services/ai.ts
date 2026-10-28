@@ -26,14 +26,17 @@ import type { GenerateStoryParams, StoryGenerateResult } from '../types';
 // 配置
 // ---------------------------------------------------------------------------
 
-/** 构建期注入的环境变量（Expo 会把 EXPO_PUBLIC_* 烧录进客户端包） */
-const ENV_API_KEY = (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_API_KEY as
-  | string
-  | undefined;
+/**
+ * 构建期注入的环境变量（Expo 通过 Metro 把 EXPO_PUBLIC_* 静态内联烧录进客户端包）。
+ * ⚠️ 必须用 `process.env.EXPO_PUBLIC_X` 字面量访问：Metro 只识别这个精确表达式做
+ *    静态替换；一旦裹上 (globalThis as any)?.process?.env?.X 或可选链，运行期就读不到
+ *    值（落到 undefined），导致 API Key 为空、AI 永远降级到本地故事。
+ */
+const ENV_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
 
 export const AI_CONFIG = {
   baseUrl:
-    (globalThis as any)?.process?.env?.EXPO_PUBLIC_AI_BASE_URL ||
+    (process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined) ||
     'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com',
   chatPath: '/compatible-mode/v1/chat/completions',
   /** 仅来自环境变量；未配置时为空，generateStory 会自动降级到内置故事库 */

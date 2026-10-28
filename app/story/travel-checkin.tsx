@@ -323,6 +323,30 @@ export default function TravelCheckinScreen() {
               }
             />
 
+            {/* 列表选择：图钉重叠 / 底部点不到时，直接从列表选，保证每个地点都能选 */}
+            <Text style={styles.listTitle}>
+              {language === 'en' ? 'Or pick from the list' : '或从列表里选一个'}
+            </Text>
+            <ScrollView style={styles.locList} nestedScrollEnabled>
+              {LOCATIONS.map((l) => {
+                const isSel = selectedLoc?.place === l.place;
+                return (
+                  <TouchableOpacity
+                    key={l.place}
+                    style={[styles.locItem, isSel && styles.locItemActive]}
+                    onPress={() => setSelectedLoc(l)}
+                  >
+                    <Text style={styles.locEmoji}>{l.emoji}</Text>
+                    <View style={styles.locTextWrap}>
+                      <Text style={styles.locName}>{l.cn}·{l.place}</Text>
+                      <Text style={styles.locEn}>{l.en}</Text>
+                    </View>
+                    {isSel && <Text style={styles.locCheck}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null && (
               <Text style={styles.quota}>
                 {language === 'en'
@@ -435,6 +459,21 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
   header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
   quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },
+
+  // 地点列表（地图图钉选不到时的可靠替代）
+  listTitle: { fontSize: 14, color: '#8D6E63', marginTop: 16, marginBottom: 8, fontWeight: '600' },
+  locList: { maxHeight: 300, width: '100%' },
+  locItem: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8F0',
+    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: '#F0D9B5',
+  },
+  locItemActive: { backgroundColor: '#FFE0D6', borderColor: '#FF8A65', borderWidth: 2 },
+  locEmoji: { fontSize: 22, marginRight: 12 },
+  locTextWrap: { flex: 1 },
+  locName: { fontSize: 15, fontWeight: '600', color: '#5D4037' },
+  locEn: { fontSize: 11, color: '#A0937D', marginTop: 2 },
+  locCheck: { fontSize: 18, color: '#FF5722', fontWeight: 'bold', marginLeft: 8 },
 
   // Step indicator
   stepRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 32 },

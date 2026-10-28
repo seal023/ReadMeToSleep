@@ -24,10 +24,12 @@ const FIRST_RUN_CLONE_KEY = 'rms_firstrun_clone';
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
 
 function getGreetingKey(): string {
+  // 按机器本地时钟分四段问候，避免大晚上还显示"早上好"
   const h = new Date().getHours();
-  if (h < 12) return 'home.greetingMorning';
-  if (h < 18) return 'home.greetingAfternoon';
-  return 'home.greetingEvening';
+  if (h < 11) return 'home.greetingMorning'; // 早上好（11 点前）
+  if (h < 13) return 'home.greetingNoon'; // 中午好（11–13 点）
+  if (h < 18) return 'home.greetingAfternoon'; // 下午好（13–18 点）
+  return 'home.greetingEvening'; // 晚上好（18 点后）
 }
 
 export default function HomeTab() {
@@ -135,6 +137,20 @@ export default function HomeTab() {
           </View>
         </View>
         <Text style={styles.cloneHeroEmoji}>🎙️</Text>
+      </TouchableOpacity>
+
+      {/* 会员入口：直达订阅/会员中心，避免"找不到收费板块" */}
+      <TouchableOpacity
+        style={styles.premiumCard}
+        activeOpacity={0.9}
+        onPress={() => router.push('/(parent)/subscription')}
+      >
+        <Text style={styles.premiumEmoji}>💎</Text>
+        <View style={styles.premiumTextWrap}>
+          <Text style={styles.premiumTitle}>{t('home.premium.title')}</Text>
+          <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
+        </View>
+        <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
       </TouchableOpacity>
 
       {/* P1：首次启动引导横幅（未克隆且未忽略时显示） */}
@@ -340,6 +356,33 @@ const styles = StyleSheet.create({
   },
   cloneHeroEmoji: {
     fontSize: 40,
+  },
+
+  // 会员入口卡片
+  premiumCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EDE7FF',
+    borderRadius: 18,
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.10)',
+    elevation: 3,
+  },
+  premiumEmoji: { fontSize: 30, marginRight: 12 },
+  premiumTextWrap: { flex: 1, marginRight: 8 },
+  premiumTitle: { fontSize: 16, fontWeight: 'bold', color: '#4A2B8C', marginBottom: 3 },
+  premiumDesc: { fontSize: 12, color: '#7A6AA8', lineHeight: 18 },
+  premiumCta: {
+    backgroundColor: '#7C4DFF',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+    overflow: 'hidden',
   },
 
   // P1：首次启动引导横幅

@@ -101,12 +101,18 @@ export default function VoiceClonePage() {
 
       const rec = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
       await rec.prepareToRecordAsync();
-      rec.record();
+      // ⚠️ 必须 await：record() 返回 Promise，不 await 时其 rejection 不会被
+      // 外层 try/catch 捕获，导致"点了录音立刻失败"却看不到原因
+      await rec.record();
       setRecorder(rec);
       setStep('recording');
     } catch (err: any) {
-      console.error('Recording error:', err);
-      Alert.alert('录音失败', err.message || '无法访问麦克风');
+      console.error('[voice-clone] Recording error:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+      });
+      Alert.alert('录音失败', err?.message || '无法访问麦克风');
     }
   };
 

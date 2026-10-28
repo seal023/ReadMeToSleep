@@ -8,9 +8,11 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 
-/** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
+/** 便于在真机上确认装的是哪一个包（app.json → expo.version + 原生 build number） */
 const APP_VERSION: string =
   (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';
+const BUILD_NUMBER: string =
+  (Constants.nativeBuildVersion as string | undefined) ?? '?';
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
@@ -139,13 +141,25 @@ export default function SettingsScreen() {
         <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
 
+      {/* 会员入口：直达订阅/会员中心（上架前声音克隆门禁恢复后，亦是引导升级的主路径） */}
+      <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)/subscription')}>
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>💎</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>{t('settings.premium')}</Text>
+            <Text style={styles.cardSub}>{t('settings.premium.hint')}</Text>
+          </View>
+        </View>
+        <Text style={styles.arrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.card}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>ℹ️</Text>
           <View style={styles.aboutInfo}>
             <Text style={styles.cardText}>{t('settings.about')}</Text>
             <Text style={styles.aboutSub}>{t('settings.about.description')}</Text>
-            <Text style={styles.versionBadge}>v{APP_VERSION}</Text>
+            <Text style={styles.versionBadge}>v{APP_VERSION} · build {BUILD_NUMBER}</Text>
           </View>
         </View>
       </View>
