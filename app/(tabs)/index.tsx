@@ -7,6 +7,7 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
@@ -14,7 +15,11 @@ import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { getVoiceGuidance } from '../../services/storage';
 import { textToSpeech } from '../../services/tts';
+import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
+
+/** 首次启动引导是否已展示过 */
+const FIRST_RUN_CLONE_KEY = 'rms_firstrun_clone';
 
 const TITLES = ['Little Star', 'Champion', 'Adventurer', 'Dreamer', 'Storyteller', 'Sweetie'] as const;
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
@@ -32,6 +37,8 @@ export default function HomeTab() {
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
   const [guideVisible, setGuideVisible] = useState(false);
+  // P1：首次启动引导——尚未克隆任何亲人声线时，强提示录制（核心卖点前置）
+  const [cloneBannerVisible, setCloneBannerVisible] = useState(false);
 
   const { width: screenW } = useWindowDimensions();
   // iPad 横屏（以及大屏）视为宽屏：内容限宽居中，浣熊不要占满整个高度
@@ -63,6 +70,29 @@ export default function HomeTab() {
     textToSpeech(t('home.guide.prompt'), 'system', language);
   };
 
+  // 首次启动：未克隆过且未忽略引导 → 展示录制引导横幅
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const flagged = await AsyncStorage.getItem(FIRST_RUN_CLONE_KEY);
+      if (flagged) return;
+      const anyCloned =
+        (await hasClonedVoice('mom')) ||
+        (await hasClonedVoice('dad')) ||
+        (await hasClonedVoice('grandma'));
+      if (!mounted) return;
+      if (!anyCloned) setCloneBannerVisible(true);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const dismissCloneBanner = async () => {
+    setCloneBannerVisible(false);
+    await AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
+  };
+
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView
@@ -81,6 +111,47 @@ export default function HomeTab() {
           <Racco state={raccoState} size={raccoSize} />
         </TouchableOpacity>
       </View>
+
+      {/* P1：核心卖点前置——亲人声音陪伴英雄区（常驻，放大声音克隆） */}
+      <TouchableOpacity
+        style={styles.cloneHero}
+        activeOpacity={0.9}
+        onPress={() => router.push('/(parent)/voice-clone')}
+      >
+        <View style={styles.cloneHeroTextWrap}>
+          <Text style={styles.cloneHeroTitle}>{t('home.cloneHero.title')}</Text>
+          <Text style={styles.cloneHeroDesc}>{t('home.cloneHero.desc')}</Text>
+          <View style={styles.cloneHeroCta}>
+            <Text style={styles.cloneHeroCtaText}>{t('home.cloneHero.cta')}</Text>
+          </View>
+        </View>
+        <Text style={styles.cloneHeroEmoji}>🎙️</Text>
+      </TouchableOpacity>
+
+      {/* P1：首次启动引导横幅（未克隆且未忽略时显示） */}
+      {cloneBannerVisible && (
+        <View style={styles.cloneBanner}>
+          <View style={styles.cloneBannerTextWrap}>
+            <Text style={styles.cloneBannerTitle}>✨ {t('home.cloneBanner.title')}</Text>
+            <Text style={styles.cloneBannerDesc}>{t('home.cloneBanner.desc')}</Text>
+          </View>
+          <View style={styles.cloneBannerActions}>
+            <TouchableOpacity
+              style={styles.cloneBannerCta}
+              onPress={() => {
+                setCloneBannerVisible(false);
+                AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
+                router.push('/(parent)/voice-clone');
+              }}
+            >
+              <Text style={styles.cloneBannerCtaText}>{t('home.cloneBanner.cta')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cloneBannerLater} onPress={dismissCloneBanner}>
+              <Text style={styles.cloneBannerLaterText}>{t('home.cloneBanner.later')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* 需求 3 占位：语音引导卡片（开启语音引导时显示） */}
       {guideVisible && (
@@ -216,6 +287,99 @@ const styles = StyleSheet.create({
   raccoWrap: {
     alignItems: 'center',
     marginVertical: 16,
+  },
+
+  // P1：亲人声音英雄区（核心卖点前置）
+  cloneHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFE0D6',
+    borderRadius: 18,
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 18,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.10)',
+    elevation: 3,
+  },
+  cloneHeroTextWrap: {
+    flex: 1,
+    marginRight: 12,
+  },
+  cloneHeroTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#5D4037',
+    marginBottom: 6,
+  },
+  cloneHeroDesc: {
+    fontSize: 13,
+    color: '#8D6E63',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  cloneHeroCta: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FF8A65',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  cloneHeroCtaText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  cloneHeroEmoji: {
+    fontSize: 40,
+  },
+
+  // P1：首次启动引导横幅
+  cloneBanner: {
+    backgroundColor: '#E8F1FF',
+    borderRadius: 16,
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 3,
+  },
+  cloneBannerTextWrap: {
+    marginBottom: 12,
+  },
+  cloneBannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#3B6FB0',
+    marginBottom: 4,
+  },
+  cloneBannerDesc: {
+    fontSize: 13,
+    color: '#5B7AA8',
+    lineHeight: 20,
+  },
+  cloneBannerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cloneBannerCta: {
+    backgroundColor: '#7C4DFF',
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+  },
+  cloneBannerCtaText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  cloneBannerLater: {
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+  },
+  cloneBannerLaterText: {
+    fontSize: 13,
+    color: '#8FA6C8',
   },
 
   recCard: {

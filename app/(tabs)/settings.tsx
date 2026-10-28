@@ -5,7 +5,8 @@ import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
-import { getVoiceGuidance, setVoiceGuidance } from '../../services/storage';
+import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting } from '../../services/storage';
+import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
 const APP_VERSION: string =
@@ -14,9 +15,22 @@ const APP_VERSION: string =
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
+  const [currentVoice, setCurrentVoice] = useState('system');
+  const [cloned, setCloned] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     getVoiceGuidance().then(setVoiceGuidanceState);
+  }, []);
+
+  useEffect(() => {
+    getVoiceSetting().then((v) => v && setCurrentVoice(v));
+    (async () => {
+      const map: Record<string, boolean> = {};
+      for (const t of ['mom', 'dad', 'grandma'] as const) {
+        map[t] = await hasClonedVoice(t);
+      }
+      setCloned(map);
+    })();
   }, []);
 
   const toggleVoiceGuidance = async (val: boolean) => {
@@ -28,19 +42,29 @@ export default function SettingsScreen() {
     setLanguage(language === 'zh' ? 'en' : 'zh');
   };
 
-  const showVoiceOptions = () => {
-    Alert.alert(
-      t('settings.voice.title'),
-      '',
-      [
-        { text: t('settings.voice.system'), onPress: () => {} },
-        { text: t('settings.voice.mom'), onPress: () => {} },
-        { text: t('settings.voice.dad'), onPress: () => {} },
-        { text: t('settings.voice.grandma'), onPress: () => {} },
-        { text: t('common.cancel'), style: 'cancel' },
-      ],
-    );
+  const selectVoice = async (voiceId: string) => {
+    setCurrentVoice(voiceId);
+    await saveVoiceSetting(voiceId);
   };
+
+  const showVoiceOptions = () => {
+    const optionFor = (id: string, labelKey: string) => {
+      const mark = cloned[id] ? ` ✓${t('settings.voice.cloned')}` : '';
+      return { text: t(labelKey) + mark, onPress: () => selectVoice(id) };
+    };
+    Alert.alert(t('settings.voice.title'), t('settings.voice.hint'), [
+      optionFor('system', 'settings.voice.system'),
+      optionFor('mom', 'settings.voice.mom'),
+      optionFor('dad', 'settings.voice.dad'),
+      optionFor('grandma', 'settings.voice.grandma'),
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const currentVoiceLabel =
+    currentVoice === 'system'
+      ? t('settings.voice.system')
+      : t(`settings.voice.${currentVoice}` as 'settings.voice.mom');
 
   return (
     <CartoonScreen gradient="day" decor>
@@ -71,7 +95,7 @@ export default function SettingsScreen() {
           <Text style={styles.cardIcon}>🔊</Text>
           <Text style={styles.cardText}>{t('settings.voice')}</Text>
         </View>
-        <Text style={styles.cardValue}>{t('settings.voice.system')}</Text>
+        <Text style={styles.cardValue}>{currentVoiceLabel}</Text>
       </TouchableOpacity>
 
       {/* 需求 3 占位：语音引导开关（真实语音识别待接入 STT） */}

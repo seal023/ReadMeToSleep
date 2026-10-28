@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
-import { textToSpeech, stopSpeech, VOICES } from '../../services/tts';
-import { getStory, saveProgress, getProgress, getParentComment, type ParentComment } from '../../services/storage';
+import { VOICES } from '../../services/tts';
+import { playStory, stopStory } from '../../services/playback';
+import { hasClonedVoice } from '../../services/clonedVoicePlayback';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, type ParentComment } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -80,8 +82,30 @@ export default function StoryPlayScreen() {
 
   useEffect(() => {
     return () => {
-      stopSpeech();
+      stopStory();
       if (progressInterval.current) clearInterval(progressInterval.current);
+    };
+  }, []);
+
+  // 默认声线：优先用全局设置；若全局是 system 但已克隆某位亲属，则默认用该克隆声
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const saved = await getVoiceSetting();
+      if (cancelled) return;
+      if (saved && saved !== 'system') {
+        setSelectedVoice(saved);
+        return;
+      }
+      for (const t of ['mom', 'dad', 'grandma'] as const) {
+        if (await hasClonedVoice(t)) {
+          if (!cancelled) setSelectedVoice(t);
+          return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -160,7 +184,7 @@ export default function StoryPlayScreen() {
 
   const handlePlay = () => {
     if (!story) return;
-    textToSpeech(story.content, selectedVoice, story?.language ?? 'zh');
+    playStory(story.content, selectedVoice, story?.language ?? 'zh');
     setIsPlaying(true);
 
     const totalDuration = story.content.length * 80;
@@ -181,13 +205,13 @@ export default function StoryPlayScreen() {
   };
 
   const handlePause = () => {
-    stopSpeech();
+    stopStory();
     setIsPlaying(false);
     if (progressInterval.current) clearInterval(progressInterval.current);
   };
 
   const handleStop = () => {
-    stopSpeech();
+    stopStory();
     setIsPlaying(false);
     setProgress(0);
     if (progressInterval.current) clearInterval(progressInterval.current);
