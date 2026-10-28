@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Alert, TouchableOpacity,
+  Keyboard, KeyboardAvoidingView, ScrollView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { getSensitiveWords, saveSensitiveWords } from '@/services/storage';
@@ -36,6 +37,7 @@ export default function ParentIndex() {
 
   // ---- Setup flow ----
   const handleSetupNext = async () => {
+    Keyboard.dismiss();
     if (digits1.length !== 4 || digits2.length !== 4) {
       Alert.alert('提示', '请输入完整的 4 位数字密码');
       return;
@@ -90,7 +92,8 @@ export default function ParentIndex() {
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <Text style={styles.racco}>{RACCO_SLEEPING}</Text>
       <Text style={styles.title}>家长模式</Text>
 
@@ -150,7 +153,8 @@ export default function ParentIndex() {
           </View>
         </>
       )}
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -159,8 +163,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF5E6',
     alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 32,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 24,
   },
   racco: { fontSize: 140, marginBottom: 8 },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32, color: '#333' },

@@ -162,11 +162,14 @@ export async function checkVoiceCloneGate(): Promise<GateResult> {
   const snap = await getSnapshot();
   if (snap.premium) return { allowed: true };
 
-  return {
-    allowed: false,
-    title: '会员专属功能',
-    message: '声音克隆可以录制家人的声音来讲故事，升级会员即可使用。',
-  };
+  // 测试期放开：免费用户也可录入声音进行验证（上架前改回会员专属，恢复下方拦截）
+  return { allowed: true };
+  // —— 上架前删除上面一行，恢复会员门禁 ——
+  // return {
+  //   allowed: false,
+  //   title: '会员专属功能',
+  //   message: '声音克隆可以录制家人的声音来讲故事，升级会员即可使用。',
+  // };
 }
 
 /** 旅行打卡门禁（累计额度） */

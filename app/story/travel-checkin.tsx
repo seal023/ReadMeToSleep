@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { getProgress, saveProgress } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
+import { textToSpeech } from '../../services/tts';
 import Racco from '../../components/common/Racco';
 import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -18,21 +19,30 @@ const { width } = Dimensions.get('window');
 type Step = 'locate' | 'generate' | 'play' | 'success';
 
 /**
- * 卡通地图上的打卡点。
- * x / y 为 0-100 的百分比坐标，由经纬度线性换算而来：
- *   x = (经度 - 73) / (135 - 73) * 100
- *   y = (53 - 纬度) / (53 - 18) * 100
- * 只保证相对方位正确，不追求地理精度（儿童向示意地图）。
+ * 卡通世界地图上的打卡点（面向国内外孩子）。
+ * 坐标采用等距柱状投影（equirectangular）：
+ *   x = (经度 + 180) / 360 * 100
+ *   y = (90 - 纬度) / 180 * 100
+ * 仅保证相对方位正确，不追求地理精度（儿童向示意地图）。
  */
 const LOCATIONS = [
-  { cn: '北京', place: '故宫', en: 'Beijing · Forbidden City', emoji: '🏯', x: 70.0, y: 37.4 },
-  { cn: '上海', place: '外滩', en: 'Shanghai · The Bund', emoji: '🌃', x: 78.2, y: 62.3 },
-  { cn: '西安', place: '兵马俑', en: "Xi'an · Terracotta Warriors", emoji: '🗿', x: 57.9, y: 53.4 },
-  { cn: '成都', place: '大熊猫基地', en: 'Chengdu · Panda Base', emoji: '🐼', x: 50.2, y: 64.0 },
-  { cn: '杭州', place: '西湖', en: 'Hangzhou · West Lake', emoji: '🛶', x: 76.1, y: 64.9 },
-  { cn: '桂林', place: '漓江', en: 'Guilin · Li River', emoji: '⛰️', x: 60.2, y: 79.1 },
-  { cn: '拉萨', place: '布达拉宫', en: 'Lhasa · Potala Palace', emoji: '🏔️', x: 29.2, y: 66.6 },
-  { cn: '大理', place: '洱海', en: 'Dali · Erhai Lake', emoji: '🌊', x: 43.9, y: 78.3 },
+  // —— 中国 ——
+  { cn: '北京', place: '故宫', en: 'Beijing · Forbidden City', emoji: '🏯', x: 82.3, y: 27.8 },
+  { cn: '上海', place: '外滩', en: 'Shanghai · The Bund', emoji: '🌃', x: 83.8, y: 32.7 },
+  { cn: '西安', place: '兵马俑', en: "Xi'an · Terracotta Warriors", emoji: '🗿', x: 80.3, y: 30.9 },
+  { cn: '成都', place: '大熊猫基地', en: 'Chengdu · Panda Base', emoji: '🐼', x: 78.9, y: 33.0 },
+  { cn: '杭州', place: '西湖', en: 'Hangzhou · West Lake', emoji: '🛶', x: 83.4, y: 33.2 },
+  { cn: '桂林', place: '漓江', en: 'Guilin · Li River', emoji: '⛰️', x: 80.6, y: 35.9 },
+  { cn: '拉萨', place: '布达拉宫', en: 'Lhasa · Potala Palace', emoji: '🏔️', x: 75.3, y: 33.5 },
+  { cn: '大理', place: '洱海', en: 'Dali · Erhai Lake', emoji: '🌊', x: 77.9, y: 35.8 },
+  // —— 世界 ——
+  { cn: '巴黎', place: '埃菲尔铁塔', en: 'Paris · Eiffel Tower', emoji: '🗼', x: 50.7, y: 22.9 },
+  { cn: '伦敦', place: '大本钟', en: 'London · Big Ben', emoji: '🕰️', x: 50.0, y: 21.4 },
+  { cn: '纽约', place: '自由女神', en: 'New York · Statue of Liberty', emoji: '🗽', x: 29.4, y: 27.4 },
+  { cn: '东京', place: '东京塔', en: 'Tokyo Tower', emoji: '🗾', x: 88.8, y: 30.2 },
+  { cn: '悉尼', place: '歌剧院', en: 'Sydney · Opera House', emoji: '🏝️', x: 92.0, y: 68.8 },
+  { cn: '开罗', place: '金字塔', en: 'Cairo · Pyramids', emoji: '🐫', x: 58.6, y: 33.3 },
+  { cn: '里约', place: '基督像', en: 'Rio · Christ Statue', emoji: '⛪', x: 38.0, y: 62.8 },
 ];
 
 const STORIES: Record<string, { title: string; content: string }> = {
@@ -67,6 +77,35 @@ const STORIES: Record<string, { title: string; content: string }> = {
   '洱海': {
     title: '海底的月亮集市',
     content: '洱海的水底有个集市，每月十五满月时才会开放。小鱼小虾都带着发光的贝壳去赶集……',
+  },
+  // —— 世界地标故事 ——
+  '埃菲尔铁塔': {
+    title: '铁塔上的小星星',
+    content: '在巴黎的夜空下，埃菲尔铁塔亮起了金色的灯光。一只小狐狸爬到塔顶，发现每盏灯里都住着一颗想家的星星。它轻轻吹了一口气，星星们便排成一条闪亮的小路，一直通到孩子们温暖的小床上。小狐狸说："晚安啦，远方的朋友们。"说完，它蜷起尾巴，在灯光里甜甜地睡着了。',
+  },
+  '大本钟': {
+    title: '大本钟的钟声',
+    content: '伦敦的雾里，大本钟叮咚敲响了睡前的时间。一只小熊撑着小红伞，沿着泰晤士河慢慢走。河面上的天鹅告诉它："钟声会把今天的烦恼都带走哦。"小熊仰起头，听着悠扬的钟声，觉得心里暖暖的。它回到小窝，盖上软软的被子，听着雨声，渐渐进入了梦乡。',
+  },
+  '自由女神': {
+    title: '港口的灯塔女孩',
+    content: '纽约的港口边，自由女神举着火炬，为夜归的小船指路。一艘小帆船迷了路，火炬的光像温柔的手，牵着它靠向安静的码头。船上的一只小海鸥累了，停在女神的手臂上，听她轻声哼着摇篮曲。海风轻轻摇着小船，小海鸥闭上眼睛，做了一个飞过整片星海的好梦。',
+  },
+  '东京塔': {
+    title: '塔下的纸飞机',
+    content: '东京的夜晚，东京塔闪着红白的光。一个小男孩折了一只蓝色的纸飞机，许愿它能飞到月亮上。纸飞机真的飞起来了，掠过霓虹闪烁的街道，落在一朵软软的云上。云朵载着它，慢慢飘向窗台边熟睡的孩子。小男孩翻了个身，梦见自己坐在纸飞机上，正飞向满是星星的远方。',
+  },
+  '歌剧院': {
+    title: '海湾的白帆',
+    content: '悉尼的海湾里，歌剧院像一朵朵张开的白帆。一只小考拉趴在桅杆上，跟着海浪的节拍轻轻摇晃。远处的灯塔眨着眼睛说："该睡啦。"小考拉点点头，抱着桅杆，听潮水唱起温柔的催眠曲。海风把咸咸的味道送进梦里，它梦见自己变成了一艘小白船，在月光铺成的小路上轻轻漂。',
+  },
+  '金字塔': {
+    title: '沙漠里的月亮船',
+    content: '开罗的沙漠上，金字塔静静守着千年的秘密。一只小骆驼驮着一盏小灯，陪着迷路的小星星回家。沙丘像柔软的枕头，风像轻轻的扇子。小星星趴在小骆驼背上，数着天上的伙伴，眼皮越来越沉。终于，它咕哝了一声"晚安"，在温暖的沙海里睡着了。',
+  },
+  '基督像': {
+    title: '山巅的张开双臂',
+    content: '里约的山顶上，基督像张开双臂，像在给整座城市一个温柔的拥抱。一只小鹦鹉停在雕像的肩上，看城市灯火一盏盏熄灭。它轻声说："大家都睡觉咯。"然后钻进羽毛里，随着晚风轻轻晃。远处的海浪拍着沙滩，像一首慢悠悠的歌，把整座山都哄进了梦乡。',
   },
 };
 
@@ -158,13 +197,17 @@ export default function TravelCheckinScreen() {
     }, 2000);
   };
 
-  // Play story (simulate)
-  const handlePlay = () => {
+  // Play story (real TTS)
+  const handlePlay = async () => {
+    if (isPlaying || !story) return;
     setIsPlaying(true);
-    setTimeout(() => {
-      setIsPlaying(false);
-      handleCheckIn();
-    }, 1500);
+    try {
+      await textToSpeech(story.content, undefined, language === 'zh' ? 'zh' : 'en');
+    } catch (err) {
+      console.warn('[checkin] tts failed:', err);
+    }
+    setIsPlaying(false);
+    handleCheckIn();
   };
 
   // Check-in

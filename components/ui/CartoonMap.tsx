@@ -1,17 +1,21 @@
 /**
- * CartoonMap —— 儿童向「简易卡通地图」
+ * CartoonMap —— 儿童向「简易卡通世界地图」
  *
  * 设计取舍：
  *  - 不引入 react-native-maps / react-native-svg（原生依赖会破坏云端构建，
  *    且真实地图对 3-8 岁孩子过于复杂）。纯 View + 百分比定位实现。
- *  - 中国轮廓只用柔和色块 + 装饰 emoji 示意，不追求地理精度；
- *    城市位置由经纬度线性映射到 0-100% 坐标，相对关系正确即可。
+ *  - 底图为卡通世界地图图片（等距柱状投影，2:1），海洋浅蓝、陆地薄荷绿，
+ *    无国界无文字，适合全球打卡场景。
+ *  - 图钉位置由经纬度线性映射到 0-100% 坐标，与世界地图方位一致。
  *  - 图钉带弹性按压动画、已打卡城市变金色星星，符合"看图标就会用"。
  */
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Image } from 'react-native';
 import { COLORS, RADIUS, SPACING, FONT_SIZE, SHADOW } from '@/constants/theme';
+
+// 卡通世界地图（等距柱状投影，2:1）。图钉按经纬度百分比叠加，方位与世界地图一致。
+const WORLD_MAP = require('../../assets/world-map.png');
 
 export interface MapSpot {
   /** 唯一 id，便于记录已打卡 */
@@ -39,16 +43,7 @@ interface CartoonMapProps {
   hint?: string;
 }
 
-/** 地图上的卡通装饰（示意山水云，不做真实地理） */
-const DECORATIONS = [
-  { emoji: '⛰️', x: 18, y: 30, size: 26 },
-  { emoji: '🌲', x: 30, y: 55, size: 22 },
-  { emoji: '☁️', x: 72, y: 18, size: 24 },
-  { emoji: '🌊', x: 82, y: 68, size: 22 },
-  { emoji: '🌲', x: 58, y: 82, size: 20 },
-  { emoji: '⛰️', x: 38, y: 22, size: 22 },
-];
-
+/** 地图上的卡通图钉 */
 function MapPin({
   spot,
   selected,
@@ -129,15 +124,12 @@ export function CartoonMap({ spots, selectedId, onSelect, hint }: CartoonMapProp
   return (
     <View style={styles.mapCard}>
       <View style={styles.mapSurface}>
-        {/* 陆地色块（柔和圆角，示意轮廓） */}
-        <View style={styles.landMass} />
-
-        {/* 卡通装饰 */}
-        {DECORATIONS.map((d, i) => (
-          <Text key={i} style={[styles.decor, { left: `${d.x}%`, top: `${d.y}%`, fontSize: d.size }]}>
-            {d.emoji}
-          </Text>
-        ))}
+        {/* 卡通世界地图底图（等距柱状投影，2:1） */}
+        <Image
+          source={WORLD_MAP}
+          style={styles.worldMap}
+          resizeMode="stretch"
+        />
 
         {/* 城市图钉 */}
         {spots.map((s) => (
@@ -176,27 +168,20 @@ const styles = StyleSheet.create({
   },
   mapSurface: {
     width: '100%',
-    aspectRatio: 16 / 11,
+    aspectRatio: 2,
     backgroundColor: '#DCEEFF',
     borderRadius: RADIUS.md,
     overflow: 'hidden',
     borderWidth: 2,
     borderColor: '#BFEBFF',
   },
-  landMass: {
+  worldMap: {
     position: 'absolute',
-    left: '8%',
-    top: '12%',
-    width: '84%',
-    height: '78%',
-    backgroundColor: '#E7F7E4',
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: '#C9EAC4',
-  },
-  decor: {
-    position: 'absolute',
-    opacity: 0.75,
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    borderRadius: RADIUS.md,
   },
   pinWrap: {
     position: 'absolute',
