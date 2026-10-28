@@ -217,14 +217,15 @@ const styles = StyleSheet.create({
   tagBar: { maxHeight: 40 },
   tagBarInner: { paddingHorizontal: 12, paddingVertical: 4 },
   tagChip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16,
     backgroundColor: '#FFF0D6', marginHorizontal: 4, borderWidth: 1, borderColor: '#F0D9B5',
+    flexShrink: 0, alignSelf: 'flex-start',
   },
   tagChipActive: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
     backgroundColor: '#FFB347', marginHorizontal: 4, borderWidth: 1, borderColor: '#FF8C00',
   },
-  tagChipText: { fontSize: 12, color: '#888' },
+  tagChipText: { fontSize: 12, color: '#6B5B4A', fontWeight: '600' },
   tagChipTextActive: { fontSize: 12, color: '#fff', fontWeight: '600' },
   list: { paddingHorizontal: 12, paddingTop: 8 },
   card: {

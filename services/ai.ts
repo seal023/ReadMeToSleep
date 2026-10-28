@@ -127,7 +127,9 @@ async function chat(
     // 未配置 Key：不发起网络请求，让上层降级到内置故事库
     throw new Error('AI_API_KEY_NOT_CONFIGURED');
   }
-  const res = await axios.post(
+  let res;
+  try {
+    res = await axios.post(
     `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`,
     {
       model: AI_CONFIG.model,
@@ -146,6 +148,18 @@ async function chat(
       },
     }
   );
+  } catch (err: any) {
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    console.error('[ai] chat request failed', {
+      status,
+      data: typeof data === 'string' ? data.slice(0, 300) : data,
+      url: `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`,
+      hasKey: !!AI_CONFIG.apiKey,
+      message: err?.message,
+    });
+    throw err;
+  }
 
   const content: string = res.data?.choices?.[0]?.message?.content ?? '';
   return typeof content === 'string' ? content.trim() : '';

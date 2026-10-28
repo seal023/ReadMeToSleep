@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
-import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting } from '../../services/storage';
+import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version） */
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
   const [currentVoice, setCurrentVoice] = useState('system');
   const [cloned, setCloned] = useState<Record<string, boolean>>({});
+  const [childName, setChildNameState] = useState('');
 
   useEffect(() => {
     getVoiceGuidance().then(setVoiceGuidanceState);
@@ -30,6 +31,7 @@ export default function SettingsScreen() {
         map[t] = await hasClonedVoice(t);
       }
       setCloned(map);
+      setChildNameState(await getChildName());
     })();
   }, []);
 
@@ -89,6 +91,25 @@ export default function SettingsScreen() {
           {language === 'zh' ? '中文' : 'English'}
         </Text>
       </TouchableOpacity>
+
+      <View style={styles.card}>
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>👶</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>{t('settings.childName')}</Text>
+            <Text style={styles.cardSub}>{t('settings.childName.hint')}</Text>
+          </View>
+        </View>
+      </View>
+      <TextInput
+        style={styles.nameInput}
+        value={childName}
+        placeholder={t('settings.childName.placeholder')}
+        placeholderTextColor="#999"
+        maxLength={12}
+        onChangeText={setChildNameState}
+        onBlur={() => setChildName(childName)}
+      />
 
       <TouchableOpacity style={styles.card} onPress={showVoiceOptions}>
         <View style={styles.cardLeft}>
@@ -203,6 +224,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
     marginTop: 4,
+  },
+  nameInput: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0D9B5',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 12,
   },
   versionBadge: {
     marginTop: 8,

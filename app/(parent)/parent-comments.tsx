@@ -24,11 +24,16 @@ export default function ParentComments() {
 
   useEffect(() => {
     (async () => {
+      const normalizeTitle = (raw: any): string => {
+        if (typeof raw === 'string') return raw;
+        if (raw && typeof raw === 'object') return raw.zh ?? raw.en ?? '';
+        return '';
+      };
       const created: Story[] = await getStories();
-      const createdItems: PickItem[] = created.map((s) => ({ id: s.id, title: s.title }));
+      const createdItems: PickItem[] = created.map((s) => ({ id: s.id, title: normalizeTitle(s.title) }));
       const classicItems: PickItem[] = (storiesIndex as any[]).map((s) => ({
         id: s.id,
-        title: s.title,
+        title: normalizeTitle(s.title),
       }));
       // 合并：自建故事优先，经典故事补充
       const merged = [...createdItems];

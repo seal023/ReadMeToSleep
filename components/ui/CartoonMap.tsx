@@ -97,7 +97,12 @@ function MapPin({
     <Animated.View
       style={[
         styles.pinWrap,
-        { left: `${spot.x}%`, top: `${spot.y}%`, transform: [{ scale }] },
+        {
+          left: `${spot.x}%`,
+          top: `${spot.y}%`,
+          transform: [{ scale }],
+          zIndex: selected ? 999 : spot.visited ? 10 : 1,
+        },
       ]}
     >
       <TouchableOpacity
@@ -163,7 +168,7 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: COLORS.card,
     borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+    padding: SPACING.sm,
     ...SHADOW.soft,
   },
   mapSurface: {

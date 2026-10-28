@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { AudioRecorder, setAudioModeAsync, requestPermissionsAsync } from 'expo-audio';
+import { AudioRecorder, RecordingPresets, setAudioModeAsync, requestPermissionsAsync } from 'expo-audio';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
@@ -99,8 +99,8 @@ export default function VoiceClonePage() {
         staysActiveInBackground: false,
       });
 
-      const rec = new AudioRecorder();
-      rec.prepareToRecordAsync();
+      const rec = new AudioRecorder(RecordingPresets.HIGH_QUALITY);
+      await rec.prepareToRecordAsync();
       rec.record();
       setRecorder(rec);
       setStep('recording');

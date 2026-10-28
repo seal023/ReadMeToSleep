@@ -10,6 +10,8 @@ interface ClassicStoryRaw {
   id: string;
   title: string;
   content: string;
+  /** 原版完整内容（公共版权原版长故事），暂留空、UI 不展示，上线后再视情况填充 */
+  contentFull?: string;
   tags: string[];
   duration: number;
   source: string;
@@ -30,6 +32,7 @@ const KEYS = {
   VOICE: 'rms_voice',
   PARENT_COMMENTS: 'rms_parent_comments',
   VOICE_GUIDANCE: 'rms_voice_guidance',
+  CHILD_NAME: 'rms_child_name',
 };
 
 export interface ParentComment {
@@ -128,6 +131,16 @@ export async function getVoiceGuidance(): Promise<boolean> {
 
 export async function setVoiceGuidance(on: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.VOICE_GUIDANCE, on ? '1' : '0');
+}
+
+/** 宝宝名字：家长自定义，首页问候会用它亲切称呼宝宝；空时回退默认 */
+export async function getChildName(): Promise<string> {
+  const val = await AsyncStorage.getItem(KEYS.CHILD_NAME);
+  return val || '';
+}
+
+export async function setChildName(name: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.CHILD_NAME, name.trim());
 }
 
 /** 家长给孩子写的悄悄话（按故事 id 存） */

@@ -13,7 +13,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
-import { getVoiceGuidance } from '../../services/storage';
+import { getVoiceGuidance, getChildName } from '../../services/storage';
 import { textToSpeech } from '../../services/tts';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
@@ -21,7 +21,6 @@ import type { RaccoState } from '../../types';
 /** 首次启动引导是否已展示过 */
 const FIRST_RUN_CLONE_KEY = 'rms_firstrun_clone';
 
-const TITLES = ['Little Star', 'Champion', 'Adventurer', 'Dreamer', 'Storyteller', 'Sweetie'] as const;
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
 
 function getGreetingKey(): string {
@@ -35,8 +34,8 @@ export default function HomeTab() {
   const { t, language } = useLanguage();
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
-  const [title] = useState(() => TITLES[Math.floor(Math.random() * TITLES.length)]);
   const [guideVisible, setGuideVisible] = useState(false);
+  const [childName, setChildName] = useState('');
   // P1：首次启动引导——尚未克隆任何亲人声线时，强提示录制（核心卖点前置）
   const [cloneBannerVisible, setCloneBannerVisible] = useState(false);
 
@@ -88,6 +87,16 @@ export default function HomeTab() {
     };
   }, []);
 
+  useEffect(() => {
+    getChildName().then(setChildName);
+  }, []);
+
+  const greeting = (() => {
+    const base = t(getGreetingKey());
+    if (childName) return base.replace('{name}', childName);
+    return base.replace('，{name}！', '！').replace(', {name}!', '!');
+  })();
+
   const dismissCloneBanner = async () => {
     setCloneBannerVisible(false);
     await AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
@@ -103,7 +112,7 @@ export default function HomeTab() {
       <View style={[styles.topArea, isWide && styles.topAreaWide]}>
         <View style={[styles.greetingSection, isWide && styles.greetingSectionWide]}>
           <Text style={[styles.greetingText, isWide && styles.greetingTextWide]}>
-            {t(getGreetingKey())}, {title} ✨
+            {greeting} ✨
           </Text>
         </View>
 
