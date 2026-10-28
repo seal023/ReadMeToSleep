@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   FlatList,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
@@ -143,12 +142,7 @@ export default function LibraryScreen() {
       </View>
 
       {activeTab === 'classic' && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tagBar}
-          contentContainerStyle={styles.tagBarInner}
-        >
+        <View style={styles.tagBarWrap}>
           <TouchableOpacity
             style={!activeTag ? styles.tagChipActive : styles.tagChip}
             onPress={() => setActiveTag(null)}
@@ -168,7 +162,7 @@ export default function LibraryScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       )}
 
       <FlatList
@@ -214,19 +208,19 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 13, color: '#888', fontWeight: '500' },
   tabLabelActive: { fontSize: 13, color: '#fff', fontWeight: '700' },
-  tagBar: { maxHeight: 40 },
-  tagBarInner: { paddingHorizontal: 12, paddingVertical: 4 },
+  tagBarWrap: {
+    flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 6,
+  },
   tagChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16,
-    backgroundColor: '#FFF0D6', marginHorizontal: 4, borderWidth: 1, borderColor: '#F0D9B5',
-    flexShrink: 0, alignSelf: 'flex-start',
+    backgroundColor: '#FFF0D6', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#F0D9B5',
   },
   tagChipActive: {
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
-    backgroundColor: '#FFB347', marginHorizontal: 4, borderWidth: 1, borderColor: '#FF8C00',
+    backgroundColor: '#FFB347', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#FF8C00',
   },
-  tagChipText: { fontSize: 12, color: '#6B5B4A', fontWeight: '600' },
-  tagChipTextActive: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  tagChipText: { fontSize: 13, color: '#4E342E', fontWeight: '600' },
+  tagChipTextActive: { fontSize: 13, color: '#fff', fontWeight: '600' },
   list: { paddingHorizontal: 12, paddingTop: 8 },
   card: {
     flexDirection: 'row', alignItems: 'center',

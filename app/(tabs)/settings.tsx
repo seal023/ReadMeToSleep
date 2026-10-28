@@ -94,7 +94,8 @@ export default function SettingsScreen() {
         </Text>
       </TouchableOpacity>
 
-      <View style={styles.card}>
+      {/* 宝宝名字：合并为一栏并紧跟语言卡片置顶，方便查找 */}
+      <View style={styles.babyCard}>
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>👶</Text>
           <View style={styles.cardTextWrap}>
@@ -102,16 +103,16 @@ export default function SettingsScreen() {
             <Text style={styles.cardSub}>{t('settings.childName.hint')}</Text>
           </View>
         </View>
+        <TextInput
+          style={styles.nameInputInline}
+          value={childName}
+          placeholder={t('settings.childName.placeholder')}
+          placeholderTextColor="#999"
+          maxLength={12}
+          onChangeText={setChildNameState}
+          onBlur={() => setChildName(childName)}
+        />
       </View>
-      <TextInput
-        style={styles.nameInput}
-        value={childName}
-        placeholder={t('settings.childName.placeholder')}
-        placeholderTextColor="#999"
-        maxLength={12}
-        onChangeText={setChildNameState}
-        onBlur={() => setChildName(childName)}
-      />
 
       <TouchableOpacity style={styles.card} onPress={showVoiceOptions}>
         <View style={styles.cardLeft}>
@@ -239,8 +240,16 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 4,
   },
-  nameInput: {
+  babyCard: {
     backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+    elevation: 3,
+  },
+  nameInputInline: {
+    backgroundColor: '#F7F1E8',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#F0D9B5',
@@ -248,7 +257,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#333',
-    marginBottom: 12,
+    marginTop: 12,
   },
   versionBadge: {
     marginTop: 8,

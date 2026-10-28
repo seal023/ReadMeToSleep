@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
   Animated, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -109,6 +109,14 @@ const STORIES: Record<string, { title: string; content: string }> = {
   },
 };
 
+/** 地图上没有的自定义地点，用这个通用睡前故事兜底（不依赖 AI） */
+function genericTravelStory(name: string): { title: string; content: string } {
+  return {
+    title: `${name}的睡前奇遇`,
+    content: `夜深了，${name}慢慢安静下来。窗外的风轻轻吹过，星星在天上眨着眼睛。一只温柔的小动物悄悄来到${name}，想给这里的小朋友讲一个甜甜的睡前故事。\n\n它轻声说："无论你在哪里，今晚的月亮都会陪着你。"小动物把软软的毯子盖在小朋友身上，哼起了轻柔的摇篮曲。\n\n慢慢地，小朋友的眼皮越来越沉，呼吸变得轻轻的。在${name}的怀抱里，他做了一个关于星星和云的梦。晚安，${name}；晚安，小朋友。`,
+  };
+}
+
 const BADGE_RULES = [
   { count: 1, emoji: '🚩', label: { zh: '首次打卡', en: 'First Check-in' } },
   { count: 3, emoji: '🏅', label: { zh: '三城达人', en: '3 Cities' } },
@@ -129,6 +137,7 @@ export default function TravelCheckinScreen() {
   const [step, setStep] = useState<Step>('locate');
   const [location, setLocation] = useState('');
   const [selectedLoc, setSelectedLoc] = useState<typeof LOCATIONS[number] | null>(null);
+  const [query, setQuery] = useState('');
   const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
   const [story, setStory] = useState<{ title: string; content: string } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -192,7 +201,7 @@ export default function TravelCheckinScreen() {
     setStep('generate');
     // Simulate story generation (2s)
     setTimeout(() => {
-      setStory(STORIES[loc.place] || { title: '旅途奇遇', content: '一段关于旅行的奇妙故事……' });
+      setStory(STORIES[loc.place] || genericTravelStory(loc.cn));
       setStep('play');
     }, 2000);
   };
@@ -308,6 +317,23 @@ export default function TravelCheckinScreen() {
                 : '我们会为那个地方讲一个故事'}
             </Text>
 
+            {/* 搜索框：可过滤预设地点，也可输入地图上没有的地名直接打卡 */}
+            <View style={styles.searchBox}>
+              <Text style={styles.searchIcon}>🔍</Text>
+              <TextInput
+                style={styles.searchInput}
+                value={query}
+                placeholder={language === 'en' ? '搜索或输入任意地点' : '搜索或输入任意地点'}
+                placeholderTextColor="#999"
+                onChangeText={setQuery}
+              />
+              {query ? (
+                <TouchableOpacity onPress={() => setQuery('')}>
+                  <Text style={styles.clearBtn}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
             <CartoonMap
               spots={mapSpots}
               selectedId={selectedLoc ? selectedLoc.place : null}
@@ -328,23 +354,71 @@ export default function TravelCheckinScreen() {
               {language === 'en' ? 'Or pick from the list' : '或从列表里选一个'}
             </Text>
             <ScrollView style={styles.locList} nestedScrollEnabled>
-              {LOCATIONS.map((l) => {
-                const isSel = selectedLoc?.place === l.place;
+              {(() => {
+                const q = query.trim();
+                const filtered = q
+                  ? LOCATIONS.filter(
+                      (l) =>
+                        l.cn.includes(q) ||
+                        l.en.toLowerCase().includes(q.toLowerCase()) ||
+                        l.place.includes(q)
+                    )
+                  : LOCATIONS;
+                const exact = q
+                  ? LOCATIONS.some(
+                      (l) =>
+                        l.cn === q ||
+                        l.en.toLowerCase() === q.toLowerCase() ||
+                        l.place === q
+                    )
+                  : true;
+                const customSel = !!selectedLoc && selectedLoc.place === q && !exact;
                 return (
-                  <TouchableOpacity
-                    key={l.place}
-                    style={[styles.locItem, isSel && styles.locItemActive]}
-                    onPress={() => setSelectedLoc(l)}
-                  >
-                    <Text style={styles.locEmoji}>{l.emoji}</Text>
-                    <View style={styles.locTextWrap}>
-                      <Text style={styles.locName}>{l.cn}·{l.place}</Text>
-                      <Text style={styles.locEn}>{l.en}</Text>
-                    </View>
-                    {isSel && <Text style={styles.locCheck}>✓</Text>}
-                  </TouchableOpacity>
+                  <>
+                    {q && !exact && (
+                      <TouchableOpacity
+                        style={[styles.locItem, customSel && styles.locItemActive]}
+                        onPress={() =>
+                          setSelectedLoc({
+                            cn: q,
+                            place: q,
+                            en: q,
+                            emoji: '📍',
+                            x: 50,
+                            y: 30,
+                          })
+                        }
+                      >
+                        <Text style={styles.locEmoji}>📍</Text>
+                        <View style={styles.locTextWrap}>
+                          <Text style={styles.locName}>{q}</Text>
+                          <Text style={styles.locEn}>
+                            {language === 'en' ? 'Use this custom place' : '使用这个地点打卡'}
+                          </Text>
+                        </View>
+                        {customSel && <Text style={styles.locCheck}>✓</Text>}
+                      </TouchableOpacity>
+                    )}
+                    {filtered.map((l) => {
+                      const isSel = selectedLoc?.place === l.place;
+                      return (
+                        <TouchableOpacity
+                          key={l.place}
+                          style={[styles.locItem, isSel && styles.locItemActive]}
+                          onPress={() => setSelectedLoc(l)}
+                        >
+                          <Text style={styles.locEmoji}>{l.emoji}</Text>
+                          <View style={styles.locTextWrap}>
+                            <Text style={styles.locName}>{l.cn}·{l.place}</Text>
+                            <Text style={styles.locEn}>{l.en}</Text>
+                          </View>
+                          {isSel && <Text style={styles.locCheck}>✓</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
                 );
-              })}
+              })()}
             </ScrollView>
 
             {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null && (
@@ -459,6 +533,16 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
   header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
   quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },
+
+  // 搜索框
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', width: '100%',
+    backgroundColor: '#FFF8F0', borderRadius: 24, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: '#F0D9B5', height: 42, marginBottom: 12,
+  },
+  searchIcon: { fontSize: 16, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: '#333', height: '100%' },
+  clearBtn: { fontSize: 14, color: '#999', marginLeft: 4 },
 
   // 地点列表（地图图钉选不到时的可靠替代）
   listTitle: { fontSize: 14, color: '#8D6E63', marginTop: 16, marginBottom: 8, fontWeight: '600' },
