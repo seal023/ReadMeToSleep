@@ -4,7 +4,7 @@ import {
   Keyboard, KeyboardAvoidingView, ScrollView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { getSensitiveWords, saveSensitiveWords } from '@/services/storage';
+import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
 
 const RACCO_SLEEPING = '🦝💤';
 const RACCO_IDLE = '🦝';
@@ -20,8 +20,8 @@ export default function ParentIndex() {
   // Check if password already set on mount
   useEffect(() => {
     (async () => {
-      const data = await getSensitiveWords();
-      setMode(data && data.hasSetup ? 'unlock' : 'setup');
+      const setup = await isParentSetup();
+      setMode(setup ? 'unlock' : 'setup');
     })();
   }, []);
 
@@ -48,7 +48,7 @@ export default function ParentIndex() {
       setDigits2('');
       return;
     }
-    await saveSensitiveWords({ words: [], phrases: [], hasSetup: true, pin: digits1 });
+    await saveParentPin(digits1);
     router.push('/(parent)/hub');
   };
 
@@ -69,8 +69,8 @@ export default function ParentIndex() {
 
   const verifyPin = async (pin: string) => {
     try {
-      const data = await getSensitiveWords();
-      if (!data || data.pin !== pin) {
+      const savedPin = await getParentPin();
+      if (!savedPin || savedPin !== pin) {
         const newCount = failCount + 1;
         setFailCount(newCount);
         setPinEntry('');

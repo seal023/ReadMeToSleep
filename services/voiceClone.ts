@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File } from 'expo-file-system/next';
+import * as FileSystem from 'expo-file-system';
 
 /**
  * 家长声音克隆服务（需求 4：AI 模仿家长声音陪伴孩子）
@@ -60,10 +60,26 @@ export async function saveClonedVoiceId(target: CloneTarget, voiceId: string): P
   }
 }
 
+/** 根据文件后缀推断 MIME，用于拼 Base64 Data URI */
+function mimeFromUri(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.aac')) return 'audio/aac';
+  if (lower.endsWith('.ogg')) return 'audio/ogg';
+  return 'audio/wav';
+}
+
 /**
  * 上传家长录音，注册克隆音色。
  * @param audioUri 录音文件本地路径（expo-audio 录制产物，通常为 .m4a）
  * @param target   克隆对象（妈妈 / 爸爸 / 外婆）
+ *
+ * 传输方式：官方 HTTP API 接收「公网 URL 或 Base64 Data URI」，不接受 FormData
+ * 文件流，因此这里把本地录音读成 Base64 后以 JSON 提交。
+ * 字段名以官方文档为准——若服务端要求其它键名（如 audio / audio_data），
+ * 改下面 body 里的 `file` 这一项即可。
  */
 export async function enrollVoice(audioUri: string, target: CloneTarget): Promise<VoiceCloneResult> {
   if (!isVoiceCloneConfigured()) {
@@ -73,23 +89,29 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
     };
   }
   try {
-    const formData = new FormData();
-    // ⚠️ SDK 57 的 Expo fetch 是 WinterCG 实现，FormData 只接受 string / Blob /
-    // 带 bytes() 方法的对象，不再支持 RN 传统的 { uri, name, type } 文件对象
-    // （会抛 `Unsupported FormDataPart implementation`）。必须用 expo-file-system
-    // 的 File 类（实现 Blob，带 bytes()）包装本地文件。
-    formData.append('file', new File(audioUri));
-    formData.append('workspace_id', WORKSPACE_ID as string);
-    formData.append('target', target);
+    // 读取本地录音 → Base64 Data URI（官方 API 接收 URL / Data URI，非 FormData 流）
+    const base64 = await FileSystem.readAsStringAsync(audioUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const dataUri = `data:${mimeFromUri(audioUri)};base64,${base64}`;
+
+    const body = {
+      model: 'voice-enrollment',
+      target_model: 'qwen-audio-3.0-tts-flash',
+      workspace_id: WORKSPACE_ID,
+      target,
+      // 音频字段：百炼 enroll 接口接收 Data URI。若官方文档字段名不同请在此调整。
+      file: dataUri,
+    };
 
     const res = await fetch(ENROLL_URL as string, {
       method: 'POST',
       headers: {
-        // 鉴权头以你实际百炼/通义控制台要求为准；此处以 Bearer 为例
+        'Content-Type': 'application/json',
+        // 鉴权：百炼官方 enroll 接口仅需 Bearer；X-Workspace-Id 非必需，已去除
         Authorization: `Bearer ${AI_API_KEY ?? ''}`,
-        'X-Workspace-Id': WORKSPACE_ID as string,
       },
-      body: formData,
+      body: JSON.stringify(body),
     });
 
     const data = await res.json().catch(() => ({} as any));

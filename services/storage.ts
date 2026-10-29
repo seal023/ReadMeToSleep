@@ -29,6 +29,7 @@ const KEYS = {
   STORIES: 'rms_stories',
   PROGRESS: 'rms_progress',
   SENSITIVE_WORDS: 'rms_sensitive_words',
+  PARENT_PIN: 'rms_parent_pin',
   VOICE: 'rms_voice',
   PARENT_COMMENTS: 'rms_parent_comments',
   VOICE_GUIDANCE: 'rms_voice_guidance',
@@ -42,6 +43,7 @@ export interface ParentComment {
 
 const DEFAULT_PROGRESS: Progress = {
   listenedStories: [],
+  listenLog: [],
   checkIns: [],
   badges: [],
   streakDays: 0,
@@ -102,7 +104,20 @@ export async function saveProgress(progress: Progress): Promise<void> {
 
 export async function getProgress(): Promise<Progress> {
   const raw = await AsyncStorage.getItem(KEYS.PROGRESS);
-  return raw ? JSON.parse(raw) : { ...DEFAULT_PROGRESS };
+  if (!raw) return { ...DEFAULT_PROGRESS };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_PROGRESS,
+      ...parsed,
+      listenedStories: parsed.listenedStories || [],
+      listenLog: parsed.listenLog || [],
+      checkIns: parsed.checkIns || [],
+      badges: parsed.badges || [],
+    };
+  } catch {
+    return { ...DEFAULT_PROGRESS };
+  }
 }
 
 export async function saveSensitiveWords(words: SensitiveWords): Promise<void> {
@@ -111,7 +126,55 @@ export async function saveSensitiveWords(words: SensitiveWords): Promise<void> {
 
 export async function getSensitiveWords(): Promise<SensitiveWords> {
   const raw = await AsyncStorage.getItem(KEYS.SENSITIVE_WORDS);
-  return raw ? JSON.parse(raw) : { ...DEFAULT_SENSITIVE_WORDS };
+  if (!raw) return { ...DEFAULT_SENSITIVE_WORDS };
+  try {
+    const parsed = JSON.parse(raw);
+    return { words: parsed.words || [], phrases: parsed.phrases || [] };
+  } catch {
+    return { ...DEFAULT_SENSITIVE_WORDS };
+  }
+}
+
+// ---- 家长密码（独立存储，避免与敏感词互相覆盖） ----
+export async function saveParentPin(pin: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.PARENT_PIN, JSON.stringify({ pin, hasSetup: true }));
+}
+
+/**
+ * 读取家长密码；兼容旧版本（pin 曾误存于 SENSITIVE_WORDS 中）做一次迁移。
+ * 返回 null 表示尚未设置密码。
+ */
+export async function getParentPin(): Promise<string | null> {
+  const raw = await AsyncStorage.getItem(KEYS.PARENT_PIN);
+  if (raw) {
+    try {
+      const o = JSON.parse(raw);
+      if (o && typeof o.pin === 'string' && o.pin.length > 0) return o.pin;
+    } catch {
+      /* ignore */
+    }
+  }
+  // 迁移：从旧 SENSITIVE_WORDS 中取出 pin
+  try {
+    const sw = await AsyncStorage.getItem(KEYS.SENSITIVE_WORDS);
+    if (sw) {
+      const o = JSON.parse(sw);
+      if (o && typeof o.pin === 'string' && o.pin.length > 0) {
+        await saveParentPin(o.pin);
+        // 清掉旧对象中的 pin/hasSetup，避免与新存储混淆
+        await saveSensitiveWords({ words: o.words || [], phrases: o.phrases || [] });
+        return o.pin;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export async function isParentSetup(): Promise<boolean> {
+  const pin = await getParentPin();
+  return !!pin;
 }
 
 export async function saveVoiceSetting(voiceId: string): Promise<void> {

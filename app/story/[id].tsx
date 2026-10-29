@@ -125,6 +125,17 @@ export default function StoryPlayScreen() {
           p.listenedStories.push(story.id);
         }
 
+        // 收听历史（带时间戳，供统计/排序使用）：同一故事仅保留最新一条
+        const title =
+          typeof story.title === 'string'
+            ? story.title
+            : story.title?.zh ?? story.title?.en ?? '';
+        const nowIso = new Date().toISOString();
+        p.listenLog = [
+          { id: story.id, title, at: nowIso },
+          ...(p.listenLog || []).filter((l) => l.id !== story.id),
+        ].slice(0, 500);
+
         // 连续天数：只在跨天时更新，避免同一天反复听被重复计数
         const today = new Date().toISOString().slice(0, 10);
         if (p.lastListenDate !== today) {

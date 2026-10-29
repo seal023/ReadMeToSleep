@@ -30,8 +30,15 @@ export interface Story {
   audioUri?: string;
 }
 
+export interface ListenLogEntry {
+  id: string;
+  title: string;
+  at: string; // ISO 时间戳，用于今日/历史列表与按月聚合
+}
+
 export interface Progress {
   listenedStories: string[];
+  listenLog: ListenLogEntry[];
   checkIns: { location: string; date: string; storyId: string }[];
   badges: string[];
   streakDays: number;
@@ -41,8 +48,6 @@ export interface Progress {
 export interface SensitiveWords {
   words: string[];
   phrases: string[];
-  hasSetup?: boolean;
-  pin?: string;
 }
 
 export interface LanguageContextType {
