@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-nat
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
-import { getProgress, getStories } from '../../services/storage';
+import { getProgress, getStories, getChildQAs, type ChildQA } from '../../services/storage';
 import type { Story } from '../../types';
 
 const RACCO_IDLE_SIZE = 80;
@@ -36,6 +36,7 @@ export default function StatisticsPage() {
   const [monthlyCounts, setMonthlyCounts] = useState<number[]>([]);
   const [todayList, setTodayList] = useState<{ title: string; time: string }[]>([]);
   const [historyList, setHistoryList] = useState<{ title: string; date: string }[]>([]);
+  const [childQAs, setChildQAs] = useState<ChildQA[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -44,7 +45,7 @@ export default function StatisticsPage() {
       const log = p.listenLog || [];
 
       const aiCount = stories.filter((s) => s.type === 'ai_generated').length;
-      const recordingCount = stories.filter((s) => s.type === 'recording' || !!s.audioUri).length;
+      const recordingCount = stories.filter((s) => (s.type as string) === 'recording' || !!s.audioUri).length;
 
       setCards([
         { icon: '📖', label: '总听故事数', value: p.listenedStories.length },
@@ -83,6 +84,9 @@ export default function StatisticsPage() {
           date: new Date(l.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }),
         })),
       );
+
+      // 孩子提问（最新在前）
+      setChildQAs(await getChildQAs());
 
       setLoaded(true);
     })();
@@ -165,6 +169,22 @@ export default function StatisticsPage() {
                 ))
               )}
             </View>
+
+            {/* 孩子提问（后台可见） */}
+            <Text style={styles.sectionTitle}>💬 孩子提问</Text>
+            <View style={styles.listCard}>
+              {childQAs.length === 0 ? (
+                <Text style={styles.emptyText}>孩子还没有提问哦～</Text>
+              ) : (
+                childQAs.slice(0, 20).map((q, i) => (
+                  <View key={q.id} style={[styles.qaRow, i < childQAs.slice(0, 20).length - 1 && styles.listRowBorder]}>
+                    <Text style={styles.qaQ}>🧒 {q.question}</Text>
+                    <Text style={styles.qaA}>🤖 {q.answer}</Text>
+                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</Text>
+                  </View>
+                ))
+              )}
+            </View>
           </>
         )}
       </ScrollView>
@@ -197,5 +217,9 @@ const styles = StyleSheet.create({
   listDot: { fontSize: 18, marginRight: 10 },
   listTitle: { flex: 1, fontSize: 15, color: COLORS.text },
   listMeta: { fontSize: 13, color: COLORS.textSub, marginLeft: 8 },
+  qaRow: { paddingVertical: 12 },
+  qaQ: { fontSize: 15, color: COLORS.text, fontWeight: '600', lineHeight: 22 },
+  qaA: { fontSize: 14, color: COLORS.purple, lineHeight: 22, marginTop: 4 },
+  qaMeta: { fontSize: 12, color: COLORS.textSub, marginTop: 4 },
   emptyText: { textAlign: 'center', paddingVertical: 24, color: COLORS.textLight, fontSize: 14 },
 });

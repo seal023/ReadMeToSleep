@@ -34,11 +34,22 @@ const KEYS = {
   PARENT_COMMENTS: 'rms_parent_comments',
   VOICE_GUIDANCE: 'rms_voice_guidance',
   CHILD_NAME: 'rms_child_name',
+  CHILD_QA: 'rms_child_qa',
 };
 
 export interface ParentComment {
   text: string;
   updatedAt: string;
+}
+
+/** 孩子在「你的问题时间」向 AI 提的问题（供家长后台查看） */
+export interface ChildQA {
+  id: string;
+  storyId: string;
+  storyTitle: string;
+  question: string;
+  answer: string;
+  at: string;
 }
 
 const DEFAULT_PROGRESS: Progress = {
@@ -219,4 +230,22 @@ export async function getParentComment(storyId: string): Promise<ParentComment |
   if (!raw) return null;
   const map: Record<string, ParentComment> = JSON.parse(raw);
   return map[storyId] ?? null;
+}
+
+// ---- 孩子提问（家长后台可见） ----
+export async function getChildQAs(): Promise<ChildQA[]> {
+  const raw = await AsyncStorage.getItem(KEYS.CHILD_QA);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveChildQA(qa: ChildQA): Promise<void> {
+  const list = await getChildQAs();
+  const next = [qa, ...list.filter((x) => x.id !== qa.id)].slice(0, 200);
+  await AsyncStorage.setItem(KEYS.CHILD_QA, JSON.stringify(next));
 }

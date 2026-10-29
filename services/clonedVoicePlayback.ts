@@ -78,6 +78,7 @@ function hashText(text: string): string {
 export async function playClonedAudio(
   text: string,
   target: CloneTarget,
+  onDone?: () => void,
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
@@ -99,9 +100,24 @@ export async function playClonedAudio(
       play: () => void;
       pause: () => void;
       remove: () => void;
+      onEnded?: (cb: () => void) => void;
     };
     currentPlayer = player;
     player.play();
+    // expo-audio 的 onEnded 在不同版本可能是「注册方法」或「可赋值属性」，两者都尝试
+    if (typeof player.onEnded === 'function') {
+      try {
+        player.onEnded(() => onDone?.());
+      } catch {
+        /* 忽略差异 */
+      }
+    } else {
+      try {
+        (player as unknown as { onEnded?: () => void }).onEnded = () => onDone?.();
+      } catch {
+        /* 忽略差异 */
+      }
+    }
     return true;
   } catch (err) {
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);

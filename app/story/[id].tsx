@@ -9,13 +9,14 @@ import {
   Dimensions,
   Platform,
   Animated,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
-import { VOICES } from '../../services/tts';
+import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, type ParentComment } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, type ParentComment, type ChildQA } from '../../services/storage';
 import { askQuestion } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -26,8 +27,8 @@ import type { Story } from '../../types';
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished';
 
 const qaQuestions = [
-  { type: 'choice' as const, questionKey: 'story.qa.q1', options: ['story.qa.q1.a', 'story.qa.q1.b'], answer: 0 },
-  { type: 'choice' as const, questionKey: 'story.qa.q2', options: ['story.qa.q2.a', 'story.qa.q2.b'], answer: 0 },
+  { type: 'choice' as const, questionKey: 'story.qa.q1', options: ['story.qa.q1a', 'story.qa.q1b'], answer: 0 },
+  { type: 'choice' as const, questionKey: 'story.qa.q2', options: ['story.qa.q2a', 'story.qa.q2b'], answer: 0 },
   { type: 'voice' as const, questionKey: 'story.qa.q3' },
 ];
 
@@ -58,6 +59,8 @@ export default function StoryPlayScreen() {
   const commentOpacity = useRef(new Animated.Value(0)).current;
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -84,6 +87,7 @@ export default function StoryPlayScreen() {
     return () => {
       stopStory();
       if (progressInterval.current) clearInterval(progressInterval.current);
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     };
   }, []);
 
@@ -193,32 +197,38 @@ export default function StoryPlayScreen() {
     return () => { cancelled = true; };
   }, [story, commentOpacity]);
 
+  // 故事真正讲完（系统音 onDone / 克隆声 onEnded）→ 才进入「讲完啦/提问」环节
+  const handleStoryEnded = () => {
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    if (progressInterval.current) clearInterval(progressInterval.current);
+    setProgress(100);
+    setIsPlaying(false);
+    setPhase('completed');
+  };
+
   const handlePlay = () => {
     if (!story) return;
-    playStory(story.content, selectedVoice, story?.language ?? 'zh');
+    playStory(story.content, selectedVoice, story?.language ?? 'zh', handleStoryEnded);
     setIsPlaying(true);
 
-    const totalDuration = story.content.length * 80;
+    // 进度条仅作视觉估算，不再强制跳转；真正的跳转由 handleStoryEnded 驱动
+    const totalDuration = Math.max(story.content.length * 110, 5000);
     const step = 100 / (totalDuration / 500);
     if (progressInterval.current) clearInterval(progressInterval.current);
     progressInterval.current = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + step;
-        if (next >= 100) {
-          if (progressInterval.current) clearInterval(progressInterval.current);
-          setIsPlaying(false);
-          setPhase('completed');
-          return 100;
-        }
-        return next;
-      });
+      setProgress((prev) => (prev >= 100 ? 100 : prev + step));
     }, 500);
+
+    // 兜底：万一 onDone 没触发（如克隆声 onEnded 不被支持），到点也结束
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
   };
 
   const handlePause = () => {
     stopStory();
     setIsPlaying(false);
     if (progressInterval.current) clearInterval(progressInterval.current);
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
 
   const handleStop = () => {
@@ -226,6 +236,7 @@ export default function StoryPlayScreen() {
     setIsPlaying(false);
     setProgress(0);
     if (progressInterval.current) clearInterval(progressInterval.current);
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
 
   const handleProgressTap = (e: any) => {
@@ -250,8 +261,8 @@ export default function StoryPlayScreen() {
   };
 
   const handleVoiceRecord = () => {
-    setIsRecording(true);
-    setTimeout(() => {
+    if (isRecording) {
+      // 再按一次 = 结束录音，然后进入下一步
       setIsRecording(false);
       setQaFeedback(t('story.qa.greatJob'));
       setTimeout(() => {
@@ -262,7 +273,10 @@ export default function StoryPlayScreen() {
           setPhase('qa_round2');
         }
       }, 1500);
-    }, 2000);
+    } else {
+      // 第一次按 = 开始录音（时长由孩子自己掌握，不再强制 2 秒）
+      setIsRecording(true);
+    }
   };
 
   const handleChildQuestion = async () => {
@@ -271,9 +285,24 @@ export default function StoryPlayScreen() {
     try {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
       const answer = await askQuestion(story?.content ?? '', childQuestion);
-      setAiAnswer(answer);
+      const finalAnswer = answer && answer.trim() ? answer : t('story.qa.unknown');
+      setAiAnswer(finalAnswer);
+      // 朗读 AI 的回答，让孩子「听到」回复
+      textToSpeech(finalAnswer, 'system', story?.language ?? 'zh');
+      // 持久化这次问答，供家长后台（统计页）查看
+      const qa: ChildQA = {
+        id: `${story?.id ?? 'x'}-${Date.now()}`,
+        storyId: story?.id ?? '',
+        storyTitle: story?.title ?? '',
+        question: childQuestion.trim(),
+        answer: finalAnswer,
+        at: new Date().toISOString(),
+      };
+      await saveChildQA(qa);
     } catch {
-      setAiAnswer(t('story.qa.unknown'));
+      const fallback = t('story.qa.unknown');
+      setAiAnswer(fallback);
+      textToSpeech(fallback, 'system', story?.language ?? 'zh');
     }
     setIsAsking(false);
   };
@@ -449,25 +478,33 @@ export default function StoryPlayScreen() {
         <TouchableOpacity
           style={isRecording ? styles.micBtnActive : styles.micBtn}
           onPress={() => {
-            setIsRecording(true);
-            setTimeout(() => {
+            if (isRecording) {
               setIsRecording(false);
-              setChildQuestion(t('story.qa.whySample'));
-            }, 2000);
+              // 暂未接入语音转文字，停止录音后填入示例问题，用户可改/可写
+              if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
+            } else {
+              setIsRecording(true);
+            }
           }}
-          disabled={isRecording}
         >
           <Text style={styles.micIcon}>🎤</Text>
           <Text style={styles.micLabel}>{isRecording ? t('story.qa.recording') : t('story.qa.pressToTalk')}</Text>
         </TouchableOpacity>
 
-        {childQuestion ? (
-          <View style={styles.childQWrap}>
-            <Text style={styles.childQ}>🧒 {childQuestion}</Text>
-            <TouchableOpacity style={styles.askBtn} onPress={handleChildQuestion} disabled={isAsking}>
-              <Text style={styles.askBtnText}>{isAsking ? t('story.qa.thinking') : t('story.qa.askAi')}</Text>
-            </TouchableOpacity>
-          </View>
+        <TextInput
+          style={styles.childQInput}
+          value={childQuestion}
+          onChangeText={setChildQuestion}
+          placeholder={t('story.qa.yourQuestion')}
+          placeholderTextColor="#bca"
+          multiline
+          numberOfLines={2}
+        />
+
+        {childQuestion.trim() ? (
+          <TouchableOpacity style={styles.askBtn} onPress={handleChildQuestion} disabled={isAsking || !childQuestion.trim()}>
+            <Text style={styles.askBtnText}>{isAsking ? t('story.qa.thinking') : t('story.qa.askAi')}</Text>
+          </TouchableOpacity>
         ) : null}
 
         {aiAnswer ? (
@@ -502,7 +539,7 @@ export default function StoryPlayScreen() {
         <Text style={styles.finishedBtnText}>{t('story.finished.home')}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)/create')}>
+      <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)/library')}>
         <Text style={styles.finishedBtnIcon}>🔄</Text>
         <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
       </TouchableOpacity>
@@ -584,6 +621,11 @@ const styles = StyleSheet.create({
 
   childQWrap: { marginTop: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
   childQ: { fontSize: 16, color: '#5D4037', marginBottom: 12 },
+  childQInput: {
+    marginTop: 16, borderWidth: 1, borderColor: '#FFE0B2', borderRadius: 16,
+    backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 12,
+    fontSize: 15, color: '#5D4037', textAlignVertical: 'top', minHeight: 60,
+  },
   askBtn: {
     backgroundColor: '#7C4DFF', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 24,
     alignSelf: 'flex-start',

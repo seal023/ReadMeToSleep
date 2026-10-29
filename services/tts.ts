@@ -45,7 +45,8 @@ function isWebSpeech(): boolean {
 export async function textToSpeech(
   text: string,
   voiceId?: string,
-  language: 'zh' | 'en' = 'zh'
+  language: 'zh' | 'en' = 'zh',
+  onDone?: () => void
 ): Promise<string> {
   const params = VOICE_PARAMS[voiceId || 'system'] || VOICE_PARAMS.system;
   const lang = language === 'en' ? 'en-US' : 'zh-CN';
@@ -59,6 +60,7 @@ export async function textToSpeech(
       utterance.lang = lang;
       utterance.rate = params.rate;
       utterance.pitch = params.pitch;
+      utterance.onend = () => onDone?.();
 
       const voices = window.speechSynthesis.getVoices();
       const matched = voices.find(v => v.lang.startsWith(language === 'en' ? 'en' : 'zh'));
@@ -77,6 +79,7 @@ export async function textToSpeech(
         language: lang,
         rate: params.rate,
         pitch: params.pitch,
+        onDone: () => onDone?.(),
       });
     } catch (err) {
       console.warn('[tts] expo-speech failed:', err);

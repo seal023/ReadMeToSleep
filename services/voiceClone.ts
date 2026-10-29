@@ -1,5 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+// ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
+//    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
+//    再手写 base64（Hermes 无 btoa）。
+import { File } from 'expo-file-system/next';
 
 /**
  * 家长声音克隆服务（需求 4：AI 模仿家长声音陪伴孩子）
@@ -71,6 +74,28 @@ function mimeFromUri(uri: string): string {
   return 'audio/wav';
 }
 
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Uint8Array → base64（Hermes 无 btoa，手写；与 clonedVoicePlayback 同源算法） */
+function uint8ToBase64(bytes: Uint8Array): string {
+  let output = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : NaN;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : NaN;
+    const e1 = a >> 2;
+    const e2 = ((a & 3) << 4) | (isNaN(b) ? 0 : b >> 4);
+    const e3 = isNaN(b) ? 64 : ((b & 15) << 2) | (isNaN(c) ? 0 : c >> 6);
+    const e4 = isNaN(c) ? 64 : c & 63;
+    output +=
+      BASE64_CHARS[e1] +
+      BASE64_CHARS[e2] +
+      (e3 === 64 ? '=' : BASE64_CHARS[e3]) +
+      (e4 === 64 ? '=' : BASE64_CHARS[e4]);
+  }
+  return output;
+}
+
 /**
  * 上传家长录音，注册克隆音色。
  * @param audioUri 录音文件本地路径（expo-audio 录制产物，通常为 .m4a）
@@ -90,9 +115,9 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
   }
   try {
     // 读取本地录音 → Base64 Data URI（官方 API 接收 URL / Data URI，非 FormData 流）
-    const base64 = await FileSystem.readAsStringAsync(audioUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    const file = new File(audioUri);
+    const bytes = await file.bytes();
+    const base64 = uint8ToBase64(bytes);
     const dataUri = `data:${mimeFromUri(audioUri)};base64,${base64}`;
 
     const body = {

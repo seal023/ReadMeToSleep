@@ -4,12 +4,14 @@ import {
 } from 'react-native';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { useRouter } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getSensitiveWords, saveSensitiveWords } from '../../services/storage';
 import { COLORS, FONT } from '../../constants/theme';
 
 export default function SensitiveWordsScreen() {
   const { t } = useLanguage();
+  const router = useRouter();
   const [allWords, setAllWords] = useState<string[]>([]);
   const [newWord, setNewWord] = useState('');
   const [batchText, setBatchText] = useState('');
@@ -136,13 +138,7 @@ export default function SensitiveWordsScreen() {
       </ScrollView>
 
       <View style={styles.backBar}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => {
-          if (typeof (global as any).router?.back === 'function') {
-            (global as any).router.back();
-          } else {
-            require('expo-router').useRouter().back();
-          }
-        }}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backBtnText}>{t('common.back') || '← 返回列表'}</Text>
         </TouchableOpacity>
       </View>

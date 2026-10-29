@@ -29,14 +29,15 @@ export async function playStory(
   text: string,
   voiceId: string,
   language: 'zh' | 'en' = 'zh',
+  onDone?: () => void,
 ): Promise<boolean> {
   const target = TARGET_BY_VOICE[voiceId];
   if (target && (await hasClonedVoice(target))) {
-    const ok = await playClonedAudio(text, target);
+    const ok = await playClonedAudio(text, target, onDone);
     if (ok) return true;
   }
   // 降级：系统音（含 mom/dad/grandma 的 pitch/rate 微调）
-  textToSpeech(text, voiceId, language);
+  textToSpeech(text, voiceId, language, onDone);
   return false;
 }
 
