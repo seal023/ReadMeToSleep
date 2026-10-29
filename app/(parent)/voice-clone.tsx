@@ -6,7 +6,7 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
-import { enrollVoice, isVoiceCloneConfigured } from '@/services/voiceClone';
+import { enrollVoice, isVoiceCloneConfigured, type VoiceCloneResult } from '@/services/voiceClone';
 
 type CloneTarget = 'mom' | 'dad' | 'grandma';
 
@@ -31,6 +31,7 @@ export default function VoiceClonePage() {
   const [waveData, setWaveData] = useState<number[]>([]);
   const [cloning, setCloning] = useState(false);
   const [cloneMsg, setCloneMsg] = useState<string | null>(null);
+  const [cloneResult, setCloneResult] = useState<VoiceCloneResult | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
 
@@ -130,7 +131,10 @@ export default function VoiceClonePage() {
       setCloneMsg(null);
       const res = await enrollVoice(uri, target);
       setCloning(false);
+      setCloneResult(res);
       setCloneMsg(res.message);
+    } else {
+      setCloneResult({ ok: false, message: '没有可用的录音文件' });
     }
     setStep('done');
   };
@@ -237,15 +241,32 @@ export default function VoiceClonePage() {
 
       {step === 'done' && (
         <View style={styles.successCard}>
-          <Text style={{ fontSize: 48 }}>{cloning ? '⏳' : '🎉'}</Text>
+          <Text style={{ fontSize: 48 }}>{cloning ? '⏳' : cloneResult?.ok ? '🎉' : '⚠️'}</Text>
           <Text style={styles.successText}>
-            {cloning ? '正在提交克隆…' : (cloneMsg || '声音克隆已提交！')}
+            {cloning ? '正在提交克隆…' : (cloneResult?.message || '声音克隆已提交！')}
           </Text>
-          {!cloning && isVoiceCloneConfigured() === false && (
-            <Text style={styles.successSub}>提示：Xcode Cloud 尚未配置声音克隆密钥，本次仅为本地演示。</Text>
+          {!cloning && cloneResult && !cloneResult.ok && (
+            <Text style={styles.successSub}>
+              服务端返回：{cloneResult.message}。请检查克隆接口地址与请求格式是否与百炼/通义听悟文档一致。
+            </Text>
           )}
-          {!cloning && isVoiceCloneConfigured() && (
+          {!cloning && cloneResult?.ok && (
             <Text style={styles.successSub}>通常需要几分钟处理时间，之后即可在「妈妈/爸爸/外婆」音色中使用。</Text>
+          )}
+          {!cloning && (
+            <View style={styles.doneActions}>
+              {cloneResult && !cloneResult.ok && (
+                <TouchableOpacity
+                  style={styles.retryBtn}
+                  onPress={() => { setCloneResult(null); setCloneMsg(null); setStep('select'); }}
+                >
+                  <Text style={styles.retryBtnText}>🔁 重新克隆</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.back()}>
+                <Text style={styles.backHomeBtnText}>← 返回家长中心</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       )}
@@ -286,4 +307,9 @@ const styles = StyleSheet.create({
   successCard: { backgroundColor: '#fff', borderRadius: 16, padding: 32, alignItems: 'center', marginTop: 20 },
   successText: { fontSize: 22, fontWeight: 'bold', color: '#00b894', marginTop: 8 },
   successSub: { fontSize: 14, color: '#999', marginTop: 4 },
+  doneActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 20, gap: 12 },
+  retryBtn: { backgroundColor: '#e74c3c', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
+  retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  backHomeBtn: { backgroundColor: '#6c5ce7', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
+  backHomeBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

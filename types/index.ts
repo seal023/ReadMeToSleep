@@ -18,6 +18,12 @@ export interface Story {
   id: string;
   title: string;
   content: string;
+  /** 英文正文：经典故事双语化后填充，AI 生成故事为空 */
+  contentEn?: string;
+  /** 英文标题：与 contentEn 配套，英文界面下使用 */
+  titleEn?: string;
+  /** 该故事实际可用的语言（经典故事有英文后同时含 zh/en） */
+  languages?: Language[];
   language: Language;
   type: 'classic' | 'ai_generated' | 'travel';
   tags: string[];

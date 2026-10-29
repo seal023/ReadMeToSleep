@@ -12,6 +12,7 @@ import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
+import { CLASSIC_EN_IDS } from '../../services/storage';
 
 // 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
 const TAGS = [
@@ -67,13 +68,16 @@ export default function LibraryScreen() {
   const filtered = useMemo(() => {
     if (activeTab !== 'classic') return [];
     let list = storiesIndex as StoryItem[];
+    // 英文模式：经典故事库仅有部分具备英文正文，过滤到只有英文的故事，
+    // 保证「英文界面下故事必须是英文」（不含英文的故事不会以中文出现在英文列表）
+    if (language === 'en') list = list.filter(s => CLASSIC_EN_IDS.has(s.id));
     if (activeTag) list = list.filter(s => s.tags.includes(activeTag));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(s => s.title.zh.toLowerCase().includes(q) || s.title.en.toLowerCase().includes(q));
     }
     return list;
-  }, [activeTab, activeTag, search]);
+  }, [activeTab, activeTag, search, language]);
 
   const fmtDuration = (sec: number) => `${Math.floor(sec / 60)} ${t('common.minute')}`;
 

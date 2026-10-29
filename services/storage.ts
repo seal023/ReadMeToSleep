@@ -1,10 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Story, Progress, SensitiveWords } from '../types';
+import { Story, Progress, SensitiveWords, Language } from '../types';
 // 经典故事正文：100 篇公共版权故事，按 25 篇一册分卷存放
 import classic1 from '../data/classic-stories/zh/1-25.json';
 import classic2 from '../data/classic-stories/zh/26-50.json';
 import classic3 from '../data/classic-stories/zh/51-75.json';
 import classic4 from '../data/classic-stories/zh/76-100.json';
+// 英文正文（双语化）：与 zh/ 同结构，按 id 合并；暂无英文的册为空数组
+import en1 from '../data/classic-stories/en/1-25.json';
+import en2 from '../data/classic-stories/en/26-50.json';
+import en3 from '../data/classic-stories/en/51-75.json';
+import en4 from '../data/classic-stories/en/76-100.json';
 
 interface ClassicStoryRaw {
   id: string;
@@ -24,6 +29,21 @@ const CLASSIC_STORIES_DATA: ClassicStoryRaw[] = [
   ...(classic3 as ClassicStoryRaw[]),
   ...(classic4 as ClassicStoryRaw[]),
 ];
+
+/** 英文正文合集（按 id 合并进经典故事），无英文的册为空数组 */
+const EN_STORIES_DATA: Array<{ id: string; title?: { zh: string; en: string }; content?: string }> = [
+  ...(en1 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
+  ...(en2 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
+  ...(en3 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
+  ...(en4 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
+];
+const EN_MAP: Record<string, { id: string; title?: { zh: string; en: string }; content?: string }> = {};
+for (const e of EN_STORIES_DATA) EN_MAP[e.id] = e;
+
+/** 已具备英文正文的经典故事 id（library 英文模式过滤用） */
+export const CLASSIC_EN_IDS: Set<string> = new Set(
+  EN_STORIES_DATA.filter((s) => s.content && s.content.trim().length > 0).map((s) => s.id),
+);
 
 const KEYS = {
   STORIES: 'rms_stories',
@@ -89,11 +109,16 @@ export async function getStory(id: string): Promise<Story | null> {
 
   const classicStory = CLASSIC_STORIES_DATA.find(s => s.id === id);
   if (classicStory) {
+    const en = EN_MAP[classicStory.id];
+    const hasEn = !!(en && en.content && en.content.trim().length > 0);
     return {
       id: classicStory.id,
       title: classicStory.title,
+      titleEn: en?.title?.en ?? classicStory.title,
       content: classicStory.content,
+      contentEn: hasEn ? en!.content : undefined,
       language: 'zh' as const,
+      languages: hasEn ? (['zh', 'en'] as Language[]) : (['zh'] as Language[]),
       type: 'classic' as const,
       tags: classicStory.tags || [],
       duration: classicStory.duration || 0,

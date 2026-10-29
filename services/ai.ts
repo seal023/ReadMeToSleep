@@ -433,6 +433,72 @@ export async function askQuestion(context: string, question: string): Promise<st
   }
 }
 
+/**
+ * 根据刚讲完的故事正文，给孩子生成 2 道贴合故事内容的二选一理解题。
+ * 永远返回（失败返回 null，由上层回退到通用题）。
+ * @returns 每项为 { question, options: [A, B] }；至少返回 1 道
+ */
+export async function generateStoryQuestions(
+  content: string,
+  title: string,
+  language: 'zh' | 'en'
+): Promise<{ question: string; options: string[] }[] | null> {
+  const allowed = await consumeQuota('qa');
+  if (!allowed) return null;
+
+  const isZh = language === 'zh';
+  const langName = isZh ? '简体中文' : 'English';
+
+  const system = [
+    '你是儿童睡前故事助手，负责根据刚讲完的故事，给 3-8 岁的孩子出 2 道有趣的理解/互动选择题。',
+    `【语言】全部使用${langName}输出，不得混用其他语言。`,
+    '【要求】',
+    '- 只输出一个 JSON 数组，不要解释、不要 markdown 代码块、不要任何前后缀文字。',
+    '- 数组含 2 个元素，每个元素为 {"question":"一道简短的问题（必须紧扣这个故事里的角色、情节或场景）","options":["选项A的简短词语","选项B的简短词语"]}。',
+    '- 问题要让孩子能听懂、且与这个故事的具体内容相关；选项为 2 个简短词语，不要长句。',
+  ].join('\n');
+
+  const user = `故事标题：${title}\n\n故事内容：\n${(content || '').slice(0, 2000)}\n\n请出 2 道与这个故事有关的二选一问题。`;
+
+  try {
+    const raw = await chat(system, user, 0.6);
+    if (!raw) return null;
+    const cleaned = stripCodeFence(raw);
+
+    const parse = (text: string): { question: string; options: string[] }[] | null => {
+      try {
+        const arr = JSON.parse(text);
+        if (!Array.isArray(arr)) return null;
+        const out = arr
+          .filter(
+            (x: any) =>
+              x && typeof x.question === 'string' && Array.isArray(x.options) && x.options.length >= 2
+          )
+          .map((x: any) => ({
+            question: String(x.question),
+            options: x.options.slice(0, 2).map(String),
+          }));
+        return out.length ? out : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const direct = parse(cleaned);
+    if (direct) return direct;
+
+    const m = cleaned.match(/\[[\s\S]*\]/);
+    if (m) {
+      const fromMatch = parse(m[0]);
+      if (fromMatch) return fromMatch;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('[ai] generateStoryQuestions failed:', err?.message ?? err);
+    return null;
+  }
+}
+
 /** 连通性自检，便于排查配置是否正确 */
 export async function pingAI(): Promise<{ ok: boolean; message: string }> {
   try {

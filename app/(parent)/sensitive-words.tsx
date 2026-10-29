@@ -22,7 +22,7 @@ export default function SensitiveWordsScreen() {
 
   async function load() {
     const data = await getSensitiveWords();
-    const combined: string[] = [
+    const combined = [
       ...data.words.map(w => ({ label: w, tag: 'w' })),
       ...data.phrases.map(p => ({ label: p, tag: 'p' })),
     ];
@@ -92,9 +92,6 @@ export default function SensitiveWordsScreen() {
           <Text style={styles.sectionTitle}>
             {(t('settings.sensitiveWords.list') || '当前词库')}（{allWords.length}）
           </Text>
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-            <Text style={styles.saveBtnText}>{t('common.save') || '💾 保存'}</Text>
-          </TouchableOpacity>
         </View>
         <View style={styles.listWrap}>
           {allWords.length === 0 && (
@@ -135,6 +132,10 @@ export default function SensitiveWordsScreen() {
         <TouchableOpacity style={styles.addBtn} onPress={handleBatchImport}>
           <Text style={styles.addBtnText}>{t('settings.sensitiveWords.batchImport') || '📋 批量导入'}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.saveBtnBlock} onPress={handleSave}>
+          <Text style={styles.saveBtnBlockText}>{t('common.save') || '💾 保存'}</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <View style={styles.backBar}>
@@ -164,9 +165,9 @@ const styles = StyleSheet.create({
   multilineInput: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', marginBottom: 8, color: COLORS.text },
   addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  saveBtn: { backgroundColor: COLORS.mint, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12 },
-  saveBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  saveBtnBlock: { backgroundColor: COLORS.mint, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
+  saveBtnBlockText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   backBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: COLORS.card, borderTopWidth: 1, borderTopColor: COLORS.divider, padding: 16 },
-  backBtn: { alignSelf: 'center' },
-  backBtnText: { fontSize: 15, color: COLORS.orange, fontWeight: '600' },
+  backBtn: { alignSelf: 'stretch', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  backBtnText: { fontSize: 16, color: COLORS.orange, fontWeight: '700' },
 });
