@@ -15,6 +15,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName } from '../../services/storage';
 import { textToSpeech } from '../../services/tts';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
@@ -153,16 +154,17 @@ export default function HomeTab() {
           </Text>
         </View>
 
-        <TouchableOpacity activeOpacity={0.7} onPress={handleRaccoPress} style={styles.raccoWrap}>
+        <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
           <Racco state={raccoState} size={raccoSize} />
-        </TouchableOpacity>
+        </ElasticPressable>
       </View>
 
       {/* P1：核心卖点前置——亲人声音陪伴英雄区（常驻，放大声音克隆） */}
-      <TouchableOpacity
+      <ElasticPressable
         style={styles.cloneHero}
-        activeOpacity={0.9}
         onPress={() => router.push('/(parent)/voice-clone')}
+        pressScale={0.94}
+        bounciness={14}
       >
         <View style={styles.cloneHeroTextWrap}>
           <Text style={styles.cloneHeroTitle}>{t('home.cloneHero.title')}</Text>
@@ -172,13 +174,14 @@ export default function HomeTab() {
           </View>
         </View>
         <Text style={styles.cloneHeroEmoji}>🎙️</Text>
-      </TouchableOpacity>
+      </ElasticPressable>
 
       {/* 会员入口：直达订阅/会员中心，避免"找不到收费板块" */}
-      <TouchableOpacity
+      <ElasticPressable
         style={styles.premiumCard}
-        activeOpacity={0.9}
         onPress={() => router.push('/(parent)/subscription')}
+        pressScale={0.94}
+        bounciness={14}
       >
         <Text style={styles.premiumEmoji}>💎</Text>
         <View style={styles.premiumTextWrap}>
@@ -186,7 +189,7 @@ export default function HomeTab() {
           <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
         </View>
         <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
-      </TouchableOpacity>
+      </ElasticPressable>
 
       {/* P1：首次启动引导横幅（未克隆且未忽略时显示） */}
       {cloneBannerVisible && (
@@ -226,18 +229,18 @@ export default function HomeTab() {
             </View>
           </View>
           <View style={styles.guideActions}>
-            <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')}>
+            <ElasticPressable style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>📚</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.listen')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')}>
+            </ElasticPressable>
+            <ElasticPressable style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>✈️</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.travel')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.guideBtn} onPress={() => setGuideVisible(false)}>
+            </ElasticPressable>
+            <ElasticPressable style={styles.guideBtn} onPress={() => setGuideVisible(false)} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>😴</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.think')}</Text>
-            </TouchableOpacity>
+            </ElasticPressable>
           </View>
           <Text style={styles.guideHint}>{t('home.guide.hint')}</Text>
         </View>

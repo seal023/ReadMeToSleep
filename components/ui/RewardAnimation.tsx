@@ -58,6 +58,19 @@ export function RewardAnimation({
   const badgeScale = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const sparkProgress = useRef(new Animated.Value(0)).current;
+
+  // 撒花：彩色纸屑从顶部随机飘落（对应设计稿 s-reward 的 confetti）
+  const CONFETTI_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#DDA0DD', '#FF9A56', '#7FC8F8'];
+  const confettiItems = useRef(
+    Array.from({ length: 24 }, (_, i) => ({
+      left: (i * 53) % 100,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      delay: (i * 90) % 900,
+      size: 8 + (i % 3) * 2,
+      rot: (i % 2 === 0 ? 1 : -1) * (20 + (i % 5) * 10),
+      av: new Animated.Value(0),
+    })),
+  ).current;
   const titleOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -67,6 +80,10 @@ export function RewardAnimation({
     cardOpacity.setValue(0);
     sparkProgress.setValue(0);
     titleOpacity.setValue(0);
+    confettiItems.forEach((c) => {
+      c.av.setValue(0);
+      Animated.timing(c.av, { toValue: 1, duration: 1500, delay: c.delay, useNativeDriver: true }).start();
+    });
 
     Animated.sequence([
       // 卡片淡入
@@ -113,6 +130,28 @@ export function RewardAnimation({
 
   return (
     <Animated.View style={[styles.overlay, { opacity: cardOpacity }]}>
+      {/* 撒花彩纸（背景层，不遮挡文字） */}
+      {confettiItems.map((c, i) => (
+        <Animated.View
+          key={i}
+          pointerEvents="none"
+          style={[
+            styles.confetti,
+            {
+              left: `${c.left}%`,
+              width: c.size,
+              height: c.size,
+              backgroundColor: c.color,
+              opacity: c.av.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 0.9] }),
+              transform: [
+                { translateY: c.av.interpolate({ inputRange: [0, 1], outputRange: [0, 620] }) },
+                { rotate: `${c.rot}deg` },
+              ],
+            },
+          ]}
+        />
+      ))}
+
       <TouchableOpacity activeOpacity={1} onPress={onDone} style={styles.touchArea}>
         <Animated.View style={[styles.card, { opacity: cardOpacity }]}>
           {/* 飞散的小星星 */}
@@ -237,5 +276,11 @@ const styles = StyleSheet.create({
     color: COLORS.textSub,
     textAlign: 'center',
     marginTop: SPACING.sm,
+  },
+  confetti: {
+    position: 'absolute',
+    top: -20,
+    borderRadius: 2,
+    zIndex: 1,
   },
 });

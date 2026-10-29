@@ -45,6 +45,34 @@ const FALLBACK_QA: QAItem[] = [
 
 const { width } = Dimensions.get('window');
 
+// 随声波形：播放时一排竖条循环跳动，暂停时静止——给不识字的孩子可见的「声音在流动」反馈
+function SoundWave({ playing }: { playing: boolean }) {
+  const bars = useRef(Array.from({ length: 22 }, () => new Animated.Value(0.3))).current;
+  useEffect(() => {
+    if (!playing) {
+      bars.forEach((b) => b.setValue(0.3));
+      return;
+    }
+    const anims = bars.map((b, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(b, { toValue: 1, duration: 280 + (i % 6) * 80, useNativeDriver: true }),
+          Animated.timing(b, { toValue: 0.3, duration: 280 + (i % 6) * 80, useNativeDriver: true }),
+        ]),
+      ),
+    );
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, [playing]);
+  return (
+    <View style={styles.waveWrap} pointerEvents="none">
+      {bars.map((b, i) => (
+        <Animated.View key={i} style={[styles.waveBar, { transform: [{ scaleY: b }] }]} />
+      ))}
+    </View>
+  );
+}
+
 export default function StoryPlayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, language: uiLang } = useLanguage();
@@ -82,6 +110,51 @@ export default function StoryPlayScreen() {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈（不识字也能看懂）
   const micPulse = useRef(new Animated.Value(1)).current;
+  // 播放页背景呼吸光晕：缓慢明暗 + 缩放，营造被温柔包裹的氛围（对应设计稿 s-play 的 glow）
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 1, duration: 4500, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 4500, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [glowAnim]);
+
+  // 晚安页：月亮呼吸光晕 + 星星闪烁 + 流星划过（对应设计稿 s-night）
+  const moonAnim = useRef(new Animated.Value(0)).current;
+  const starAnim = useRef(new Animated.Value(0)).current;
+  const shootAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const moonLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(moonAnim, { toValue: 1, duration: 5000, useNativeDriver: true }),
+        Animated.timing(moonAnim, { toValue: 0, duration: 5000, useNativeDriver: true }),
+      ]),
+    );
+    const starLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(starAnim, { toValue: 1, duration: 2400, useNativeDriver: true }),
+        Animated.timing(starAnim, { toValue: 0.25, duration: 2400, useNativeDriver: true }),
+      ]),
+    );
+    const shootLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shootAnim, { toValue: 1, duration: 4500, useNativeDriver: true }),
+        Animated.delay(1500),
+      ]),
+    );
+    moonLoop.start();
+    starLoop.start();
+    shootLoop.start();
+    return () => {
+      moonLoop.stop();
+      starLoop.stop();
+      shootLoop.stop();
+    };
+  }, [moonAnim, starAnim, shootAnim]);
 
   // 双语解析：英文模式且故事有英文正文时取英文，否则中文。
   // 派生值每次渲染重算，跟随界面语言实时切换。
@@ -484,6 +557,16 @@ export default function StoryPlayScreen() {
     return (
       <CartoonScreen gradient="day" decor>
         <View style={styles.container}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.glow,
+            {
+              opacity: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+              transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.12] }) }],
+            },
+          ]}
+        />
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backBtnText}>←</Text>
@@ -499,6 +582,8 @@ export default function StoryPlayScreen() {
         <TouchableOpacity style={styles.progressBar} onPress={handleProgressTap} activeOpacity={0.8}>
           <View style={{ ...styles.progressFill, width: progressWidth }} />
         </TouchableOpacity>
+
+        <SoundWave playing={isPlaying} />
 
         <View style={styles.controls}>
           <TouchableOpacity style={styles.controlBtn} onPress={handlePlay} disabled={isPlaying}>
@@ -698,6 +783,48 @@ export default function StoryPlayScreen() {
   return (
     <CartoonScreen gradient="day" decor>
     <View style={styles.finishedContainer}>
+      {/* 月亮呼吸光晕 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.moon,
+          {
+            opacity: moonAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+            transform: [{ scale: moonAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) }],
+          },
+        ]}
+      >
+        <Text style={styles.moonEmoji}>🌙</Text>
+      </Animated.View>
+      {/* 闪烁星星 */}
+      <Animated.View pointerEvents="none" style={[styles.nightStar, { top: 70, left: 40, opacity: starAnim }]}>
+        <Text style={styles.nightStarEmoji}>⭐</Text>
+      </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.nightStar, { top: 150, left: 80, opacity: starAnim.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }) }]}
+      >
+        <Text style={styles.nightStarEmoji}>✨</Text>
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={[styles.nightStar, { top: 60, left: 240, opacity: starAnim }]}>
+        <Text style={styles.nightStarEmoji}>🌟</Text>
+      </Animated.View>
+      {/* 流星划过 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.shoot,
+          {
+            opacity: shootAnim.interpolate({ inputRange: [0, 0.1, 0.4, 1], outputRange: [0, 1, 0, 0] }),
+            transform: [
+              { translateX: shootAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 220] }) },
+              { translateY: shootAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }) },
+            ],
+          },
+        ]}
+      >
+        <Text style={styles.shootEmoji}>💫</Text>
+      </Animated.View>
       <Racco state="sleeping" size={150} />
       <Text style={styles.finishedText}>{t('story.finished.text')} 🌙</Text>
 
@@ -751,6 +878,13 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   completedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   finishedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  // 晚安页夜间装饰
+  moon: { position: 'absolute', top: 80, right: 46, zIndex: 0 },
+  moonEmoji: { fontSize: 74 },
+  nightStar: { position: 'absolute', zIndex: 0 },
+  nightStarEmoji: { fontSize: 18 },
+  shoot: { position: 'absolute', top: 140, left: -40, zIndex: 0 },
+  shootEmoji: { fontSize: 16 },
   loadingText: { fontSize: 16, color: '#888', marginTop: 16 },
   errorText: { fontSize: 18, color: '#c00', marginBottom: 20 },
   backBtn: { padding: 8 },
@@ -763,6 +897,31 @@ const styles = StyleSheet.create({
   storyText: { fontSize: 16, lineHeight: 28, color: '#4E342E' },
   progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, marginTop: 12, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#FF8A65', borderRadius: 4 },
+  // 播放页呼吸光晕（背景，盖在内容之下）
+  glow: {
+    position: 'absolute',
+    top: 56,
+    alignSelf: 'center',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(255,203,92,0.28)',
+  },
+  // 随声波形
+  waveWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 5,
+    height: 56,
+    marginTop: 10,
+  },
+  waveBar: {
+    width: 6,
+    height: 44,
+    borderRadius: 3,
+    backgroundColor: '#FF9A56',
+  },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 16 },
   controlBtn: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: '#FF8A65',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { generateStory } from '@/services/ai';
@@ -31,6 +32,27 @@ export default function CreateScreen() {
   useEffect(() => {
     setStoryLang(uiLang);
   }, [uiLang]);
+
+  // 生成时的旋转光环 + 魔法闪烁（对应设计稿 s-gen；思考浣熊由 Racco thinking 态提供）
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const twinkleAnim = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    const spinLoop = Animated.loop(
+      Animated.timing(spinAnim, { toValue: 1, duration: 2200, useNativeDriver: true }),
+    );
+    const twinkleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(twinkleAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(twinkleAnim, { toValue: 0.3, duration: 900, useNativeDriver: true }),
+      ]),
+    );
+    spinLoop.start();
+    twinkleLoop.start();
+    return () => {
+      spinLoop.stop();
+      twinkleLoop.stop();
+    };
+  }, [spinAnim, twinkleAnim]);
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const { snapshot, refresh, showPaywall } = useEntitlement();
@@ -88,6 +110,24 @@ export default function CreateScreen() {
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.raccoWrap}>
+        {generating && (
+          <>
+            <Animated.View
+              style={[
+                styles.genRing,
+                {
+                  transform: [
+                    { rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+                  ],
+                },
+              ]}
+            />
+            <Animated.Text style={[styles.genSpark, { top: -4, left: -6, opacity: twinkleAnim }]}>✨</Animated.Text>
+            <Animated.Text style={[styles.genSpark, { top: 10, right: -12, opacity: twinkleAnim }]}>⭐</Animated.Text>
+            <Animated.Text style={[styles.genSpark, { bottom: 2, left: -16, opacity: twinkleAnim }]}>🌟</Animated.Text>
+            <Animated.Text style={[styles.genSpark, { bottom: 8, right: -6, opacity: twinkleAnim }]}>💫</Animated.Text>
+          </>
+        )}
         <Racco
           state={generating ? 'thinking' : raccoState}
           size={120}
@@ -168,6 +208,19 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
+  // 生成页旋转光环 + 魔法闪烁
+  genRing: {
+    position: 'absolute',
+    top: -25,
+    left: -25,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 5,
+    borderColor: 'rgba(183,148,244,0.25)',
+    borderTopColor: '#B794F4',
+  },
+  genSpark: { position: 'absolute', fontSize: 22 },
   title: { fontSize: 24, color: '#5D4037', textAlign: 'center', marginBottom: 20, fontWeight: '700' },
   card: {
     flexDirection: 'row',
