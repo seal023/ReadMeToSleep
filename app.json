@@ -42,6 +42,7 @@
       "expo-router",
       "expo-file-system",
       "expo-audio",
+      "expo-localization",
       ["expo-build-properties", {
         "ios": {
           "enableSceneSupport": true

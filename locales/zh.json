@@ -73,6 +73,8 @@
   "settings.childName": "宝宝名字",
   "settings.childName.hint": "小浣熊会这样亲切地称呼宝宝",
   "settings.childName.placeholder": "例如：洋洋 / Peter",
+  "onboard.title": "你希望我们如何称呼你的宝贝？",
+  "onboard.start": "开始",
   "settings.voice": "声音",
   "settings.voice.system": "系统默认",
   "settings.voice.mom": "妈妈",

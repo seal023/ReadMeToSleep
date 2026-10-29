@@ -30,6 +30,27 @@ const WORKSPACE_ID = process.env.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | unde
 const TTS_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
 const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
 
+// 百炼「声音复刻」与 AI 推理共用专属域名（{workspaceId}.{region}.maas.aliyuncs.com）。
+// 声音复刻端点固定路径：/api/v1/services/audio/tts/customization。
+// 优先使用显式配置的 EXPO_PUBLIC_VOICE_ENROLL_URL（需为完整端点）；
+// 否则基于 EXPO_PUBLIC_AI_BASE_URL 自动拼接（推荐，避免用户填错路径）。
+function resolveEnrollEndpoint(): string | undefined {
+  if (ENROLL_URL && /services\/audio\/tts\/customization|api\/v1\/services\/audio/i.test(ENROLL_URL)) {
+    return ENROLL_URL;
+  }
+  if (TTS_BASE_URL) {
+    return `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/customization`;
+  }
+  return ENROLL_URL || undefined;
+}
+
+// 复刻模型：必须与合成（synthesizeWithClonedVoice）使用的 model 完全一致，否则合成失败。
+// 可通过 EXPO_PUBLIC_VOICE_TARGET_MODEL 覆盖；默认 cosyvoice-v2（百炼文档示例模型）。
+const CLONE_MODEL = (process.env.EXPO_PUBLIC_VOICE_TARGET_MODEL as string | undefined) || 'cosyvoice-v2';
+// 百炼必填：音色名前缀，仅字母数字、≤10 字符
+const CLONE_PREFIX = 'rms';
+
+
 export type CloneTarget = 'mom' | 'dad' | 'grandma';
 
 const STORAGE_KEY = (target: CloneTarget) => `rms_voice_clone_${target}`;
@@ -42,7 +63,7 @@ export interface VoiceCloneResult {
 
 /** 是否已配置声音克隆所需的端点与 workspace（缺一项即视为未配置） */
 export function isVoiceCloneConfigured(): boolean {
-  return Boolean(ENROLL_URL && WORKSPACE_ID);
+  return Boolean(resolveEnrollEndpoint() && AI_API_KEY);
 }
 
 /** 读取本地缓存的克隆音色 id（null = 尚未克隆） */
@@ -107,49 +128,80 @@ function uint8ToBase64(bytes: Uint8Array): string {
  * 改下面 body 里的 `file` 这一项即可。
  */
 export async function enrollVoice(audioUri: string, target: CloneTarget): Promise<VoiceCloneResult> {
-  if (!isVoiceCloneConfigured()) {
+  const endpoint = resolveEnrollEndpoint();
+  if (!endpoint || !AI_API_KEY) {
     return {
       ok: false,
-      message: '声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL / VOICE_WORKSPACE_ID）',
+      message: '声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL 或 AI_BASE_URL / AI_API_KEY）',
     };
   }
   try {
-    // 读取本地录音 → Base64 Data URI（官方 API 接收 URL / Data URI，非 FormData 流）
+    // 读取本地录音 → Base64 Data URI（百炼声音复刻接口接收公网 URL 或 Base64 Data URI）
     const file = new File(audioUri);
     const bytes = await file.bytes();
     const base64 = uint8ToBase64(bytes);
     const dataUri = `data:${mimeFromUri(audioUri)};base64,${base64}`;
 
-    const body = {
+    // 百炼声音复刻创建音色：请求体必须用 input 包裹，action=create_voice 为必填；
+    // prefix 为必填（音色名前缀，仅字母数字、≤10 字符）；音频字段名为 audio（非 file）。
+    const createBody = {
       model: 'voice-enrollment',
-      target_model: 'qwen-audio-3.0-tts-flash',
-      workspace_id: WORKSPACE_ID,
-      target,
-      // 音频字段：百炼 enroll 接口接收 Data URI。若官方文档字段名不同请在此调整。
-      file: dataUri,
+      input: {
+        action: 'create_voice',
+        target_model: CLONE_MODEL,
+        prefix: CLONE_PREFIX,
+        audio: dataUri,
+      },
     };
 
-    const res = await fetch(ENROLL_URL as string, {
+    const createRes = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // 鉴权：百炼官方 enroll 接口仅需 Bearer；X-Workspace-Id 非必需，已去除
-        Authorization: `Bearer ${AI_API_KEY ?? ''}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(createBody),
     });
-
-    const data = await res.json().catch(() => ({} as any));
-    if (!res.ok) {
-      return { ok: false, message: data?.message || `注册失败（HTTP ${res.status}）` };
+    const createData = await createRes.json().catch(() => ({} as any));
+    if (!createRes.ok) {
+      const msg =
+        createData?.message ||
+        createData?.output?.message ||
+        JSON.stringify(createData).slice(0, 200);
+      return { ok: false, message: `创建音色失败（HTTP ${createRes.status}）：${msg}` };
     }
 
-    const voiceId = data?.voice_id || data?.voiceId || data?.id;
-    if (voiceId) {
-      await saveClonedVoiceId(target, String(voiceId));
-      return { ok: true, voiceId: String(voiceId), message: '音色克隆成功！' };
+    const voiceId = createData?.output?.voice_id || createData?.voice_id;
+    if (!voiceId) {
+      return { ok: false, message: '创建音色成功但未返回 voice_id' };
     }
-    return { ok: false, message: '注册成功但未返回音色 id' };
+
+    // 百炼音色创建是异步的：提交后需轮询 query_voice 直到 status === 'OK' 才能用于合成
+    let status = '';
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const queryRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` },
+        body: JSON.stringify({
+          model: 'voice-enrollment',
+          input: { action: 'query_voice', voice_id: voiceId },
+        }),
+      });
+      const qd = await queryRes.json().catch(() => ({} as any));
+      status = qd?.output?.status || '';
+      if (status === 'OK') break;
+    }
+
+    await saveClonedVoiceId(target, String(voiceId));
+    if (status !== 'OK') {
+      return {
+        ok: true,
+        voiceId: String(voiceId),
+        message: '音色已提交，正在训练（约几分钟），稍后即可在「妈妈/爸爸/外婆」中使用',
+      };
+    }
+    return { ok: true, voiceId: String(voiceId), message: '音色克隆成功！' };
   } catch (err: any) {
     return { ok: false, message: err?.message || '注册过程出错' };
   }
@@ -176,7 +228,7 @@ export async function synthesizeWithClonedVoice(
         'X-Workspace-Id': WORKSPACE_ID ?? '',
       },
       body: JSON.stringify({
-        model: 'cosyvoice-v1',
+        model: CLONE_MODEL,
         input: text,
         voice: voiceId,
         response_format: 'mp3',

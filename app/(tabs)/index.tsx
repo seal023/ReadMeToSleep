@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   useWindowDimensions,
+  Modal,
+  TextInput,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
@@ -38,6 +40,9 @@ export default function HomeTab() {
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [guideVisible, setGuideVisible] = useState(false);
   const [childName, setChildName] = useState('');
+  // 2026-10-29：首启引导——首次启动（尚未设置宝宝昵称）时，第一步就询问"如何称呼宝贝"
+  const [onboardVisible, setOnboardVisible] = useState(false);
+  const [onboardText, setOnboardText] = useState('');
   // P1：首次启动引导——尚未克隆任何亲人声线时，强提示录制（核心卖点前置）
   const [cloneBannerVisible, setCloneBannerVisible] = useState(false);
 
@@ -103,6 +108,17 @@ export default function HomeTab() {
     }, [])
   );
 
+  // 首启昵称引导：未设置昵称则在首次启动弹出（隐私同意后首页才挂载，触发安全）
+  useEffect(() => {
+    let alive = true;
+    getChildName().then((n) => {
+      if (alive && !n) setOnboardVisible(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const greeting = (() => {
     const base = t(getGreetingKey());
     if (childName) return base.replace('{name}', childName);
@@ -112,6 +128,15 @@ export default function HomeTab() {
   const dismissCloneBanner = async () => {
     setCloneBannerVisible(false);
     await AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
+  };
+
+  // 首启昵称引导：保存昵称并关闭引导（昵称用于首页亲切称呼 + 语音问候）
+  const finishOnboard = async () => {
+    const name = onboardText.trim();
+    if (!name) return;
+    await setChildName(name);
+    setChildName(name);
+    setOnboardVisible(false);
   };
 
   return (
@@ -274,6 +299,28 @@ export default function HomeTab() {
         </View>
       </View>
       </ScrollView>
+
+      {/* 首启昵称引导：进入 App 的第一步，询问"如何称呼宝贝"（从设置前置到首屏） */}
+      <Modal visible={onboardVisible} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.onboardOverlay}>
+          <View style={styles.onboardCard}>
+            <Text style={styles.onboardEmoji}>🐻</Text>
+            <Text style={styles.onboardTitle}>{t('onboard.title')}</Text>
+            <TextInput
+              style={styles.onboardInput}
+              value={onboardText}
+              onChangeText={setOnboardText}
+              placeholder={t('settings.childName.placeholder')}
+              placeholderTextColor="#bca"
+              autoFocus
+              maxLength={20}
+            />
+            <TouchableOpacity style={styles.onboardBtn} onPress={finishOnboard}>
+              <Text style={styles.onboardBtnText}>{t('onboard.start')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </CartoonScreen>
   );
 }
@@ -613,4 +660,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
+
+  // 首启昵称引导弹窗样式
+  onboardOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(60, 45, 35, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  onboardCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFF8F0',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  onboardEmoji: { fontSize: 46, marginBottom: 12 },
+  onboardTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#5D4037',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 28,
+  },
+  onboardInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#5D4037',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  onboardBtn: {
+    backgroundColor: '#FF8A65',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+  },
+  onboardBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
 });

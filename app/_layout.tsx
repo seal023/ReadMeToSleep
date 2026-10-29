@@ -1,12 +1,56 @@
-import { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, Linking, StyleSheet } from 'react-native';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Modal, View, Text, Pressable, Linking, StyleSheet, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LanguageProvider } from '../hooks/useLanguage';
+import { LanguageProvider, useLanguage } from '../hooks/useLanguage';
 import { useAppStore } from '../store/appStore';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
+import { getChildName } from '../services/storage';
+import { textToSpeech } from '../services/tts';
+
+/** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
+function getGreetingKey(): string {
+  const h = new Date().getHours();
+  if (h < 11) return 'home.greetingMorning';
+  if (h < 13) return 'home.greetingNoon';
+  if (h < 18) return 'home.greetingAfternoon';
+  return 'home.greetingEvening';
+}
+
+/**
+ * 每日语音问候（2026-10-29）：每次打开 App（冷启动 / 从后台回到前台）都用 TTS 播报
+ * "xxx，下午好 / 晚上好" 等，依时段 + 界面语言。需在隐私同意后才播报，且 60 秒内不重复。
+ */
+function GreetingOnOpen() {
+  const { t, language } = useLanguage();
+  const lastSpoke = useRef(0);
+
+  const speak = useCallback(async () => {
+    const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
+    if (agreed !== 'agreed') return;
+    const now = Date.now();
+    if (now - lastSpoke.current < 60000) return;
+    const name = (await getChildName()) || '';
+    const base = t(getGreetingKey());
+    const text = name
+      ? base.replace('{name}', name)
+      : base.replace('，{name}！', '！').replace(', {name}!', '!');
+    lastSpoke.current = now;
+    textToSpeech(text, 'system', language);
+  }, [t, language]);
+
+  useEffect(() => {
+    speak();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') speak();
+    });
+    return () => sub.remove();
+  }, [speak]);
+
+  return null;
+}
 
 const PRIVACY_CONSENT_KEY = 'rms_privacy_consent_v1';
 const PRIVACY_POLICY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
@@ -51,6 +95,7 @@ export default function RootLayout() {
   return (
     <LanguageProvider>
       <StatusBar style="dark" />
+      <GreetingOnOpen />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />

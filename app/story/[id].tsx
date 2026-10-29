@@ -10,9 +10,11 @@ import {
   Platform,
   Animated,
   TextInput,
+  Alert,
   type DimensionValue,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
@@ -57,6 +59,7 @@ export default function StoryPlayScreen() {
   const [qaFeedback, setQaFeedback] = useState('');
   const [childQuestion, setChildQuestion] = useState('');
   const [aiAnswer, setAiAnswer] = useState('');
+  const [aiAskError, setAiAskError] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [qaQuestions, setQaQuestions] = useState<QAItem[]>(FALLBACK_QA);
@@ -72,6 +75,10 @@ export default function StoryPlayScreen() {
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 提问环节「按住说话、松开停止」的真实录音（expo-audio，与声音克隆页同款）
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈（不识字也能看懂）
+  const micPulse = useRef(new Animated.Value(1)).current;
 
   // 双语解析：英文模式且故事有英文正文时取英文，否则中文。
   // 派生值每次渲染重算，跟随界面语言实时切换。
@@ -102,6 +109,52 @@ export default function StoryPlayScreen() {
       }
     })();
   }, [id]);
+
+  // —— 孩子友好化（2026-10-29）：目标用户含不识字小朋友，必要沟通须有语音/动画辅助 ——
+  // 进入问答环节时，用语音把「该做什么」说出来，而不是只靠文字
+  useEffect(() => {
+    if (phase === 'qa_round1') {
+      textToSpeech(
+        displayLang === 'en'
+          ? "Let's play a question game! Listen to the question and tap an answer you like."
+          : '我们来玩问答小游戏吧！听清楚问题，选一个你喜欢的答案～',
+        'system', displayLang
+      );
+    } else if (phase === 'qa_round2') {
+      textToSpeech(
+        displayLang === 'en'
+          ? 'Now it is your turn! Hold the microphone and tell me your question. After I answer, tap the round button below to ask another, or tap finish when you are done.'
+          : '现在轮到你啦！按住小话筒，把你的问题说出来。听完我的回答，想再问一个就点下面的圆圈按钮，都说完就点完成哦～',
+        'system', displayLang
+      );
+    }
+  }, [phase]);
+
+  // 每出现一道题（含语音题），把题目念出来，让不识字的孩子也能参与
+  useEffect(() => {
+    if (phase === 'qa_round1' && !qaLoading && qaQuestions[qaIndex]) {
+      const q = qaQuestions[qaIndex];
+      const tail = q.type === 'voice'
+        ? (displayLang === 'en' ? ' Hold the microphone and say it.' : '，按住小话筒说出来。')
+        : '';
+      textToSpeech(q.question + tail, 'system', displayLang);
+    }
+  }, [phase, qaIndex, qaLoading]);
+
+  // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(micPulse, { toValue: 1.18, duration: 480, useNativeDriver: true }),
+          Animated.timing(micPulse, { toValue: 1, duration: 480, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      micPulse.setValue(1);
+    }
+    return () => { micPulse.setValue(1); };
+  }, [isRecording]);
 
   useEffect(() => {
     return () => {
@@ -271,6 +324,7 @@ export default function StoryPlayScreen() {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
     setQaFeedback(t('story.qa.greatJob'));
+    textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -281,28 +335,30 @@ export default function StoryPlayScreen() {
     }, 1500);
   };
 
-  const handleVoiceRecord = () => {
-    if (isRecording) {
-      // 再按一次 = 结束录音，然后进入下一步
-      setIsRecording(false);
-      setQaFeedback(t('story.qa.greatJob'));
-      setTimeout(() => {
-        setQaFeedback('');
-        if (qaIndex < qaQuestions.length - 1) {
-          setQaIndex(qaIndex + 1);
-        } else {
-          setPhase('qa_round2');
-        }
-      }, 1500);
-    } else {
-      // 第一次按 = 开始录音（时长由孩子自己掌握，不再强制 2 秒）
-      setIsRecording(true);
+  // 第 1 轮 voice 题：松开麦克风后停止录音并推进到下一题 / 第 2 轮
+  const handleVoiceRecord = async () => {
+    try {
+      await audioRecorder.stop();
+    } catch {
+      /* 录音可能尚未真正开始，忽略 */
     }
+    setIsRecording(false);
+    setQaFeedback(t('story.qa.greatJob'));
+    textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
+    setTimeout(() => {
+      setQaFeedback('');
+      if (qaIndex < qaQuestions.length - 1) {
+        setQaIndex(qaIndex + 1);
+      } else {
+        setPhase('qa_round2');
+      }
+    }, 800);
   };
 
   const handleChildQuestion = async () => {
-    if (!childQuestion.trim()) return;
+    if (!childQuestion.trim() || isAsking) return;
     setIsAsking(true);
+    setAiAskError(false);
     try {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
       const answer = await askQuestion(storyText, childQuestion);
@@ -321,11 +377,45 @@ export default function StoryPlayScreen() {
       };
       await saveChildQA(qa);
     } catch {
+      setAiAskError(true);
       const fallback = t('story.qa.unknown');
       setAiAnswer(fallback);
       textToSpeech(fallback, 'system', displayLang);
     }
     setIsAsking(false);
+  };
+
+  const resetChildQuestion = () => {
+    setChildQuestion('');
+    setAiAnswer('');
+    setAiAskError(false);
+  };
+
+  // 提问环节真实录音：按住说话（onPressIn 调用），松开停止（onPressOut 调用）
+  const startQaRecording = async () => {
+    try {
+      const perm = await requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('需要麦克风权限', '请在系统设置中允许麦克风权限后重试');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setIsRecording(true);
+    } catch (err: any) {
+      console.error('[story] 提问录音开始失败:', err);
+      Alert.alert('录音失败', err?.message ?? '未知错误');
+    }
+  };
+
+  const stopQaRecording = async () => {
+    try {
+      await audioRecorder.stop();
+    } catch (err: any) {
+      console.error('[story] 提问录音停止失败:', err);
+    }
+    setIsRecording(false);
   };
 
   // 进入提问环节时，按本故事内容用 AI 生成贴合的选择题（失败则保留兜底题）
@@ -503,11 +593,12 @@ export default function StoryPlayScreen() {
             {q.type === 'voice' && (
               <View style={styles.voiceRecordWrap}>
                 <TouchableOpacity
-                  style={isRecording ? styles.micBtnActive : styles.micBtn}
-                  onPress={handleVoiceRecord}
+                  style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
+                  onPressIn={startQaRecording}
+                  onPressOut={handleVoiceRecord}
                 >
                   <Text style={styles.micIcon}>🎤</Text>
-                  <Text style={styles.micLabel}>{isRecording ? '点击停止' : t('story.qa.pressToTalk')}</Text>
+                  <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -530,19 +621,16 @@ export default function StoryPlayScreen() {
         <Text style={styles.qaQuestion}>{t('story.qa.yourQuestion')}</Text>
 
         <TouchableOpacity
-          style={isRecording ? styles.micBtnActive : styles.micBtn}
-          onPress={() => {
-            if (isRecording) {
-              setIsRecording(false);
-              // 暂未接入语音转文字，停止录音后填入示例问题，用户可改/可写
-              if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
-            } else {
-              setIsRecording(true);
-            }
+          style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
+          onPressIn={startQaRecording}
+          onPressOut={async () => {
+            try { await audioRecorder.stop(); } catch { /* 忽略 */ }
+            setIsRecording(false);
+            if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
           }}
         >
           <Text style={styles.micIcon}>🎤</Text>
-          <Text style={styles.micLabel}>{isRecording ? t('story.qa.recording') : t('story.qa.pressToTalk')}</Text>
+          <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
         </TouchableOpacity>
 
         <TextInput
@@ -555,20 +643,41 @@ export default function StoryPlayScreen() {
           numberOfLines={2}
         />
 
-        {childQuestion.trim() ? (
-          <TouchableOpacity style={styles.askBtn} onPress={handleChildQuestion} disabled={isAsking || !childQuestion.trim()}>
+        {childQuestion.trim() && !aiAnswer && !aiAskError ? (
+          <TouchableOpacity style={styles.askBtn} onPress={handleChildQuestion} disabled={isAsking}>
             <Text style={styles.askBtnText}>{isAsking ? t('story.qa.thinking') : t('story.qa.askAi')}</Text>
           </TouchableOpacity>
         ) : null}
 
+        {isAsking ? (
+          <View style={styles.qaLoadingWrap}>
+            <ActivityIndicator size="large" color="#FF8A65" />
+            <Text style={styles.qaLoadingText}>🤔 小浣熊正在认真思考…</Text>
+          </View>
+        ) : null}
+
         {aiAnswer ? (
           <View style={styles.aiAnswerWrap}>
+            <Text style={styles.aiAnswerLabel}>你问了：</Text>
+            <Text style={styles.aiAnswerQuestion}>{childQuestion.trim()}</Text>
             <Text style={styles.aiAnswer}>🤖 {aiAnswer}</Text>
           </View>
         ) : null}
 
+        {aiAskError ? (
+          <View style={styles.aiAnswerWrap}>
+            <Text style={styles.aiAnswer}>⚠️ 网络或 AI 暂时无法回答，但你的提问已悄悄记下来，留给爸爸妈妈看啦～</Text>
+          </View>
+        ) : null}
+
+        {(aiAnswer || aiAskError) ? (
+          <TouchableOpacity style={styles.askBtn} onPress={resetChildQuestion}>
+            <Text style={styles.askBtnText}>🔄 再问一个</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity style={styles.primaryBtn2} onPress={() => setPhase('finished')}>
-          <Text style={styles.primaryBtnText}>{t('story.qa.finish')}</Text>
+          <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </View>
       </CartoonScreen>
@@ -657,7 +766,6 @@ const styles = StyleSheet.create({
   micBtnActive: {
     width: 100, height: 100, borderRadius: 50, backgroundColor: '#651FFF',
     justifyContent: 'center', alignItems: 'center', elevation: 3,
-    transform: [{ scale: 1.1 }],
   },
   micIcon: { fontSize: 32 },
   micLabel: { fontSize: 12, color: '#FFF', marginTop: 4 },
@@ -670,10 +778,10 @@ const styles = StyleSheet.create({
     elevation: 2, marginTop: 10,
   },
   primaryBtn2: {
-    backgroundColor: '#FF8A65', borderRadius: 28, paddingVertical: 16, paddingHorizontal: 40,
-    elevation: 2, marginTop: 20,
+    backgroundColor: '#FF8A65', borderRadius: 28, paddingVertical: 18, paddingHorizontal: 52,
+    elevation: 2, marginTop: 24, alignSelf: 'center',
   },
-  primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
+  primaryBtnText: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
 
   childQWrap: { marginTop: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
   childQ: { fontSize: 16, color: '#5D4037', marginBottom: 12 },
@@ -683,12 +791,14 @@ const styles = StyleSheet.create({
     fontSize: 15, color: '#5D4037', textAlignVertical: 'top', minHeight: 60,
   },
   askBtn: {
-    backgroundColor: '#7C4DFF', borderRadius: 20, paddingVertical: 10, paddingHorizontal: 24,
-    alignSelf: 'flex-start',
+    backgroundColor: '#7C4DFF', borderRadius: 24, paddingVertical: 14, paddingHorizontal: 34,
+    alignSelf: 'center', marginTop: 12,
   },
-  askBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  askBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
   aiAnswerWrap: { marginTop: 16, backgroundColor: '#F3E5F5', borderRadius: 16, padding: 16 },
   aiAnswer: { fontSize: 15, color: '#4A148C', lineHeight: 24 },
+  aiAnswerLabel: { fontSize: 13, color: '#8E6FB0', fontWeight: '600', marginBottom: 4 },
+  aiAnswerQuestion: { fontSize: 15, color: '#4A148C', fontWeight: '700', marginBottom: 10, lineHeight: 22 },
 
   finishedText: { fontSize: 22, fontWeight: 'bold', color: '#5D4037', marginTop: 16, marginBottom: 32 },
   finishedBtn: {

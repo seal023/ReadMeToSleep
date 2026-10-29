@@ -73,6 +73,8 @@
   "settings.childName": "Baby's name",
   "settings.childName.hint": "Racco will lovingly call the baby by this name",
   "settings.childName.placeholder": "e.g. Yangyang / Peter",
+  "onboard.title": "What should we call your little one?",
+  "onboard.start": "Start",
   "settings.voice": "Voice",
   "settings.voice.system": "System Default",
   "settings.voice.mom": "Mom",

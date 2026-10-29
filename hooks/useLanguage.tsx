@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as Localization from 'expo-localization'
 import en from '../locales/en.json'
 import zh from '../locales/zh.json'
 import { Language, LocaleDict, LanguageContextType } from '../types'
@@ -19,11 +20,19 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
-      if (saved === 'en') {
-        setLang('en')
+      if (saved === 'en' || saved === 'zh') {
+        setLang(saved)
       } else {
-        setLang('zh')
-        AsyncStorage.setItem(STORAGE_KEY, 'zh')
+        // 首次启动且未在 App 内手动选过语言：跟随系统语言（iOS/Android 设备语言）
+        try {
+          const sysLang = Localization.getLocales()[0]?.languageCode;
+          const lang: Language = sysLang === 'en' ? 'en' : 'zh';
+          setLang(lang);
+          AsyncStorage.setItem(STORAGE_KEY, lang);
+        } catch {
+          setLang('zh');
+          AsyncStorage.setItem(STORAGE_KEY, 'zh');
+        }
       }
     }).catch(() => {
       setLang('zh')
