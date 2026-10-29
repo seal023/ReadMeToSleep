@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,12 +20,17 @@ import type { Story, Language, RaccoState } from '@/types';
 
 export default function CreateScreen() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language: uiLang } = useLanguage();
 
   const [theme, setTheme] = useState('');
   const [protagonist, setProtagonist] = useState('');
   const [details, setDetails] = useState('');
-  const [storyLang, setStoryLang] = useState<Language>('zh');
+  // 默认跟随当前界面语言：英文界面下生成英文故事；用户仍可用 chip 手动覆盖
+  const [storyLang, setStoryLang] = useState<Language>(uiLang);
+  // 在「设置」里切换语言时，同步把默认生成语言切过去（除非用户已手动选了别的）
+  useEffect(() => {
+    setStoryLang(uiLang);
+  }, [uiLang]);
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const { snapshot, refresh, showPaywall } = useEntitlement();

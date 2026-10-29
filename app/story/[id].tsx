@@ -64,6 +64,9 @@ export default function StoryPlayScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [qaQuestions, setQaQuestions] = useState<QAItem[]>(FALLBACK_QA);
   const [qaLoading, setQaLoading] = useState(false);
+  // 问答回顾日志：用于在「完成」页回显孩子的问题与回答（含第1轮选择题、第2轮自由提问）
+  const [qaRound1Log, setQaRound1Log] = useState<{ q: string; a: string }[]>([]);
+  const [childQaLog, setChildQaLog] = useState<{ q: string; a: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   // 奖励：升级 / 新解锁的勋章（需求 5）
   const [levelUp, setLevelUp] = useState<LevelRule | null>(null);
@@ -323,6 +326,8 @@ export default function StoryPlayScreen() {
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
+    // 记录第1轮问答，供「完成」页回显
+    setQaRound1Log((prev) => [...prev, { q: q.question, a: q.options[optionIndex] }]);
     setQaFeedback(t('story.qa.greatJob'));
     textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
     setTimeout(() => {
@@ -343,6 +348,8 @@ export default function StoryPlayScreen() {
       /* 录音可能尚未真正开始，忽略 */
     }
     setIsRecording(false);
+    const q = qaQuestions[qaIndex];
+    if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
     setQaFeedback(t('story.qa.greatJob'));
     textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
     setTimeout(() => {
@@ -364,6 +371,8 @@ export default function StoryPlayScreen() {
       const answer = await askQuestion(storyText, childQuestion);
       const finalAnswer = answer && answer.trim() ? answer : t('story.qa.unknown');
       setAiAnswer(finalAnswer);
+      // 记录第2轮自由提问，供「完成」页回显
+      setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
       // 朗读 AI 的回答，让孩子「听到」回复
       textToSpeech(finalAnswer, 'system', displayLang);
       // 持久化这次问答，供家长后台（统计页）查看
@@ -380,6 +389,8 @@ export default function StoryPlayScreen() {
       setAiAskError(true);
       const fallback = t('story.qa.unknown');
       setAiAnswer(fallback);
+      // 记录第2轮自由提问（含失败兜底），供「完成」页回显
+      setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: fallback }]);
       textToSpeech(fallback, 'system', displayLang);
     }
     setIsAsking(false);
@@ -546,7 +557,7 @@ export default function StoryPlayScreen() {
           visible={!!levelUp}
           emoji={levelUp?.emoji ?? '🎉'}
           title={t('reward.levelUp')}
-          subtitle={levelUp ? `Lv.${levelUp.level} · ${levelUp.name}` : ''}
+          subtitle={levelUp ? `Lv.${levelUp.level} · ${uiLang === 'en' ? levelUp.nameEn : levelUp.name}` : ''}
           desc={t('reward.keepGoing')}
           onDone={() => setLevelUp(null)}
         />
@@ -697,6 +708,25 @@ export default function StoryPlayScreen() {
         </Animated.View>
       ) : null}
 
+      {/* 问答回顾：让孩子/家长看到「刚才的问题得到了什么回答」 */}
+      {childQaLog.length > 0 || qaRound1Log.length > 0 ? (
+        <View style={styles.qaRecapCard}>
+          <Text style={styles.qaRecapTitle}>💡 {t('story.finished.qaTitle')}</Text>
+          {qaRound1Log.map((item, i) => (
+            <View key={`r1-${i}`} style={styles.qaRecapItem}>
+              <Text style={styles.qaRecapQ}>Q：{item.q}</Text>
+              <Text style={styles.qaRecapA}>A：{item.a}</Text>
+            </View>
+          ))}
+          {childQaLog.map((item, i) => (
+            <View key={`cq-${i}`} style={styles.qaRecapItem}>
+              <Text style={styles.qaRecapQ}>❓ {item.q}</Text>
+              <Text style={styles.qaRecapA}>🤖 {item.a}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)')}>
         <Text style={styles.finishedBtnIcon}>🏠</Text>
         <Text style={styles.finishedBtnText}>{t('story.finished.home')}</Text>
@@ -826,4 +856,18 @@ const styles = StyleSheet.create({
   },
   parentCommentTitle: { fontSize: 16, fontWeight: 'bold', color: '#F57C00', marginBottom: 8 },
   parentCommentText: { fontSize: 15, color: '#5D4037', lineHeight: 24, textAlign: 'center' },
+  // 完成页问答回顾卡片
+  qaRecapCard: {
+    backgroundColor: '#F1F8E9',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+    maxWidth: 340,
+    borderWidth: 2,
+    borderColor: '#C5E1A5',
+  },
+  qaRecapTitle: { fontSize: 16, fontWeight: 'bold', color: '#558B2F', marginBottom: 10, textAlign: 'center' },
+  qaRecapItem: { marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#AED581', paddingLeft: 10 },
+  qaRecapQ: { fontSize: 14, fontWeight: '600', color: '#33691E', marginBottom: 4, lineHeight: 20 },
+  qaRecapA: { fontSize: 14, color: '#555', lineHeight: 21 },
 });

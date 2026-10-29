@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
 //    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
 //    再手写 base64（Hermes 无 btoa）。
@@ -136,6 +137,18 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
     };
   }
   try {
+    // 客户端前置校验：录音文件为空或过小（如未真正录到声、或极短），
+    // 此时提交到百炼会被判定为静音（silent audio error），提前拦截给出明确指引。
+    const info = await FileSystem.getInfoAsync(audioUri).catch(() => null);
+    const size = (info && 'size' in info ? (info as any).size : 0) ?? 0;
+    if (!info || !(info as any).exists || size < 4096) {
+      return {
+        ok: false,
+        message:
+          '录音文件为空或过小，无法克隆。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒，再提交。',
+      };
+    }
+
     // 读取本地录音 → Base64 Data URI（百炼声音复刻接口接收公网 URL 或 Base64 Data URI）
     const file = new File(audioUri);
     const bytes = await file.bytes();
@@ -164,10 +177,15 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
     });
     const createData = await createRes.json().catch(() => ({} as any));
     if (!createRes.ok) {
-      const msg =
+      let msg =
         createData?.message ||
         createData?.output?.message ||
         JSON.stringify(createData).slice(0, 200);
+      // 百炼「静音」类错误：音频被识别为无声。给出可操作的重录指引，而非裸报错。
+      if (/silent|静音|empty audio|no audio/i.test(msg)) {
+        msg =
+          '音频被识别为静音。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒（百炼声音复刻需足够时长的清晰人声）。';
+      }
       return { ok: false, message: `创建音色失败（HTTP ${createRes.status}）：${msg}` };
     }
 

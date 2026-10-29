@@ -126,6 +126,11 @@ export default function VoiceClonePage() {
   };
 
   const handleDone = async () => {
+    // 前置拦截：录音过短几乎必然被百炼判为静音，提前给出明确指引
+    if (duration > 0 && duration < 3) {
+      Alert.alert('录音太短', '请重新录制：清晰朗读引导段落至少 10 秒，再提交克隆。');
+      return;
+    }
     if (uri) {
       setCloning(true);
       setCloneMsg(null);

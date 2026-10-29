@@ -11,6 +11,7 @@ import { useFocusEffect } from 'expo-router';
 import { getProgress } from '../../services/storage';
 import { getLevel, getNextLevel, getLevelProgress, BADGES } from '../../constants/rewards';
 import type { Progress } from '../../types';
+import { useLanguage } from '@/hooks/useLanguage';
 import { COLORS, RADIUS, SPACING, FONT_SIZE, SHADOW } from '@/constants/theme';
 
 interface LevelCardProps {
@@ -19,6 +20,8 @@ interface LevelCardProps {
 }
 
 export function LevelCard({ onPress }: LevelCardProps) {
+  const { language: uiLang } = useLanguage();
+  const isEn = uiLang === 'en';
   const [progress, setProgress] = useState<Progress | null>(null);
 
   const load = useCallback(async () => {
@@ -47,6 +50,19 @@ export function LevelCard({ onPress }: LevelCardProps) {
   // 百分比字符串需显式标注为 DimensionValue，否则 TS 会推断成普通 string 而报错
   const fillWidth: DimensionValue = `${Math.round(ratio * 100)}%`;
 
+  // 等级名与进度文案随界面语言切换（rewards.ts 已备 nameEn）
+  const levelName = isEn ? level.nameEn : level.name;
+  const statText = isEn
+    ? `Heard ${listened} stories${streak > 0 ? ` · ${streak}-day streak 🔥` : ''}`
+    : `已听 ${listened} 个故事${streak > 0 ? ` · 连续 ${streak} 天 🔥` : ''}`;
+  const progressHint = next
+    ? isEn
+      ? `Listen to ${Math.max(0, next.need - listened)} more to level up to ${next.nameEn} ${next.emoji}`
+      : `再听 ${Math.max(0, next.need - listened)} 个故事升级为「${next.name}」${next.emoji}`
+    : isEn
+      ? 'You have reached the highest level! 👑'
+      : '已是最高等级，你太棒了！👑';
+
   return (
     <TouchableOpacity
       style={styles.card}
@@ -61,11 +77,9 @@ export function LevelCard({ onPress }: LevelCardProps) {
 
         <View style={styles.infoBox}>
           <Text style={styles.levelName}>
-            Lv.{level.level} · {level.name}
+            Lv.{level.level} · {levelName}
           </Text>
-          <Text style={styles.statText}>
-            已听 {listened} 个故事{streak > 0 ? ` · 连续 ${streak} 天 🔥` : ''}
-          </Text>
+          <Text style={styles.statText}>{statText}</Text>
         </View>
       </View>
 
@@ -73,11 +87,7 @@ export function LevelCard({ onPress }: LevelCardProps) {
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: fillWidth }]} />
       </View>
-      <Text style={styles.progressHint}>
-        {next
-          ? `再听 ${Math.max(0, next.need - listened)} 个故事升级为「${next.name}」${next.emoji}`
-          : '已是最高等级，你太棒了！👑'}
-      </Text>
+      <Text style={styles.progressHint}>{progressHint}</Text>
 
       {/* 已获得勋章 */}
       {ownedBadges.length > 0 && (
