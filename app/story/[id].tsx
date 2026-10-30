@@ -20,6 +20,7 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
+import { playLocalFile } from '../../services/clonedVoicePlayback';
 import { hasClonedVoice, seekClonedAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -394,6 +395,23 @@ export default function StoryPlayScreen() {
 
   const handlePlay = async () => {
     if (!story) return;
+    // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成）
+    if (story.audioUri) {
+      const ok = await playLocalFile(story.audioUri, handleStoryEnded);
+      setUsingClonedVoice(false);
+      clonedPlayingRef.current = ok; // 同用全局 player，支持进度条拖动
+      setIsPlaying(true);
+      const totalDuration = (story.duration || 30) * 1000;
+      lastTotalDuration.current = totalDuration;
+      const step = 100 / (totalDuration / 500);
+      if (progressInterval.current) clearInterval(progressInterval.current);
+      progressInterval.current = setInterval(() => {
+        setProgress((prev) => (prev >= 100 ? 100 : prev + step));
+      }, 500);
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
+      return;
+    }
     const used = await playStory(storyText, selectedVoice, displayLang, handleStoryEnded);
     setUsingClonedVoice(used);
     clonedPlayingRef.current = used;

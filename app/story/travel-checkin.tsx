@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
-  Animated, Dimensions, ActivityIndicator,
+  Animated, Dimensions, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  setAudioModeAsync,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
 import { getProgress, saveProgress } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
 import { textToSpeech } from '../../services/tts';
+import { transcribeAudio } from '../../services/voiceClone';
 import Racco from '../../components/common/Racco';
 import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -145,6 +152,69 @@ export default function TravelCheckinScreen() {
   const [confetti, setConfetti] = useState<{ x: number; color: string; delay: number }[]>([]);
   const confettiAnims = useRef<Animated.Value[]>([]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
+
+  // 语音输入：复用 expo-audio 录音 + 百炼 ASR 转写，写入搜索框并自动匹配已有城市
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'processing'>('idle');
+
+  // 把语音/文字与预设地点做双向模糊匹配（中文常带"我想去""的"等语气词，用 includes 双向容错）
+  const autoMatchLocation = (raw: string) => {
+    const q = raw.trim();
+    if (!q) return;
+    const lower = q.toLowerCase();
+    const matched = LOCATIONS.find((l) => {
+      const cn = l.cn;
+      const en = l.en.toLowerCase();
+      const place = l.place.toLowerCase();
+      return (
+        cn.includes(q) || q.includes(cn) ||
+        en.includes(lower) || lower.includes(en) ||
+        place.includes(lower) || lower.includes(place)
+      );
+    });
+    if (matched) setSelectedLoc(matched);
+  };
+
+  const handleVoiceInput = async () => {
+    // 正在听 → 停止并转写
+    if (voiceState === 'listening') {
+      try {
+        await audioRecorder.stop();
+        const u = audioRecorder.uri || null;
+        setVoiceState('processing');
+        if (u) {
+          const text = await transcribeAudio(u);
+          if (text && text.trim()) {
+            const q = text.trim();
+            setQuery(q);
+            autoMatchLocation(q);
+          }
+        }
+      } catch (err) {
+        console.warn('[checkin] voice transcribe failed:', err);
+      }
+      setVoiceState('idle');
+      return;
+    }
+    // 空闲 → 开始录音
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          language === 'en' ? 'Microphone needed' : '需要麦克风权限',
+          language === 'en' ? 'Please allow microphone to use voice search' : '请允许使用麦克风，才能用语音搜地点'
+        );
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, staysActiveInBackground: false });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setVoiceState('listening');
+    } catch (err) {
+      console.warn('[checkin] voice record failed:', err);
+      setVoiceState('idle');
+    }
+  };
 
   // 读取历史打卡，地图上已去过的地方显示金色星星
   useEffect(() => {
@@ -323,16 +393,43 @@ export default function TravelCheckinScreen() {
               <TextInput
                 style={styles.searchInput}
                 value={query}
-                placeholder={language === 'en' ? '搜索或输入任意地点' : '搜索或输入任意地点'}
+                placeholder={language === 'en' ? '搜索或语音输入地点' : '搜索或语音说出地点'}
                 placeholderTextColor="#999"
                 onChangeText={setQuery}
               />
-              {query ? (
+              {voiceState === 'processing' ? (
+                <ActivityIndicator size="small" color="#FF8A65" style={{ marginLeft: 6 }} />
+              ) : (
+                <TouchableOpacity
+                  style={[styles.micBtn, voiceState === 'listening' && styles.micBtnActive]}
+                  onPress={handleVoiceInput}
+                >
+                  <Text style={styles.micIcon}>
+                    {voiceState === 'listening' ? '⏹️' : '🎤'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {query && voiceState === 'idle' ? (
                 <TouchableOpacity onPress={() => setQuery('')}>
                   <Text style={styles.clearBtn}>✕</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
+
+            {voiceState === 'listening' && (
+              <View style={styles.voiceHint}>
+                <Text style={styles.voiceHintText}>
+                  {language === 'en' ? 'Listening… tap 🎤 again to stop' : '正在听你说… 再点一下 🎤 停止'}
+                </Text>
+              </View>
+            )}
+            {voiceState === 'processing' && (
+              <View style={styles.voiceHint}>
+                <Text style={styles.voiceHintText}>
+                  {language === 'en' ? 'Recognizing…' : '识别中…'}
+                </Text>
+              </View>
+            )}
 
             <CartoonMap
               spots={mapSpots}
@@ -542,7 +639,15 @@ const styles = StyleSheet.create({
   },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: '#333', height: '100%' },
+  micBtn: {
+    marginLeft: 6, paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 16, backgroundColor: '#FFF0ED',
+  },
+  micBtnActive: { backgroundColor: '#FF8A65' },
+  micIcon: { fontSize: 18 },
   clearBtn: { fontSize: 14, color: '#999', marginLeft: 4 },
+  voiceHint: { alignItems: 'center', marginBottom: 8 },
+  voiceHintText: { fontSize: 12, color: '#FF8A65' },
 
   // 地点列表（地图图钉选不到时的可靠替代）
   listTitle: { fontSize: 14, color: '#8D6E63', marginTop: 16, marginBottom: 8, fontWeight: '600' },

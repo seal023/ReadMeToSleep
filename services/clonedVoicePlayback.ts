@@ -159,3 +159,40 @@ export function stopClonedAudio(): void {
   }
   currentPlayer = null;
 }
+
+/**
+ * 播放本地音频文件（如孩子/家长录制的故事），直接 createAudioPlayer 播放，
+ * 不走 TTS / 克隆合成。用于「我的录音」中保留录音的回放。
+ * 复用全局 currentPlayer 槽位，故 stopClonedAudio() / 进度拖动 seekClonedAudio() 同样适用。
+ */
+export async function playLocalFile(uri: string, onDone?: () => void): Promise<boolean> {
+  stopClonedAudio();
+  try {
+    const player = createAudioPlayer({ uri }) as unknown as {
+      play: () => void;
+      pause: () => void;
+      remove: () => void;
+      seekTo: (millis: number) => void;
+      onEnded?: (cb: () => void) => void;
+    };
+    currentPlayer = player;
+    player.play();
+    if (typeof player.onEnded === 'function') {
+      try {
+        player.onEnded(() => onDone?.());
+      } catch {
+        /* 忽略差异 */
+      }
+    } else {
+      try {
+        (player as unknown as { onEnded?: () => void }).onEnded = () => onDone?.();
+      } catch {
+        /* 忽略差异 */
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn('[clonedPlayback] playLocalFile failed:', err);
+    return false;
+  }
+}

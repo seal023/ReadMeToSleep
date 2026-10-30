@@ -45,6 +45,18 @@ function resolveEnrollEndpoint(): string | undefined {
   return ENROLL_URL || undefined;
 }
 
+// 合成端点：与注册端点解析出同一个域名（避免 VOICE_ENROLL_URL 单独配置、
+// 而 AI_BASE_URL 是另一个域名时合成失败），仅把 customization 换成 SpeechSynthesizer
+function resolveSynthEndpoint(): string | undefined {
+  if (ENROLL_URL && /services\/audio\/tts\/customization|api\/v1\/services\/audio/i.test(ENROLL_URL)) {
+    return ENROLL_URL.replace(/services\/audio\/tts\/customization$/, 'services/audio/tts/SpeechSynthesizer');
+  }
+  if (TTS_BASE_URL) {
+    return `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/SpeechSynthesizer`;
+  }
+  return undefined;
+}
+
 // 复刻模型：必须与合成（synthesizeWithClonedVoice）使用的 model 完全一致，否则合成失败。
 // 可通过 EXPO_PUBLIC_VOICE_TARGET_MODEL 覆盖；默认 cosyvoice-v2（百炼文档示例模型）。
 const CLONE_MODEL = (process.env.EXPO_PUBLIC_VOICE_TARGET_MODEL as string | undefined) || 'cosyvoice-v2';
@@ -259,11 +271,11 @@ export async function synthesizeWithClonedVoice(
   text: string,
   target: CloneTarget
 ): Promise<ArrayBuffer | null> {
-  const voiceId = await getClonedVoiceId(target);
-  if (!voiceId || !TTS_BASE_URL) return null;
-  try {
-    // 百炼 CosyVoice 非实时合成：返回的是音频「下载地址」(output.audio.url)，需二次 GET 取二进制
-    const synthEndpoint = `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/SpeechSynthesizer`;
+    const voiceId = await getClonedVoiceId(target);
+    const synthEndpoint = resolveSynthEndpoint();
+    if (!voiceId || !synthEndpoint) return null;
+    try {
+      // 百炼 CosyVoice 非实时合成：返回的是音频「下载地址」(output.audio.url)，需二次 GET 取二进制
     const res = await fetch(synthEndpoint, {
       method: 'POST',
       headers: {

@@ -45,7 +45,7 @@ export default function MyStoriesScreen() {
 
   const filtered = stories.filter(s => {
     if (tab === 'created') return s.type === 'ai_generated';
-    if (tab === 'recorded') return s.audioUri && s.type !== 'classic' && s.type !== 'travel';
+    if (tab === 'recorded') return s.type === 'recorded';
     return false;
   });
 
@@ -176,7 +176,7 @@ export default function MyStoriesScreen() {
               <EmptyState emoji="🎤" text={t('myStories.empty.recorded')} />
             }
           />
-          <Link href="/(tabs)/create" asChild>
+          <Link href="/(tabs)/record" asChild>
             <TouchableOpacity style={styles.recordBtn}>
               <Text style={styles.recordBtnText}>🎤 {t('myStories.startRecord')}</Text>
             </TouchableOpacity>

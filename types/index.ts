@@ -25,7 +25,7 @@ export interface Story {
   /** 该故事实际可用的语言（经典故事有英文后同时含 zh/en） */
   languages?: Language[];
   language: Language;
-  type: 'classic' | 'ai_generated' | 'travel';
+  type: 'classic' | 'ai_generated' | 'travel' | 'recorded';
   tags: string[];
   duration: number;
   voiceId?: string;

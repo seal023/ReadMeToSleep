@@ -122,8 +122,12 @@ export default function HomeTab() {
 
   const greeting = (() => {
     const base = t(getGreetingKey());
-    if (childName) return base.replace('{name}', childName);
-    return base.replace('，{name}！', '！').replace(', {name}!', '!');
+    // 同时兼容 {name} / {title} 两种占位符（历史两套问候键并存，避免名字插不进去）
+    const filled = base.replace(/\{name\}|\{title\}/g, childName);
+    if (childName) return filled;
+    return base
+      .replace(/，\{name\}！|，\{title\}！/, '！')
+      .replace(/, \{name\}!|, \{title\}!/, '!');
   })();
 
   const dismissCloneBanner = async () => {

@@ -28,7 +28,7 @@ export default function ChildRecordingsScreen() {
 
   async function load() {
     const all = await getStories();
-    setRecordings(all.filter(s => s.type === 'recording' || s.audioUri));
+    setRecordings(all.filter(s => s.type === 'recorded' || s.audioUri));
   }
 
   async function toggleLike(story: Story) {

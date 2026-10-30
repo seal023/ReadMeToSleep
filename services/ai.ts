@@ -390,32 +390,100 @@ export async function generateStory(
 
     const parsed = extractJson(raw);
 
+    let title = (theme || '晚安故事') as string;
+    let content = '';
     if (parsed?.content) {
-      const content = String(parsed.content).trim();
-      const title = String(parsed.title || '').trim() || theme || '晚安故事';
-      return {
-        title,
-        content,
-        duration: estimateDuration(content, language),
-      };
+      content = String(parsed.content).trim();
+      title = String(parsed.title || '').trim() || title;
+    } else {
+      // JSON 解析失败但拿到了文本 —— 直接当正文用
+      const plain = stripCodeFence(raw);
+      if (plain.length <= 40) throw new Error('unparsable response');
+      content = plain;
+      title = plain.split(/\r?\n/)[0].replace(/^#+\s*/, '').slice(0, 30) || title;
     }
 
-    // JSON 解析失败但拿到了文本 —— 直接当正文用
-    const plain = stripCodeFence(raw);
-    if (plain.length > 40) {
-      const title = plain.split(/\r?\n/)[0].replace(/^#+\s*/, '').slice(0, 30);
-      return {
-        title: title || theme || '晚安故事',
-        content: plain,
-        duration: estimateDuration(plain, language),
-      };
-    }
+    // 敏感词硬过滤：生成后扫描，命中则带具体违禁词重试一次；仍命中则字符串替换兜底
+    // （家长设的违禁词绝不能原样交付给孩子——软约束不可靠，这里做最后一道闸）
+    const guarded = await enforceSensitiveWords(
+      content,
+      title,
+      sensitiveWords || [],
+      system,
+      user,
+      lenTokens,
+    );
 
-    throw new Error('unparsable response');
+    return {
+      title: guarded.title,
+      content: guarded.content,
+      duration: estimateDuration(guarded.content, language),
+    };
   } catch (err: any) {
     console.warn('[ai] generateStory failed, using fallback:', err?.message ?? err);
     return pickFallbackStory(theme, protagonist);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 敏感词硬过滤（家长端设置后，绝不能把违禁词原样交付给孩子）
+// ---------------------------------------------------------------------------
+
+/** 忽略大小写扫描文本，返回命中的敏感词列表 */
+function findSensitiveHits(text: string, words: string[]): string[] {
+  if (!text || !words?.length) return [];
+  const lower = text.toLowerCase();
+  return words.filter((w) => w && w.trim() && lower.includes(w.toLowerCase()));
+}
+
+/** 把命中的敏感词统一替换成安全中性词，作为最后兜底（保证绝不出违禁词） */
+function replaceSensitive(text: string, words: string[]): string {
+  let out = text;
+  for (const w of words) {
+    if (!w || !w.trim()) continue;
+    const safe = '好玩的东西';
+    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(escaped, 'gi'), safe);
+  }
+  return out;
+}
+
+/**
+ * 生成后敏感词兜底：命中则带具体违禁词整篇重写一次；仍命中则字符串替换。
+ * 返回保证不含违禁词的正文（最坏情况用替换兜底）。
+ */
+async function enforceSensitiveWords(
+  content: string,
+  title: string,
+  words: string[],
+  system: string,
+  user: string,
+  maxTokens?: number,
+): Promise<{ title: string; content: string }> {
+  const hit = findSensitiveHits(content, words);
+  if (hit.length === 0) return { title, content };
+
+  try {
+    const retrySystem =
+      system +
+      `\n【强制重申】绝对、彻底不要出现以下违禁词或任何同类危险/暴力内容：${hit.join('、')}。` +
+      `上一次生成仍包含它们，这是不合格的，请重新创作一个完全不含这些词的故事。`;
+    const raw2 = await chat(retrySystem, user, 0.9, maxTokens);
+    const p2 = extractJson(raw2 || '');
+    if (p2?.content) {
+      const c2 = String(p2.content).trim();
+      if (findSensitiveHits(c2, words).length === 0) {
+        return {
+          title: String(p2.title || '').trim() || title,
+          content: c2,
+        };
+      }
+      return { title, content: replaceSensitive(c2, words) };
+    }
+  } catch {
+    /* 落到下方替换兜底 */
+  }
+  return { title, content: replaceSensitive(content, words) };
 }
 
 /**

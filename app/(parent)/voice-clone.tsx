@@ -8,6 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
+import { playClonedAudio } from '@/services/clonedVoicePlayback';
 import { saveVoiceSetting } from '@/services/storage';
 
 // 预设对象；自定义克隆以 key = 'custom:<名称>' 形式存在
@@ -39,12 +40,26 @@ export default function VoiceClonePage() {
   const [uri, setUri] = useState<string | null>(null);
   const [waveData, setWaveData] = useState<number[]>([]);
   const [cloning, setCloning] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [cloneMsg, setCloneMsg] = useState<string | null>(null);
   const [cloneResult, setCloneResult] = useState<VoiceCloneResult | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
 
   const router = useRouter();
+
+  // 克隆成功后试听：用刚克隆出的音色合成一句欢迎语并播放，确认声音真的"像"
+  const handlePreview = async () => {
+    if (previewing) return;
+    setPreviewing(true);
+    try {
+      const text = t('vc.previewText').replace('{name}', targetLabel(target, t));
+      const ok = await playClonedAudio(text, target, () => setPreviewing(false));
+      if (!ok) setPreviewing(false);
+    } catch {
+      setPreviewing(false);
+    }
+  };
   /** null = 校验中；true = 放行；false = 被拦下 */
   const [gatePassed, setGatePassed] = useState<boolean | null>(null);
 
@@ -333,6 +348,17 @@ export default function VoiceClonePage() {
             <>
               <Text style={styles.successSub}>{t('vc.successSubOk')}</Text>
               <Text style={styles.successSub}>{t('vc.enabledNow').replace('{name}', targetLabel(target, t))}</Text>
+              <View style={{ marginTop: 14 }}>
+                <TouchableOpacity
+                  style={[styles.previewBtn, previewing && styles.previewBtnDisabled]}
+                  onPress={handlePreview}
+                  disabled={previewing}
+                >
+                  <Text style={styles.previewBtnText}>
+                    {previewing ? t('vc.previewing') : t('vc.preview')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
           {!cloning && (
@@ -394,6 +420,9 @@ const styles = StyleSheet.create({
   retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   backHomeBtn: { backgroundColor: '#6c5ce7', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
   backHomeBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  previewBtn: { backgroundColor: '#FF6B6B', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 28, alignSelf: 'center' },
+  previewBtnDisabled: { opacity: 0.6 },
+  previewBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   cloningFull: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   cloningText: { fontSize: 20, fontWeight: 'bold', color: '#2d1b69', marginTop: 16 },
   cloningSub: { fontSize: 14, color: '#999', marginTop: 8, textAlign: 'center' },
