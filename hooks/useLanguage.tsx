@@ -13,10 +13,12 @@ const LanguageContext = createContext<LanguageContextType>({
   language: 'zh',
   setLanguage: async () => {},
   t: (key: string) => key,
+  hydrated: false,
 })
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLang] = useState<Language>('zh')
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
@@ -36,6 +38,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       }
     }).catch(() => {
       setLang('zh')
+    }).finally(() => {
+      // 无论读取成功与否，标记语言已初始化，避免 UI 用默认 zh 提前播报/渲染
+      setHydrated(true)
     })
   }, [])
 
@@ -50,7 +55,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t, hydrated }}>
       {children}
     </LanguageContext.Provider>
   )

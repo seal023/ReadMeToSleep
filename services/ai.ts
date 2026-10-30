@@ -1,6 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { GenerateStoryParams, StoryGenerateResult } from '../types';
+import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../types';
 import { Alert } from 'react-native';
 
 /**
@@ -125,7 +125,8 @@ export async function getRemainingQuota(): Promise<Record<QuotaKind, number>> {
 async function chat(
   system: string,
   user: string,
-  temperature: number
+  temperature: number,
+  maxTokens?: number
 ): Promise<string> {
   if (!AI_CONFIG.apiKey) {
     // 未配置 Key：不发起网络请求，让上层降级到内置故事库
@@ -143,7 +144,7 @@ async function chat(
         { role: 'user', content: user },
       ],
       temperature,
-      max_tokens: AI_CONFIG.maxTokens,
+      max_tokens: maxTokens ?? AI_CONFIG.maxTokens,
     },
     {
       timeout: AI_CONFIG.timeoutMs,
@@ -315,6 +316,7 @@ export async function generateStory(
     protagonist,
     details,
     language = 'zh',
+    length = 'short',
     sensitiveWords,
   } = params;
 
@@ -327,10 +329,28 @@ export async function generateStory(
     return pickFallbackStory(theme, protagonist);
   }
 
+  // 时长分级 → 字数/词数要求 + 输出 token 上限
+  // short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟
+  const lenRule = (
+    isZh
+      ? {
+          short: '正文字数 900-1200 个汉字，绝对不少于 800 字（这个长度要求必须严格满足）',
+          medium: '正文字数约 2500-3500 个汉字，绝对不少于 2200 字（这个长度要求必须严格满足）',
+          long: '正文字数约 4500-6000 个汉字，绝对不少于 4000 字（这个长度要求必须严格满足）',
+        }
+      : {
+          short: 'about 600-800 English words, and NEVER fewer than 500 words (this is a strict requirement)',
+          medium: 'about 1600-2200 English words, and NEVER fewer than 1400 words (this is a strict requirement)',
+          long: 'about 3000-4000 English words, and NEVER fewer than 2600 words (this is a strict requirement)',
+        }
+  )[length] as string;
+
+  const lenTokens = (
+    { short: 3072, medium: 6144, long: 8192 } as Record<StoryLength, number>
+  )[length];
+
   const langName = isZh ? '简体中文' : 'English';
-  const lengthRule = isZh
-    ? '正文字数 900-1200 个汉字，绝对不少于 800 字（这个长度要求必须严格满足）'
-    : 'about 600-800 English words, and NEVER fewer than 500 words (this is a strict requirement)';
+  const lengthRule = lenRule;
 
   const avoidRule =
     sensitiveWords && sensitiveWords.length > 0
@@ -365,7 +385,7 @@ export async function generateStory(
     .join('\n');
 
   try {
-    const raw = await chat(system, user, 0.8);
+    const raw = await chat(system, user, 0.8, lenTokens);
     if (!raw) throw new Error('empty response');
 
     const parsed = extractJson(raw);
@@ -442,7 +462,7 @@ export async function generateStoryQuestions(
   content: string,
   title: string,
   language: 'zh' | 'en'
-): Promise<{ question: string; options: string[] }[] | null> {
+): Promise<{ question: string; options: string[]; correctIndex: number }[] | null> {
   const allowed = await consumeQuota('qa');
   if (!allowed) return null;
 
@@ -454,18 +474,19 @@ export async function generateStoryQuestions(
     `【语言】全部使用${langName}输出，不得混用其他语言。`,
     '【要求】',
     '- 只输出一个 JSON 数组，不要解释、不要 markdown 代码块、不要任何前后缀文字。',
-    '- 数组含 2 个元素，每个元素为 {"question":"一道简短的问题（必须紧扣这个故事里的角色、情节或场景）","options":["选项A的简短词语","选项B的简短词语"]}。',
+    '- 数组含 2 个元素，每个元素为 {"question":"一道简短的问题（必须紧扣这个故事里的角色、情节或场景）","options":["选项A的简短词语","选项B的简短词语"],"correct":0 或 1}。',
+    '- correct 必须是 0 或 1，表示 options 中哪一个才是符合故事内容的答案（用于判断孩子是否答对）。',
     '- 问题要让孩子能听懂、且与这个故事的具体内容相关；选项为 2 个简短词语，不要长句。',
   ].join('\n');
 
-  const user = `故事标题：${title}\n\n故事内容：\n${(content || '').slice(0, 2000)}\n\n请出 2 道与这个故事有关的二选一问题。`;
+  const user = `故事标题：${title}\n\n故事内容：\n${(content || '').slice(0, 2000)}\n\n请出 2 道与这个故事有关的二选一问题，并标明正确答案的索引。`;
 
   try {
     const raw = await chat(system, user, 0.6);
     if (!raw) return null;
     const cleaned = stripCodeFence(raw);
 
-    const parse = (text: string): { question: string; options: string[] }[] | null => {
+    const parse = (text: string): { question: string; options: string[]; correctIndex: number }[] | null => {
       try {
         const arr = JSON.parse(text);
         if (!Array.isArray(arr)) return null;
@@ -474,10 +495,15 @@ export async function generateStoryQuestions(
             (x: any) =>
               x && typeof x.question === 'string' && Array.isArray(x.options) && x.options.length >= 2
           )
-          .map((x: any) => ({
-            question: String(x.question),
-            options: x.options.slice(0, 2).map(String),
-          }));
+          .map((x: any) => {
+            let correct = Number(x.correct);
+            if (!Number.isFinite(correct) || correct < 0 || correct >= x.options.length) correct = 0;
+            return {
+              question: String(x.question),
+              options: x.options.slice(0, 2).map(String),
+              correctIndex: correct,
+            };
+          });
         return out.length ? out : null;
       } catch {
         return null;

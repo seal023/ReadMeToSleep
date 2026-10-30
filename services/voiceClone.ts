@@ -139,20 +139,31 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
   try {
     // 客户端前置校验：录音文件为空或过小（如未真正录到声、或极短），
     // 此时提交到百炼会被判定为静音（silent audio error），提前拦截给出明确指引。
+    // 以 expo-file-system/next 的 File.bytes() 读取到的真实字节数为权威，FileSystem.getInfoAsync
+    // 仅作交叉校验；任一处能确认文件存在且足够大即通过。
+    let audioBytes: Uint8Array = new Uint8Array(0);
+    try {
+      audioBytes = await new File(audioUri).bytes();
+    } catch (readErr: any) {
+      console.warn('[voice-clone] File.bytes() failed:', readErr?.message ?? readErr);
+    }
     const info = await FileSystem.getInfoAsync(audioUri).catch(() => null);
-    const size = (info && 'size' in info ? (info as any).size : 0) ?? 0;
-    if (!info || !(info as any).exists || size < 4096) {
+    const infoSize = (info && 'size' in info ? (info as any).size : 0) ?? 0;
+    const infoExists = !!(info && (info as any).exists);
+    // 取两种来源中的较大值，避免单一路径误判
+    const size = Math.max(audioBytes.length, infoSize);
+    if ((!infoExists && audioBytes.length === 0) || size < 4096) {
       return {
         ok: false,
         message:
-          '录音文件为空或过小，无法克隆。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒，再提交。',
+          '录音文件为空或过小，无法克隆（实测大小约 ' +
+          size +
+          ' 字节）。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 5 秒，再提交。',
       };
     }
 
     // 读取本地录音 → Base64 Data URI（百炼声音复刻接口接收公网 URL 或 Base64 Data URI）
-    const file = new File(audioUri);
-    const bytes = await file.bytes();
-    const base64 = uint8ToBase64(bytes);
+    const base64 = uint8ToBase64(audioBytes);
     const dataUri = `data:${mimeFromUri(audioUri)};base64,${base64}`;
 
     // 百炼声音复刻创建音色：请求体必须用 input 包裹，action=create_voice 为必填；

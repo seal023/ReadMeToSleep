@@ -55,6 +55,7 @@ const KEYS = {
   VOICE_GUIDANCE: 'rms_voice_guidance',
   CHILD_NAME: 'rms_child_name',
   CHILD_QA: 'rms_child_qa',
+  CHILD_QUIZ: 'rms_child_quiz',
 };
 
 export interface ParentComment {
@@ -69,6 +70,18 @@ export interface ChildQA {
   storyTitle: string;
   question: string;
   answer: string;
+  at: string;
+}
+
+/** 第 1 轮选择题的作答记录（含是否正确，供家长后台查看） */
+export interface ChildQuiz {
+  id: string;
+  storyId: string;
+  storyTitle: string;
+  question: string;
+  chosen: string;
+  correctText: string;
+  isCorrect: boolean;
   at: string;
 }
 
@@ -273,4 +286,22 @@ export async function saveChildQA(qa: ChildQA): Promise<void> {
   const list = await getChildQAs();
   const next = [qa, ...list.filter((x) => x.id !== qa.id)].slice(0, 200);
   await AsyncStorage.setItem(KEYS.CHILD_QA, JSON.stringify(next));
+}
+
+// ---- 孩子选择题作答（家长后台可见） ----
+export async function getChildQuizzes(): Promise<ChildQuiz[]> {
+  const raw = await AsyncStorage.getItem(KEYS.CHILD_QUIZ);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveChildQuiz(q: ChildQuiz): Promise<void> {
+  const list = await getChildQuizzes();
+  const next = [q, ...list.filter((x) => x.id !== q.id)].slice(0, 200);
+  await AsyncStorage.setItem(KEYS.CHILD_QUIZ, JSON.stringify(next));
 }

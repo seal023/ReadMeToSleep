@@ -4,22 +4,24 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { useLanguage } from '../../hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, type VoiceCloneResult } from '@/services/voiceClone';
 
 type CloneTarget = 'mom' | 'dad' | 'grandma';
 
-const TARGETS: { key: CloneTarget; label: string; icon: string }[] = [
-  { key: 'mom', label: '妈妈', icon: '👩' },
-  { key: 'dad', label: '爸爸', icon: '👨' },
-  { key: 'grandma', label: '外婆', icon: '👵' },
+const TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
+  { key: 'mom', labelKey: 'vc.mom', icon: '👩' },
+  { key: 'dad', labelKey: 'vc.dad', icon: '👨' },
+  { key: 'grandma', labelKey: 'vc.grandma', icon: '👵' },
 ];
 
 const READ_TEXT_ZH = `从前有座山，山里有座庙。庙里有个老和尚在给小和尚讲故事。讲的什么呢？老和尚对小和尚说："从前有座山，山里有座庙……"小和尚歪着头问："妈妈，这故事的结尾是什么呀？"老和尚笑着说："这就是故事的魅力呀，我们每天都可以从头开始听。"`;
 const READ_TEXT_EN = `Once upon a time, there was a little bird who wanted to learn how to sing. Every morning, she would sit on a branch and listen to the old birds sing beautiful songs. "Practice makes perfect," the old bird said kindly. So every day, the little bird opened her beak and tried again and again until one day, she discovered her own wonderful voice.`;
 
 export default function VoiceClonePage() {
+  const { t } = useLanguage();
   const [target, setTarget] = useState<CloneTarget>('mom');
   const [step, setStep] = useState<'select' | 'recording' | 'preview' | 'done'>('select');
   const [duration, setDuration] = useState(0);
@@ -85,7 +87,7 @@ export default function VoiceClonePage() {
     try {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('录音失败', '请授予麦克风权限');
+        Alert.alert(t('vc.recFail'), t('vc.micPerm'));
         return;
       }
 
@@ -105,7 +107,7 @@ export default function VoiceClonePage() {
         stack: err?.stack,
       });
       Alert.alert(
-        '录音失败（诊断）',
+        t('vc.diag'),
         `name: ${err?.name ?? '无'}\nmessage: ${err?.message ?? '无'}\n${
           err?.stack ? String(err.stack).slice(0, 240) : ''
         }`
@@ -127,8 +129,8 @@ export default function VoiceClonePage() {
 
   const handleDone = async () => {
     // 前置拦截：录音过短几乎必然被百炼判为静音，提前给出明确指引
-    if (duration > 0 && duration < 3) {
-      Alert.alert('录音太短', '请重新录制：清晰朗读引导段落至少 10 秒，再提交克隆。');
+    if (duration > 0 && duration < 5) {
+      Alert.alert(t('vc.tooShort'), t('vc.tooShortMsg'));
       return;
     }
     if (uri) {
@@ -139,7 +141,7 @@ export default function VoiceClonePage() {
       setCloneResult(res);
       setCloneMsg(res.message);
     } else {
-      setCloneResult({ ok: false, message: '没有可用的录音文件' });
+      setCloneResult({ ok: false, message: t('vc.noFile') });
     }
     setStep('done');
   };
@@ -158,7 +160,7 @@ export default function VoiceClonePage() {
           {gatePassed === null ? (
             <ActivityIndicator size="large" color="#6c5ce7" />
           ) : (
-            <Text style={styles.gateText}>声音克隆为会员专属功能</Text>
+            <Text style={styles.gateText}>{t('vc.gate')}</Text>
           )}
         </View>
       </CartoonScreen>
@@ -168,51 +170,51 @@ export default function VoiceClonePage() {
   return (
     <CartoonScreen gradient="candy" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>声音克隆</Text>
+      <Text style={styles.title}>{t('vc.title')}</Text>
 
       <View style={styles.raccoRow}>
         <Racco state={raccoState} size={56} />
         <Text style={styles.raccoText}>
-          {step === 'select' && '选择你想克隆的声音'}
-          {step === 'recording' && 'Racco 正在聆听...请保持稳定朗读'}
-          {step === 'preview' && '录音完成！检查波形并确认'}
-          {step === 'done' && '声音克隆已提交'}
+          {step === 'select' && t('vc.raccoSelect')}
+          {step === 'recording' && t('vc.raccoRecording')}
+          {step === 'preview' && t('vc.raccoPreview')}
+          {step === 'done' && t('vc.raccoDone')}
         </Text>
       </View>
 
       {step !== 'done' && (
         <>
-          <Text style={styles.sectionTitle}>选择克隆对象</Text>
+          <Text style={styles.sectionTitle}>{t('vc.chooseTarget')}</Text>
           <View style={styles.segmented}>
-            {TARGETS.map((t) => (
+            {TARGETS.map((tg) => (
               <TouchableOpacity
-                key={t.key}
-                style={target === t.key ? styles.segmentActive : styles.segmentBtn}
-                onPress={() => setTarget(t.key)}
+                key={tg.key}
+                style={target === tg.key ? styles.segmentActive : styles.segmentBtn}
+                onPress={() => setTarget(tg.key)}
               >
-                <Text style={styles.segmentIcon}>{t.icon}</Text>
-                <Text style={target === t.key ? styles.segmentActiveLabel : styles.segmentLabel}>
-                  {t.label}
+                <Text style={styles.segmentIcon}>{tg.icon}</Text>
+                <Text style={target === tg.key ? styles.segmentActiveLabel : styles.segmentLabel}>
+                  {t(tg.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={styles.sectionTitle}>引导录音</Text>
-          <Text style={styles.guide}>请朗读以下段落，持续 3–5 分钟</Text>
+          <Text style={styles.sectionTitle}>{t('vc.guideTitle')}</Text>
+          <Text style={styles.guide}>{t('vc.guideText')}</Text>
 
           <View style={styles.textCard}>
-            <Text style={styles.subLabel}>中文示例</Text>
+            <Text style={styles.subLabel}>{t('vc.exampleZh')}</Text>
             <Text style={styles.readText}>{READ_TEXT_ZH}</Text>
           </View>
           <View style={styles.textCard}>
-            <Text style={styles.subLabel}>English Example</Text>
+            <Text style={styles.subLabel}>{t('vc.exampleEn')}</Text>
             <Text style={styles.readText}>{READ_TEXT_EN}</Text>
           </View>
 
           {step === 'select' && (
             <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
-              <Text style={styles.recordBtnText}>🎤 开始录音</Text>
+              <Text style={styles.recordBtnText}>{t('vc.startRecord')}</Text>
             </TouchableOpacity>
           )}
 
@@ -220,24 +222,24 @@ export default function VoiceClonePage() {
             <>
               <View style={styles.timerCard}>
                 <Text style={styles.timer}>{formatTime(duration)}</Text>
-                <Text style={styles.timerHint}>目标：3–5 分钟</Text>
+                <Text style={styles.timerHint}>{t('vc.timerHint')}</Text>
               </View>
               <TouchableOpacity style={styles.stopBtn} onPress={stopRecording}>
-                <Text style={styles.recordBtnText}>⏹ 完成录音</Text>
+                <Text style={styles.recordBtnText}>{t('vc.stopRecord')}</Text>
               </TouchableOpacity>
             </>
           )}
 
           {step === 'preview' && (
             <>
-              <Text style={styles.sectionTitle}>波形预览</Text>
+              <Text style={styles.sectionTitle}>{t('vc.waveform')}</Text>
               <View style={styles.waveform}>
                 {waveData.map((h, i) => (
                   <View key={i} style={{ ...styles.bar, height: h }} />
                 ))}
               </View>
               <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
-                <Text style={styles.doneBtnText}>✅ 确认并提交克隆</Text>
+                <Text style={styles.doneBtnText}>{t('vc.submit')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -248,15 +250,15 @@ export default function VoiceClonePage() {
         <View style={styles.successCard}>
           <Text style={{ fontSize: 48 }}>{cloning ? '⏳' : cloneResult?.ok ? '🎉' : '⚠️'}</Text>
           <Text style={styles.successText}>
-            {cloning ? '正在提交克隆…' : (cloneResult?.message || '声音克隆已提交！')}
+            {cloning ? t('vc.submitting') : (cloneResult?.message || t('vc.successOk'))}
           </Text>
           {!cloning && cloneResult && !cloneResult.ok && (
             <Text style={styles.successSub}>
-              服务端返回：{cloneResult.message}。请检查克隆接口地址与请求格式是否与百炼/通义听悟文档一致。
+              {t('vc.successSubFail').replace('{msg}', cloneResult.message)}
             </Text>
           )}
           {!cloning && cloneResult?.ok && (
-            <Text style={styles.successSub}>通常需要几分钟处理时间，之后即可在「妈妈/爸爸/外婆」音色中使用。</Text>
+            <Text style={styles.successSub}>{t('vc.successSubOk')}</Text>
           )}
           {!cloning && (
             <View style={styles.doneActions}>
@@ -265,11 +267,11 @@ export default function VoiceClonePage() {
                   style={styles.retryBtn}
                   onPress={() => { setCloneResult(null); setCloneMsg(null); setStep('select'); }}
                 >
-                  <Text style={styles.retryBtnText}>🔁 重新克隆</Text>
+                  <Text style={styles.retryBtnText}>{t('vc.retry')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.backHomeBtn} onPress={() => router.back()}>
-                <Text style={styles.backHomeBtnText}>← 返回家长中心</Text>
+                <Text style={styles.backHomeBtnText}>{t('vc.back')}</Text>
               </TouchableOpacity>
             </View>
           )}

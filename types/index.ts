@@ -60,15 +60,22 @@ export interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  /** 语言是否已从存储/系统完成初始化；UI 应在 hydrated 后才做语言相关的一次性动作（如开机问候） */
+  hydrated: boolean;
 }
 
 export type LocaleDict = Record<string, string>;
+
+/** 故事时长分级：short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟 */
+export type StoryLength = 'short' | 'medium' | 'long';
 
 export interface GenerateStoryParams {
   theme: string;
   protagonist: string;
   details: string;
   language: Language;
+  /** 时长分级，默认 short */
+  length?: StoryLength;
   sensitiveWords?: string[];
 }
 

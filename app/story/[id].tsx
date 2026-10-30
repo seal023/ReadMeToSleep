@@ -19,7 +19,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, type ParentComment, type ChildQA } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -30,7 +30,7 @@ import type { Story } from '../../types';
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished';
 
 type QAItem =
-  | { type: 'choice'; question: string; options: string[] }
+  | { type: 'choice'; question: string; options: string[]; correctIndex: number }
   | { type: 'voice'; question: string };
 
 const VOICE_QUESTION_ZH = '你最喜欢故事的哪个部分？';
@@ -38,8 +38,8 @@ const VOICE_QUESTION_EN = 'Which part of the story did you like best?';
 
 /** 兜底：AI 出题失败时使用的通用题（与故事无关，但至少通顺） */
 const FALLBACK_QA: QAItem[] = [
-  { type: 'choice', question: '故事里谁最让你喜欢？', options: ['可爱的小动物', '聪明的孩子'] },
-  { type: 'choice', question: '故事发生在哪里？', options: ['安静的森林', '温暖的家里'] },
+  { type: 'choice', question: '故事里谁最让你喜欢？', options: ['可爱的小动物', '聪明的孩子'], correctIndex: 0 },
+  { type: 'choice', question: '故事发生在哪里？', options: ['安静的森林', '温暖的家里'], correctIndex: 0 },
   { type: 'voice', question: VOICE_QUESTION_ZH },
 ];
 
@@ -93,8 +93,12 @@ export default function StoryPlayScreen() {
   const [qaQuestions, setQaQuestions] = useState<QAItem[]>(FALLBACK_QA);
   const [qaLoading, setQaLoading] = useState(false);
   // 问答回顾日志：用于在「完成」页回显孩子的问题与回答（含第1轮选择题、第2轮自由提问）
-  const [qaRound1Log, setQaRound1Log] = useState<{ q: string; a: string }[]>([]);
+  const [qaRound1Log, setQaRound1Log] = useState<{ q: string; a: string; correct?: boolean }[]>([]);
   const [childQaLog, setChildQaLog] = useState<{ q: string; a: string }[]>([]);
+  // 录音就绪标记 + 开始 promise：避免「快速轻点」在 prepare 尚未完成时就触发 stop，
+  // 导致录音没真正开始就推进（孩子感知为"轻点一下就结束了"）。停止时先 await 开始流程完成。
+  const recReady = useRef(false);
+  const recStartPromise = useRef<Promise<void> | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 奖励：升级 / 新解锁的勋章（需求 5）
   const [levelUp, setLevelUp] = useState<LevelRule | null>(null);
@@ -399,8 +403,24 @@ export default function StoryPlayScreen() {
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
-    // 记录第1轮问答，供「完成」页回显
-    setQaRound1Log((prev) => [...prev, { q: q.question, a: q.options[optionIndex] }]);
+    const isCorrect = q.correctIndex === optionIndex;
+    // 记录第1轮问答（含对错），供「完成」页回显
+    setQaRound1Log((prev) => [
+      ...prev,
+      { q: q.question, a: q.options[optionIndex], correct: isCorrect },
+    ]);
+    // 持久化这次选择题作答，供家长后台（统计页）查看对错
+    const quiz: ChildQuiz = {
+      id: `${story?.id ?? 'x'}-q-${Date.now()}`,
+      storyId: story?.id ?? '',
+      storyTitle: story?.title ?? '',
+      question: q.question,
+      chosen: q.options[optionIndex],
+      correctText: q.options[q.correctIndex] ?? '',
+      isCorrect,
+      at: new Date().toISOString(),
+    };
+    saveChildQuiz(quiz).catch(() => {});
     setQaFeedback(t('story.qa.greatJob'));
     textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
     setTimeout(() => {
@@ -415,16 +435,13 @@ export default function StoryPlayScreen() {
 
   // 第 1 轮 voice 题：松开麦克风后停止录音并推进到下一题 / 第 2 轮
   const handleVoiceRecord = async () => {
-    try {
-      await audioRecorder.stop();
-    } catch {
-      /* 录音可能尚未真正开始，忽略 */
-    }
     setIsRecording(false);
     const q = qaQuestions[qaIndex];
     if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
-    setQaFeedback(t('story.qa.greatJob'));
-    textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
+    setQaFeedback(t('story.qa.voiceHeard'));
+    textToSpeech(t('story.qa.voiceHeard'), 'system', displayLang);
+    // 等录音真正停止（含等待开始流程完成，避免快速松手漏录）后再推进
+    await stopQaRecording();
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -432,7 +449,7 @@ export default function StoryPlayScreen() {
       } else {
         setPhase('qa_round2');
       }
-    }, 800);
+    }, 900);
   };
 
   const handleChildQuestion = async () => {
@@ -477,28 +494,47 @@ export default function StoryPlayScreen() {
 
   // 提问环节真实录音：按住说话（onPressIn 调用），松开停止（onPressOut 调用）
   const startQaRecording = async () => {
-    try {
-      const perm = await requestRecordingPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('需要麦克风权限', '请在系统设置中允许麦克风权限后重试');
-        return;
+    recReady.current = false;
+    recStartPromise.current = (async () => {
+      try {
+        const perm = await requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('需要麦克风权限', '请在系统设置中允许麦克风权限后重试');
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await audioRecorder.prepareToRecordAsync();
+        await audioRecorder.record();
+        recReady.current = true;
+        setIsRecording(true);
+      } catch (err: any) {
+        console.error('[story] 提问录音开始失败:', err);
+        Alert.alert('录音失败', err?.message ?? '未知错误');
+        recReady.current = false;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-      setIsRecording(true);
-    } catch (err: any) {
-      console.error('[story] 提问录音开始失败:', err);
-      Alert.alert('录音失败', err?.message ?? '未知错误');
-    }
+    })();
   };
 
   const stopQaRecording = async () => {
+    // 先等「开始录音」流程跑完，避免快速松手时录音还没真正开始就被判为未就绪而跳过
+    if (recStartPromise.current) {
+      try {
+        await recStartPromise.current;
+      } catch {
+        /* 忽略 */
+      }
+    }
+    if (!recReady.current) {
+      setIsRecording(false);
+      recReady.current = false;
+      return;
+    }
     try {
       await audioRecorder.stop();
     } catch (err: any) {
       console.error('[story] 提问录音停止失败:', err);
     }
+    recReady.current = false;
     setIsRecording(false);
   };
 
@@ -512,6 +548,7 @@ export default function StoryPlayScreen() {
           type: 'choice',
           question: q.question,
           options: q.options.slice(0, 2),
+          correctIndex: q.correctIndex,
         }));
         items.push({
           type: 'voice',
@@ -720,8 +757,7 @@ export default function StoryPlayScreen() {
           style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
           onPressIn={startQaRecording}
           onPressOut={async () => {
-            try { await audioRecorder.stop(); } catch { /* 忽略 */ }
-            setIsRecording(false);
+            await stopQaRecording();
             if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
           }}
         >
@@ -842,7 +878,10 @@ export default function StoryPlayScreen() {
           {qaRound1Log.map((item, i) => (
             <View key={`r1-${i}`} style={styles.qaRecapItem}>
               <Text style={styles.qaRecapQ}>Q：{item.q}</Text>
-              <Text style={styles.qaRecapA}>A：{item.a}</Text>
+              <Text style={styles.qaRecapA}>
+                {item.correct === true ? '✅ ' : item.correct === false ? '❌ ' : ''}
+                A：{item.a}
+              </Text>
             </View>
           ))}
           {childQaLog.map((item, i) => (

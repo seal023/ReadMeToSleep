@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-nat
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
-import { getProgress, getStories, getChildQAs, type ChildQA } from '../../services/storage';
+import { getProgress, getStories, getChildQAs, getChildQuizzes, type ChildQA, type ChildQuiz } from '../../services/storage';
 import type { Story } from '../../types';
 
 const RACCO_IDLE_SIZE = 80;
@@ -37,6 +37,7 @@ export default function StatisticsPage() {
   const [todayList, setTodayList] = useState<{ title: string; time: string }[]>([]);
   const [historyList, setHistoryList] = useState<{ title: string; date: string }[]>([]);
   const [childQAs, setChildQAs] = useState<ChildQA[]>([]);
+  const [childQuizzes, setChildQuizzes] = useState<ChildQuiz[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -87,6 +88,8 @@ export default function StatisticsPage() {
 
       // 孩子提问（最新在前）
       setChildQAs(await getChildQAs());
+      // 孩子选择题作答（最新在前，含对错）
+      setChildQuizzes(await getChildQuizzes());
 
       setLoaded(true);
     })();
@@ -170,6 +173,25 @@ export default function StatisticsPage() {
               )}
             </View>
 
+            {/* 孩子答题（后台可见，含对错） */}
+            <Text style={styles.sectionTitle}>📝 孩子答题</Text>
+            <View style={styles.listCard}>
+              {childQuizzes.length === 0 ? (
+                <Text style={styles.emptyText}>孩子还没有答题哦～</Text>
+              ) : (
+                childQuizzes.slice(0, 20).map((q, i) => (
+                  <View key={q.id} style={[styles.quizRow, i < childQuizzes.slice(0, 20).length - 1 && styles.listRowBorder]}>
+                    <Text style={styles.qaQ}>❓ {q.question}</Text>
+                    <Text style={styles.qaA}>
+                      {q.isCorrect ? '✅ ' : '❌ '}
+                      正确：{q.correctText} · 孩子选了：{q.chosen}
+                    </Text>
+                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
             {/* 孩子提问（后台可见） */}
             <Text style={styles.sectionTitle}>💬 孩子提问</Text>
             <View style={styles.listCard}>
@@ -218,6 +240,7 @@ const styles = StyleSheet.create({
   listTitle: { flex: 1, fontSize: 15, color: COLORS.text },
   listMeta: { fontSize: 13, color: COLORS.textSub, marginLeft: 8 },
   qaRow: { paddingVertical: 12 },
+  quizRow: { paddingVertical: 12 },
   qaQ: { fontSize: 15, color: COLORS.text, fontWeight: '600', lineHeight: 22 },
   qaA: { fontSize: 14, color: COLORS.purple, lineHeight: 22, marginTop: 4 },
   qaMeta: { fontSize: 12, color: COLORS.textSub, marginTop: 4 },

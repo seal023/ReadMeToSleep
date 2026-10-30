@@ -28,6 +28,8 @@ export default function CreateScreen() {
   const [details, setDetails] = useState('');
   // 默认跟随当前界面语言：英文界面下生成英文故事；用户仍可用 chip 手动覆盖
   const [storyLang, setStoryLang] = useState<Language>(uiLang);
+  // 时长分级：short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟
+  const [storyLength, setStoryLength] = useState<'short' | 'medium' | 'long'>('short');
   // 在「设置」里切换语言时，同步把默认生成语言切过去（除非用户已手动选了别的）
   useEffect(() => {
     setStoryLang(uiLang);
@@ -55,6 +57,14 @@ export default function CreateScreen() {
   }, [spinAnim, twinkleAnim]);
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
+  // 生成中循环展示的可爱短句（不识字的孩子也能通过文字气泡 + 语音辅助理解"正在努力生成"）
+  const GEN_PHRASE_KEYS = ['create.genPhrase.1', 'create.genPhrase.2', 'create.genPhrase.3', 'create.genPhrase.4', 'create.genPhrase.5', 'create.genPhrase.6'];
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  useEffect(() => {
+    if (!generating) return;
+    const id = setInterval(() => setPhraseIdx((i) => (i + 1) % GEN_PHRASE_KEYS.length), 2500);
+    return () => clearInterval(id);
+  }, [generating, GEN_PHRASE_KEYS.length]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
   const handleGenerate = async () => {
@@ -77,6 +87,7 @@ export default function CreateScreen() {
         protagonist,
         details,
         language: storyLang,
+        length: storyLength,
         sensitiveWords: [...sensitive.words, ...sensitive.phrases],
       });
       const story: Story = {
@@ -132,6 +143,7 @@ export default function CreateScreen() {
           state={generating ? 'thinking' : raccoState}
           size={120}
           showSpeechBubble
+          speechText={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : ''}
         />
       </View>
 
@@ -183,6 +195,20 @@ export default function CreateScreen() {
         ))}
       </View>
 
+      <View style={styles.langRow}>
+        {(['short', 'medium', 'long'] as const).map((len) => (
+          <TouchableOpacity
+            key={len}
+            style={storyLength === len ? styles.chipActive : styles.chip}
+            onPress={() => setStoryLength(len)}
+          >
+            <Text style={storyLength === len ? styles.chipTextActive : styles.chipText}>
+              {len === 'short' ? t('create.lenShort') : len === 'medium' ? t('create.lenMedium') : t('create.lenLong')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {snapshot && !snapshot.premium && snapshot.storiesRemaining !== null && (
         <Text style={styles.quota}>
           {t('create.quota').replace('{n}', String(snapshot.storiesRemaining))}
@@ -208,15 +234,15 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
-  // 生成页旋转光环 + 魔法闪烁
+  // 生成页旋转光环 + 魔法闪烁（环绕在 120 的小浣熊外，仅略大一圈，避免过大压迫感）
   genRing: {
     position: 'absolute',
-    top: -25,
-    left: -25,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    borderWidth: 5,
+    top: -5,
+    left: -5,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    borderWidth: 4,
     borderColor: 'rgba(183,148,244,0.25)',
     borderTopColor: '#B794F4',
   },

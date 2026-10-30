@@ -24,7 +24,7 @@ function getGreetingKey(): string {
  * "xxx，下午好 / 晚上好" 等，依时段 + 界面语言。需在隐私同意后才播报，且 60 秒内不重复。
  */
 function GreetingOnOpen() {
-  const { t, language } = useLanguage();
+  const { t, language, hydrated } = useLanguage();
   const lastSpoke = useRef(0);
 
   const speak = useCallback(async () => {
@@ -42,12 +42,14 @@ function GreetingOnOpen() {
   }, [t, language]);
 
   useEffect(() => {
+    // 等语言从存储/系统完成初始化后再问候：避免默认 zh 先播、hydrate 后又用英文重播的竞态
+    if (!hydrated) return;
     speak();
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') speak();
     });
     return () => sub.remove();
-  }, [speak]);
+  }, [hydrated, speak]);
 
   return null;
 }
