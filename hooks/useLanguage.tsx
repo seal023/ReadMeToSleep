@@ -17,7 +17,15 @@ const LanguageContext = createContext<LanguageContextType>({
 })
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLang] = useState<Language>('zh')
+  // 首帧即按系统语言初始化，避免先渲染中文再闪成英文（本地无存储偏好时）
+  const [language, setLang] = useState<Language>(() => {
+    try {
+      const sysLang = Localization.getLocales()[0]?.languageCode
+      return sysLang === 'en' ? 'en' : 'zh'
+    } catch {
+      return 'zh'
+    }
+  })
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {

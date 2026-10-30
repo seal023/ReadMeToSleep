@@ -55,7 +55,15 @@ export default function VoiceClonePage() {
     try {
       const text = t('vc.previewText').replace('{name}', targetLabel(target, t));
       const ok = await playClonedAudio(text, target, () => setPreviewing(false));
-      if (!ok) setPreviewing(false);
+      if (!ok) {
+        setPreviewing(false);
+        // 合成/播放失败（多为音色仍在训练、或音频会话受限）时给出明确提示，而不是静默没声
+        Alert.alert(
+          t('vc.previewFailedTitle') || '试听失败',
+          t('vc.previewFailedMsg') ||
+            '没能用克隆声播放。常见原因：音色仍在训练（提交后约几分钟），或设备处于静音模式。请稍后重试，或在设置里用系统音试听。'
+        );
+      }
     } catch {
       setPreviewing(false);
     }

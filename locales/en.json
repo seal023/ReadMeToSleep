@@ -292,6 +292,8 @@
   "vc.preview": "🔊 Preview my voice",
   "vc.previewing": "Playing…",
   "vc.previewText": "Hello, I'm your {name}. Let Racco read you a story tonight~",
+  "vc.previewFailedTitle": "Preview failed",
+  "vc.previewFailedMsg": "Couldn't play with the cloned voice. Common causes: the voice is still training (a few minutes after submit), or the device is in silent mode. Please retry later, or preview with the system voice in Settings.",
   "story.qa.correct": "Correct! You're awesome!",
   "story.qa.wrong": "That's okay, give it another think~",
   "story.qa.voiceTooShort": "Didn't catch that — hold and speak again~",

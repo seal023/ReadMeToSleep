@@ -92,15 +92,18 @@ export function SkyDecor({ variant = 'day', enabled = true }: SkyDecorProps) {
   if (!enabled) return null;
   const items =
     variant === 'night'
-      ? [DECOR.moon, '⭐', '✨', '🌟', '⭐']
-      : ['☁️', '✨', '☁️', '⭐'];
+      ? [DECOR.moon, '⭐', '✨', '🌟', '⭐', '✨', '🌙', '⭐']
+      : ['☁️', '✨', '☁️', '⭐', '🌤️', '✨', '☁️', '🌟'];
 
   const positions = [
-    { top: 40, left: 24 },
-    { top: 96, right: 28 },
-    { top: 210, left: 40 },
-    { top: 300, right: 34 },
-    { top: 420, left: 30 },
+    { top: 36, left: 22 },
+    { top: 84, right: 26 },
+    { top: 150, left: 38 },
+    { top: 220, right: 30 },
+    { top: 300, left: 26 },
+    { top: 380, right: 40 },
+    { top: 470, left: 44 },
+    { top: 560, right: 28 },
   ];
 
   return (
@@ -150,5 +153,5 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   decorItem: { position: 'absolute' },
-  decorEmoji: { fontSize: 26, opacity: 0.55 },
+  decorEmoji: { fontSize: 34, opacity: 0.7 },
 });

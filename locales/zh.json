@@ -292,6 +292,8 @@
   "vc.preview": "🔊 试听我的声音",
   "vc.previewing": "播放中…",
   "vc.previewText": "你好呀，我是你的 {name}，今晚让小浣熊陪你一起听故事吧～",
+  "vc.previewFailedTitle": "试听失败",
+  "vc.previewFailedMsg": "没能用克隆声播放。常见原因：音色仍在训练（提交后约几分钟），或设备处于静音模式。请稍后重试，或在设置里用系统音试听。",
   "story.qa.correct": "答对啦，你真棒！",
   "story.qa.wrong": "没关系，再想想～",
   "story.qa.voiceTooShort": "没听清呢，再按住说一次吧～",

@@ -1,4 +1,4 @@
-import { createAudioPlayer } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 import {
   synthesizeWithClonedVoice,
@@ -102,6 +102,13 @@ export async function playClonedAudio(
       encoding: FileSystem.EncodingType.Base64,
     });
 
+    // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
+    try {
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, staysActiveInBackground: false });
+    } catch {
+      /* 忽略会话配置异常，继续尝试播放 */
+    }
+
     const player = createAudioPlayer({ uri: filePath }) as unknown as {
       play: () => void;
       pause: () => void;
@@ -168,6 +175,12 @@ export function stopClonedAudio(): void {
 export async function playLocalFile(uri: string, onDone?: () => void): Promise<boolean> {
   stopClonedAudio();
   try {
+    // 播放前配置音频会话，避免 iOS 静音（与 playClonedAudio 一致）
+    try {
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, staysActiveInBackground: false });
+    } catch {
+      /* 忽略 */
+    }
     const player = createAudioPlayer({ uri }) as unknown as {
       play: () => void;
       pause: () => void;

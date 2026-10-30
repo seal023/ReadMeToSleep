@@ -16,7 +16,7 @@ import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
-import { getVoiceGuidance, getChildName } from '../../services/storage';
+import { getVoiceGuidance, getChildName, setChildName as saveChildName } from '../../services/storage';
 import { textToSpeech } from '../../services/tts';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
@@ -139,7 +139,8 @@ export default function HomeTab() {
   const finishOnboard = async () => {
     const name = onboardText.trim();
     if (!name) return;
-    await setChildName(name);
+    // 持久化到 AsyncStorage（之前只更新了本地 state，从未落盘，导致设置页读不到、重启后丢失）
+    await saveChildName(name);
     setChildName(name);
     setOnboardVisible(false);
   };
