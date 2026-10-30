@@ -6,7 +6,7 @@ import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
-import { hasClonedVoice } from '../../services/clonedVoicePlayback';
+import { getClonedTargets } from '../../services/voiceClone';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version + 原生 build number） */
 const APP_VERSION: string =
@@ -28,9 +28,11 @@ export default function SettingsScreen() {
   useEffect(() => {
     getVoiceSetting().then((v) => v && setCurrentVoice(v));
     (async () => {
+      const targets = await getClonedTargets();
       const map: Record<string, boolean> = {};
+      for (const t of targets) map[t] = true;
       for (const t of ['mom', 'dad', 'grandma'] as const) {
-        map[t] = await hasClonedVoice(t);
+        if (!(t in map)) map[t] = false;
       }
       setCloned(map);
       setChildNameState(await getChildName());
@@ -56,15 +58,17 @@ export default function SettingsScreen() {
   };
 
   const showVoiceOptions = () => {
-    const optionFor = (id: string, labelKey: string) => {
+    const optionFor = (id: string, label: string) => {
       const mark = cloned[id] ? ` ✓${t('settings.voice.cloned')}` : '';
-      return { text: t(labelKey) + mark, onPress: () => selectVoice(id) };
+      return { text: label + mark, onPress: () => selectVoice(id) };
     };
+    const customNames = Object.keys(cloned).filter((k) => k.startsWith('custom:'));
     Alert.alert(t('settings.voice.title'), t('settings.voice.hint'), [
-      optionFor('system', 'settings.voice.system'),
-      optionFor('mom', 'settings.voice.mom'),
-      optionFor('dad', 'settings.voice.dad'),
-      optionFor('grandma', 'settings.voice.grandma'),
+      optionFor('system', t('settings.voice.system')),
+      optionFor('mom', t('settings.voice.mom')),
+      optionFor('dad', t('settings.voice.dad')),
+      optionFor('grandma', t('settings.voice.grandma')),
+      ...customNames.map((k) => optionFor(k, k.slice('custom:'.length))),
       { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
@@ -72,7 +76,9 @@ export default function SettingsScreen() {
   const currentVoiceLabel =
     currentVoice === 'system'
       ? t('settings.voice.system')
-      : t(`settings.voice.${currentVoice}` as 'settings.voice.mom');
+      : currentVoice.startsWith('custom:')
+        ? currentVoice.slice('custom:'.length)
+        : t(`settings.voice.${currentVoice}` as 'settings.voice.mom');
 
   return (
     <CartoonScreen gradient="day" decor>

@@ -52,7 +52,8 @@ const CLONE_MODEL = (process.env.EXPO_PUBLIC_VOICE_TARGET_MODEL as string | unde
 const CLONE_PREFIX = 'rms';
 
 
-export type CloneTarget = 'mom' | 'dad' | 'grandma';
+// 预设：'mom' | 'dad' | 'grandma'；自定义克隆对象以 'custom:<名称>' 形式存储
+export type CloneTarget = string;
 
 const STORAGE_KEY = (target: CloneTarget) => `rms_voice_clone_${target}`;
 
@@ -82,6 +83,18 @@ export async function saveClonedVoiceId(target: CloneTarget, voiceId: string): P
     await AsyncStorage.setItem(STORAGE_KEY(target), voiceId);
   } catch {
     /* 存储异常不应阻断流程 */
+  }
+}
+
+/** 枚举所有已克隆的音色 key（含自定义 custom:*），用于设置页动态展示 */
+export async function getClonedTargets(): Promise<string[]> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    return keys
+      .filter((k) => typeof k === 'string' && (k as string).startsWith('rms_voice_clone_'))
+      .map((k) => (k as string).replace('rms_voice_clone_', ''));
+  } catch {
+    return [];
   }
 }
 
@@ -249,7 +262,9 @@ export async function synthesizeWithClonedVoice(
   const voiceId = await getClonedVoiceId(target);
   if (!voiceId || !TTS_BASE_URL) return null;
   try {
-    const res = await fetch(`${TTS_BASE_URL}/compatible-mode/v1/audio/speech`, {
+    // 百炼 CosyVoice 非实时合成：返回的是音频「下载地址」(output.audio.url)，需二次 GET 取二进制
+    const synthEndpoint = `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/SpeechSynthesizer`;
+    const res = await fetch(synthEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -258,13 +273,57 @@ export async function synthesizeWithClonedVoice(
       },
       body: JSON.stringify({
         model: CLONE_MODEL,
-        input: text,
-        voice: voiceId,
-        response_format: 'mp3',
+        input: {
+          text,
+          voice: voiceId,
+          format: 'mp3',
+          sample_rate: 24000,
+        },
       }),
     });
     if (!res.ok) return null;
-    return await res.arrayBuffer();
+    const data = await res.json().catch(() => ({} as any));
+    const audioUrl = data?.output?.audio?.url;
+    if (!audioUrl || typeof audioUrl !== 'string') return null;
+    const audioRes = await fetch(audioUrl);
+    if (!audioRes.ok) return null;
+    return await audioRes.arrayBuffer();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 语音转文字（孩子提问环节）：百炼 qwen3-asr-flash，支持 base64 Data URL 直传，
+ * 走 OpenAI 兼容的 chat/completions 通道（与故事生成共用同一 MaaS 域名）。
+ * 返回识别文本；失败/未配置返回 null，调用方据此回退到手动输入。
+ */
+export async function transcribeAudio(audioUri: string): Promise<string | null> {
+  if (!AI_API_KEY || !TTS_BASE_URL) return null;
+  try {
+    const bytes = await new File(audioUri).bytes();
+    const b64 = uint8ToBase64(bytes);
+    const mime = mimeFromUri(audioUri);
+    const dataUri = `data:${mime};base64,${b64}`;
+    const res = await fetch(`${TTS_BASE_URL.replace(/\/+$/, '')}/compatible-mode/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` },
+      body: JSON.stringify({
+        model: 'qwen3-asr-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [{ type: 'input_audio', input_audio: { data: dataUri } }],
+          },
+        ],
+        stream: false,
+        asr_options: { enable_itn: false },
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({} as any));
+    const text = data?.choices?.[0]?.message?.content;
+    return text ? String(text).trim() : null;
   } catch {
     return null;
   }

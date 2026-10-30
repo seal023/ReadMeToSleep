@@ -106,6 +106,7 @@
   "common.cancel": "Cancel",
   "common.delete": "Delete",
   "common.confirm": "Confirm",
+  "common.ok": "OK",
   "common.back": "Back",
   "common.done": "Done",
   "common.retry": "Retry",
@@ -283,5 +284,14 @@
   "create.genPhrase.6": "Adding a little magic to your story ✨",
   "parent.quizTitle": "Child's answers",
   "parent.quizCorrect": "Correct",
-  "parent.quizWrong": "Wrong"
+  "parent.quizWrong": "Wrong",
+  "vc.customAdd": "+ Custom",
+  "vc.customNamePlaceholder": "Enter a name, e.g. Grandpa",
+  "vc.cloningHint": "Training your voice, please wait (about 1–2 minutes)…",
+  "vc.enabledNow": "Enabled {name}'s voice for you — go listen to a story!",
+  "story.qa.correct": "Correct! You're awesome!",
+  "story.qa.wrong": "That's okay, give it another think~",
+  "story.qa.voiceTooShort": "Didn't catch that — hold and speak again~",
+  "story.qa.transcribing": "Listening to you…",
+  "story.seekHint": "System voice can't be dragged — continuing playback"
 }

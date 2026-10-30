@@ -11,6 +11,8 @@ import {
   Animated,
   TextInput,
   Alert,
+  PanResponder,
+  Keyboard,
   type DimensionValue,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -18,7 +20,8 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
-import { hasClonedVoice } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio } from '../../services/clonedVoicePlayback';
+import { transcribeAudio } from '../../services/voiceClone';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
@@ -99,6 +102,39 @@ export default function StoryPlayScreen() {
   // 导致录音没真正开始就推进（孩子感知为"轻点一下就结束了"）。停止时先 await 开始流程完成。
   const recReady = useRef(false);
   const recStartPromise = useRef<Promise<void> | null>(null);
+  // 进度条拖动跳转
+  const [usingClonedVoice, setUsingClonedVoice] = useState(false);
+  const clonedPlayingRef = useRef(false);
+  const lastTotalDuration = useRef(0);
+  const [seekToast, setSeekToast] = useState('');
+  const barLayout = useRef({ width: 0 });
+  // 录音时长（用于语音题误触判定）
+  const recStartTs = useRef(0);
+  const recEndTs = useRef(0);
+  // 提问环节语音转文字中
+  const [transcribing, setTranscribing] = useState(false);
+  const progressPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (evt) => {
+        const w = barLayout.current.width || width || 1;
+        const r = Math.max(0, Math.min(1, evt.nativeEvent.locationX / w));
+        setProgress(r * 100);
+      },
+      onPanResponderRelease: (evt) => {
+        const w = barLayout.current.width || width || 1;
+        const r = Math.max(0, Math.min(1, evt.nativeEvent.locationX / w));
+        setProgress(r * 100);
+        if (clonedPlayingRef.current) {
+          seekClonedAudio((r * lastTotalDuration.current) / 1000);
+        } else {
+          setSeekToast(t('story.seekHint'));
+          setTimeout(() => setSeekToast(''), 2200);
+        }
+      },
+    })
+  ).current;
   const [error, setError] = useState<string | null>(null);
   // 奖励：升级 / 新解锁的勋章（需求 5）
   const [levelUp, setLevelUp] = useState<LevelRule | null>(null);
@@ -356,17 +392,19 @@ export default function StoryPlayScreen() {
     setPhase('completed');
   };
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (!story) return;
-    playStory(storyText, selectedVoice, displayLang, handleStoryEnded);
+    const used = await playStory(storyText, selectedVoice, displayLang, handleStoryEnded);
+    setUsingClonedVoice(used);
+    clonedPlayingRef.current = used;
     setIsPlaying(true);
 
-    // 进度条仅作视觉估算，不再强制跳转；真正的跳转由 handleStoryEnded 驱动
-    // 中文 TTS 约 4-5 字/秒（~210ms/字）；英文按词数估算（~0.45s/词），避免进度条跑太快
+    // 进度条为视觉估算；克隆声支持真实拖动跳转，系统音仅视觉
     const isEn = displayLang === 'en';
     const totalDuration = isEn
       ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
       : Math.max(storyText.length * 210, 10000);
+    lastTotalDuration.current = totalDuration;
     const step = 100 / (totalDuration / 500);
     if (progressInterval.current) clearInterval(progressInterval.current);
     progressInterval.current = setInterval(() => {
@@ -393,13 +431,6 @@ export default function StoryPlayScreen() {
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
 
-  const handleProgressTap = (e: any) => {
-    const x = e.nativeEvent.locationX;
-    const ratio = x / (width - 40);
-    const newProgress = Math.max(0, Math.min(100, ratio * 100));
-    setProgress(newProgress);
-  };
-
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
@@ -421,8 +452,9 @@ export default function StoryPlayScreen() {
       at: new Date().toISOString(),
     };
     saveChildQuiz(quiz).catch(() => {});
-    setQaFeedback(t('story.qa.greatJob'));
-    textToSpeech(t('story.qa.greatJob'), 'system', displayLang);
+    const fb = isCorrect ? t('story.qa.correct') : t('story.qa.wrong');
+    setQaFeedback(fb);
+    textToSpeech(fb, 'system', displayLang);
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -436,12 +468,20 @@ export default function StoryPlayScreen() {
   // 第 1 轮 voice 题：松开麦克风后停止录音并推进到下一题 / 第 2 轮
   const handleVoiceRecord = async () => {
     setIsRecording(false);
+    // 等录音真正停止（含等待开始流程完成，避免快速松手漏录）后再判断
+    await stopQaRecording();
+    const durSec = (recEndTs.current - recStartTs.current) / 1000;
     const q = qaQuestions[qaIndex];
+    // 录音过短（<0.6s）视为误触/没说话：提示重录，不推进
+    if (durSec < 0.6) {
+      setQaFeedback(t('story.qa.voiceTooShort'));
+      textToSpeech(t('story.qa.voiceTooShort'), 'system', displayLang);
+      setTimeout(() => setQaFeedback(''), 1600);
+      return;
+    }
     if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
     setQaFeedback(t('story.qa.voiceHeard'));
     textToSpeech(t('story.qa.voiceHeard'), 'system', displayLang);
-    // 等录音真正停止（含等待开始流程完成，避免快速松手漏录）后再推进
-    await stopQaRecording();
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -506,6 +546,7 @@ export default function StoryPlayScreen() {
         await audioRecorder.prepareToRecordAsync();
         await audioRecorder.record();
         recReady.current = true;
+        recStartTs.current = Date.now();
         setIsRecording(true);
       } catch (err: any) {
         console.error('[story] 提问录音开始失败:', err);
@@ -531,6 +572,7 @@ export default function StoryPlayScreen() {
     }
     try {
       await audioRecorder.stop();
+      recEndTs.current = Date.now();
     } catch (err: any) {
       console.error('[story] 提问录音停止失败:', err);
     }
@@ -616,9 +658,14 @@ export default function StoryPlayScreen() {
           <Text style={styles.storyText}>{storyText || t('story.contentLoading')}</Text>
         </ScrollView>
 
-        <TouchableOpacity style={styles.progressBar} onPress={handleProgressTap} activeOpacity={0.8}>
+        <View
+          style={styles.progressBar}
+          onLayout={(e) => { barLayout.current.width = e.nativeEvent.layout.width; }}
+          {...progressPan.panHandlers}
+        >
           <View style={{ ...styles.progressFill, width: progressWidth }} />
-        </TouchableOpacity>
+        </View>
+        {seekToast ? <Text style={styles.seekToast}>{seekToast}</Text> : null}
 
         <SoundWave playing={isPlaying} />
 
@@ -749,7 +796,7 @@ export default function StoryPlayScreen() {
   if (phase === 'qa_round2') {
     return (
       <CartoonScreen gradient="day" decor>
-      <View style={styles.container}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.qaContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.qaRoundTitle}>{t('story.qa.yourQaTime')} 💬</Text>
         <Text style={styles.qaQuestion}>{t('story.qa.yourQuestion')}</Text>
 
@@ -757,13 +804,31 @@ export default function StoryPlayScreen() {
           style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
           onPressIn={startQaRecording}
           onPressOut={async () => {
+            setIsRecording(false);
             await stopQaRecording();
-            if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
+            const durSec = (recEndTs.current - recStartTs.current) / 1000;
+            const uri = audioRecorder.uri;
+            if (uri && durSec >= 0.6) {
+              setTranscribing(true);
+              const text = await transcribeAudio(uri);
+              setTranscribing(false);
+              if (text) setChildQuestion(text);
+              else if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
+            } else if (!childQuestion.trim()) {
+              setChildQuestion(t('story.qa.sample'));
+            }
           }}
         >
           <Text style={styles.micIcon}>🎤</Text>
           <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
         </TouchableOpacity>
+
+        {transcribing ? (
+          <View style={styles.qaLoadingWrap}>
+            <ActivityIndicator size="large" color="#FF8A65" />
+            <Text style={styles.qaLoadingText}>{t('story.qa.transcribing')}</Text>
+          </View>
+        ) : null}
 
         <TextInput
           style={styles.childQInput}
@@ -808,10 +873,10 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <TouchableOpacity style={styles.primaryBtn2} onPress={() => setPhase('finished')}>
+        <TouchableOpacity style={styles.primaryBtn2} onPress={() => { Keyboard.dismiss(); setPhase('finished'); }}>
           <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
       </CartoonScreen>
     );
   }
@@ -1023,6 +1088,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center', marginTop: 12,
   },
   askBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  qaContent: { paddingTop: 64, paddingHorizontal: 20, paddingBottom: 48 },
+  seekToast: { textAlign: 'center', color: '#fff', backgroundColor: 'rgba(108,92,231,0.92)', fontSize: 13, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, marginTop: 10, alignSelf: 'center' },
   aiAnswerWrap: { marginTop: 16, backgroundColor: '#F3E5F5', borderRadius: 16, padding: 16 },
   aiAnswer: { fontSize: 15, color: '#4A148C', lineHeight: 24 },
   aiAnswerLabel: { fontSize: 13, color: '#8E6FB0', fontWeight: '600', marginBottom: 4 },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import Racco from '@/components/common/Racco';
@@ -7,15 +7,22 @@ import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
-import { enrollVoice, isVoiceCloneConfigured, type VoiceCloneResult } from '@/services/voiceClone';
+import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
+import { saveVoiceSetting } from '@/services/storage';
 
-type CloneTarget = 'mom' | 'dad' | 'grandma';
-
-const TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
+// 预设对象；自定义克隆以 key = 'custom:<名称>' 形式存在
+const PRESET_TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
   { key: 'mom', labelKey: 'vc.mom', icon: '👩' },
   { key: 'dad', labelKey: 'vc.dad', icon: '👨' },
   { key: 'grandma', labelKey: 'vc.grandma', icon: '👵' },
 ];
+
+/** 把 target key 转成展示名（预设取本地化，自定义去掉 'custom:' 前缀） */
+function targetLabel(key: CloneTarget, t: (k: string) => string): string {
+  if (key.startsWith('custom:')) return key.slice('custom:'.length);
+  const preset = PRESET_TARGETS.find((p) => p.key === key);
+  return preset ? t(preset.labelKey) : key;
+}
 
 const READ_TEXT_ZH = `从前有座山，山里有座庙。庙里有个老和尚在给小和尚讲故事。讲的什么呢？老和尚对小和尚说："从前有座山，山里有座庙……"小和尚歪着头问："妈妈，这故事的结尾是什么呀？"老和尚笑着说："这就是故事的魅力呀，我们每天都可以从头开始听。"`;
 const READ_TEXT_EN = `Once upon a time, there was a little bird who wanted to learn how to sing. Every morning, she would sit on a branch and listen to the old birds sing beautiful songs. "Practice makes perfect," the old bird said kindly. So every day, the little bird opened her beak and tried again and again until one day, she discovered her own wonderful voice.`;
@@ -40,6 +47,31 @@ export default function VoiceClonePage() {
   const router = useRouter();
   /** null = 校验中；true = 放行；false = 被拦下 */
   const [gatePassed, setGatePassed] = useState<boolean | null>(null);
+
+  // 自定义克隆对象（target = 'custom:<名称>'）
+  const [customName, setCustomName] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customTargets, setCustomTargets] = useState<{ key: CloneTarget; label: string; icon: string }[]>([]);
+  useEffect(() => {
+    (async () => {
+      const all = await getClonedTargets();
+      const customs = all
+        .filter((k) => k.startsWith('custom:'))
+        .map((k) => ({ key: k, label: k.slice('custom:'.length), icon: '🧑' }));
+      setCustomTargets(customs);
+    })();
+  }, []);
+  const confirmCustom = () => {
+    const name = customName.trim();
+    if (!name) return;
+    const key = `custom:${name}`;
+    setCustomTargets((prev) =>
+      prev.some((c) => c.key === key) ? prev : [...prev, { key, label: name, icon: '🧑' }]
+    );
+    setTarget(key);
+    setCustomName('');
+    setShowCustomInput(false);
+  };
 
   // 用 useFocusEffect 而非 useEffect：从订阅页返回时会重新校验，刚买完能立刻使用
   useFocusEffect(
@@ -140,6 +172,10 @@ export default function VoiceClonePage() {
       setCloning(false);
       setCloneResult(res);
       setCloneMsg(res.message);
+      // 克隆成功：自动把当前故事声音设为该亲属/自定义对象，让孩子立刻听到真人声
+      if (res.ok) {
+        await saveVoiceSetting(target);
+      }
     } else {
       setCloneResult({ ok: false, message: t('vc.noFile') });
     }
@@ -167,6 +203,19 @@ export default function VoiceClonePage() {
     );
   }
 
+  // 克隆提交/训练中：全屏等待提示，避免「干等不知是否成功」
+  if (cloning) {
+    return (
+      <CartoonScreen gradient="candy" decor>
+        <View style={styles.cloningFull}>
+          <ActivityIndicator size="large" color="#6c5ce7" />
+          <Text style={styles.cloningText}>{t('vc.submitting')}</Text>
+          <Text style={styles.cloningSub}>{t('vc.cloningHint')}</Text>
+        </View>
+      </CartoonScreen>
+    );
+  }
+
   return (
     <CartoonScreen gradient="candy" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -186,7 +235,7 @@ export default function VoiceClonePage() {
         <>
           <Text style={styles.sectionTitle}>{t('vc.chooseTarget')}</Text>
           <View style={styles.segmented}>
-            {TARGETS.map((tg) => (
+            {[...PRESET_TARGETS, ...customTargets].map((tg) => (
               <TouchableOpacity
                 key={tg.key}
                 style={target === tg.key ? styles.segmentActive : styles.segmentBtn}
@@ -194,11 +243,34 @@ export default function VoiceClonePage() {
               >
                 <Text style={styles.segmentIcon}>{tg.icon}</Text>
                 <Text style={target === tg.key ? styles.segmentActiveLabel : styles.segmentLabel}>
-                  {t(tg.labelKey)}
+                  {targetLabel(tg.key, t)}
                 </Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={styles.segmentBtn}
+              onPress={() => setShowCustomInput(true)}
+            >
+              <Text style={styles.segmentIcon}>➕</Text>
+              <Text style={styles.segmentLabel}>{t('vc.customAdd')}</Text>
+            </TouchableOpacity>
           </View>
+          {showCustomInput && (
+            <View style={styles.customInputRow}>
+              <TextInput
+                style={styles.customInput}
+                value={customName}
+                onChangeText={setCustomName}
+                placeholder={t('vc.customNamePlaceholder')}
+                placeholderTextColor="#bbb"
+                maxLength={8}
+                autoFocus
+              />
+              <TouchableOpacity style={styles.customConfirm} onPress={confirmCustom}>
+                <Text style={styles.customConfirmText}>{t('common.ok')}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <Text style={styles.sectionTitle}>{t('vc.guideTitle')}</Text>
           <Text style={styles.guide}>{t('vc.guideText')}</Text>
@@ -258,7 +330,10 @@ export default function VoiceClonePage() {
             </Text>
           )}
           {!cloning && cloneResult?.ok && (
-            <Text style={styles.successSub}>{t('vc.successSubOk')}</Text>
+            <>
+              <Text style={styles.successSub}>{t('vc.successSubOk')}</Text>
+              <Text style={styles.successSub}>{t('vc.enabledNow').replace('{name}', targetLabel(target, t))}</Text>
+            </>
           )}
           {!cloning && (
             <View style={styles.doneActions}>
@@ -319,4 +394,11 @@ const styles = StyleSheet.create({
   retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   backHomeBtn: { backgroundColor: '#6c5ce7', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 24 },
   backHomeBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  cloningFull: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  cloningText: { fontSize: 20, fontWeight: 'bold', color: '#2d1b69', marginTop: 16 },
+  cloningSub: { fontSize: 14, color: '#999', marginTop: 8, textAlign: 'center' },
+  customInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 6 },
+  customInput: { flex: 1, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: '#333', borderWidth: 1, borderColor: '#e0d4f0' },
+  customConfirm: { backgroundColor: '#00b894', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, marginLeft: 8 },
+  customConfirmText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

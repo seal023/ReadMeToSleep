@@ -20,7 +20,12 @@ import {
  *    真机/Xcode Cloud 构建（npm install 装全依赖）时生效。
  */
 
-let currentPlayer: { play: () => void; pause: () => void; remove: () => void } | null = null;
+let currentPlayer: {
+  play: () => void;
+  pause: () => void;
+  remove: () => void;
+  seekTo: (millis: number) => void;
+} | null = null;
 
 /** 该亲属是否已克隆出音色 */
 export async function hasClonedVoice(target: CloneTarget): Promise<boolean> {
@@ -88,8 +93,9 @@ export async function playClonedAudio(
     if (!audio) return false;
 
     if (!FileSystem.cacheDirectory) return false;
+    const safeTarget = encodeURIComponent(target);
     const filePath =
-      FileSystem.cacheDirectory + `rms_clone_${target}_${hashText(text)}.mp3`;
+      FileSystem.cacheDirectory + `rms_clone_${safeTarget}_${hashText(text)}.mp3`;
 
     const b64 = arrayBufferToBase64(audio);
     await FileSystem.writeAsStringAsync(filePath, b64, {
@@ -100,6 +106,7 @@ export async function playClonedAudio(
       play: () => void;
       pause: () => void;
       remove: () => void;
+      seekTo: (millis: number) => void;
       onEnded?: (cb: () => void) => void;
     };
     currentPlayer = player;
@@ -122,6 +129,21 @@ export async function playClonedAudio(
   } catch (err) {
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
     return false;
+  }
+}
+
+/**
+ * 克隆声播放进度跳转（进度条拖动）。positionSeconds 为跳转目标位置（秒）。
+ * 仅对 expo-audio 播放器有效；系统音（TTS）不支持 seek，调用方需自行判断。
+ */
+export function seekClonedAudio(positionSeconds: number): void {
+  try {
+    if (currentPlayer && typeof currentPlayer.seekTo === 'function') {
+      // expo-audio 的 seekTo 接收毫秒，需把秒换算成毫秒
+      currentPlayer.seekTo(Math.max(0, positionSeconds) * 1000);
+    }
+  } catch {
+    /* 忽略 seek 异常 */
   }
 }
 
