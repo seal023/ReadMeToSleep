@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
 import { getClonedTargets } from '../../services/voiceClone';
 
@@ -16,6 +17,8 @@ const BUILD_NUMBER: string =
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
+  // 账号：让家长在设置页一级就能看见"会员记在哪个账号上"
+  const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
   const [currentVoice, setCurrentVoice] = useState('system');
   const [cloned, setCloned] = useState<Record<string, boolean>>({});
@@ -148,6 +151,25 @@ export default function SettingsScreen() {
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>👨‍👩‍👧‍👦</Text>
           <Text style={styles.cardText}>{t('settings.parentMode')}</Text>
+        </View>
+        <Text style={styles.arrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* 账号入口：会员权益与缴费凭证都归属这个账号，必须在设置页一级可见 */}
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => router.push(isSignedIn ? '/(parent)/account' : '/auth/login')}
+      >
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>{isSignedIn ? '👤' : '🔑'}</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>{isSignedIn ? displayName : '登录账号'}</Text>
+            <Text style={styles.cardSub}>
+              {isSignedIn
+                ? accountEmail || 'Apple 账号 · 会员已绑定'
+                : '登录后会员可在新手机上找回，缴费有凭证'}
+            </Text>
+          </View>
         </View>
         <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>

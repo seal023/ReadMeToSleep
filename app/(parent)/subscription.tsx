@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Alert,
   Linking,
 } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useIAP } from '@/hooks/useIAP';
+import { useAuth } from '@/hooks/useAuth';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
@@ -70,9 +72,25 @@ function formatDate(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** 凭证里的一行「标签 —— 值」 */
+function ReceiptRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <View style={styles.receiptRow}>
+      <Text style={styles.receiptLabel}>{label}</Text>
+      <Text style={[styles.receiptValue, mono && styles.receiptMono]} numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 export default function SubscriptionPage() {
   /** 用户在卡片上选中的方案（尚未购买） */
   const [selected, setSelected] = useState<PaidPlan>('yearly');
+
+  const router = useRouter();
+  // 会员权益要绑在账号上：未登录就购买，换手机将无法证明"是本人付的费"
+  const { isSignedIn, email: accountEmail, displayName } = useAuth();
 
   const {
     initializing,
@@ -86,11 +104,25 @@ export default function SubscriptionPage() {
     purchase,
     restore,
     manage,
+    refresh,
   } = useIAP();
+
+  // 从登录页返回后必须重新读一次权益：登录会触发静默找回会员，
+  // 但本页一直在导航栈里、不会重新挂载，不刷新就会显示旧状态。
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh])
+  );
 
   const handlePurchase = async () => {
     if (!supported) {
       Alert.alert('提示', '此功能需要使用正式构建版本，开发环境暂不支持购买。');
+      return;
+    }
+    // 购买前先登录：缴费凭证必须挂在一个明确账号上，否则客户换手机后无从证明
+    if (!isSignedIn) {
+      router.push('/auth/perks');
       return;
     }
     try {
@@ -98,7 +130,8 @@ export default function SubscriptionPage() {
       if (!result) return; // 用户取消，不打扰
       Alert.alert(
         '订阅成功 🎉',
-        `已开通「${STATUS_MAP[result.plan].label}」，有效期至 ${formatDate(result.expiryMs)}。`
+        `已开通「${STATUS_MAP[result.plan].label}」，有效期至 ${formatDate(result.expiryMs)}。\n\n` +
+          `这笔订阅已记在你的账号 ${accountEmail || displayName} 名下，换手机用同一账号登录即可找回。`
       );
     } catch (err) {
       Alert.alert('购买未完成', (err as Error)?.message || '请稍后重试');
@@ -118,7 +151,10 @@ export default function SubscriptionPage() {
           `已恢复「${STATUS_MAP[restored.plan].label}」，有效期至 ${formatDate(restored.expiryMs)}。`
         );
       } else {
-        Alert.alert('未找到订阅', '当前 Apple ID 下没有有效的订阅记录。');
+        Alert.alert(
+          '未找到订阅',
+          '当前 App Store 登录的 Apple ID 下没有有效订阅。\n\n请确认：\n· 用的是当初购买时那个 Apple ID\n· 在「设置 → Apple ID → 媒体与购买项目」里查看当前登录的账号'
+        );
       }
     } catch (err) {
       Alert.alert('恢复失败', (err as Error)?.message || '请检查网络后重试');
@@ -167,6 +203,26 @@ export default function SubscriptionPage() {
         )}
         {initializing && <ActivityIndicator style={{ marginTop: 10 }} color="#6c5ce7" />}
       </View>
+
+      {/* 账号归属：让家长一眼看到"这笔会员是记在谁名下的" */}
+      <TouchableOpacity
+        style={styles.accountRow}
+        activeOpacity={0.85}
+        onPress={() => router.push(isSignedIn ? '/(parent)/account' : '/auth/login')}
+      >
+        <Text style={styles.accountEmoji}>{isSignedIn ? '👤' : '🔑'}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.accountTitle} numberOfLines={1}>
+            {isSignedIn ? `已登录：${accountEmail || displayName}` : '尚未登录'}
+          </Text>
+          <Text style={styles.accountSub}>
+            {isSignedIn
+              ? '会员记在这个账号上，换手机登录后可找回'
+              : '登录后才能开通会员，缴费凭证会记在账号上'}
+          </Text>
+        </View>
+        {!isSignedIn && <Text style={styles.accountArrow}>去登录</Text>}
+      </TouchableOpacity>
 
       {/* 功能对比 */}
       <Text style={styles.sectionTitle}>功能对比</Text>
@@ -245,6 +301,38 @@ export default function SubscriptionPage() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* 订阅凭证：客户缴费后要能自己核对/截图留存的凭据 */}
+      {isSubscribed && entitlement && (
+        <View style={styles.receiptCard}>
+          <Text style={styles.receiptTitle}>🧾 订阅凭证</Text>
+          <ReceiptRow label="订阅方案" value={STATUS_MAP[entitlement.plan].label} />
+          <ReceiptRow
+            label="购买账号"
+            value={accountEmail || (isSignedIn ? displayName : '未登录（建议登录后绑定）')}
+          />
+          {!!entitlement.purchasedAtMs && (
+            <ReceiptRow label="购买日期" value={formatDate(entitlement.purchasedAtMs)} />
+          )}
+          <ReceiptRow label="有效期至" value={formatDate(entitlement.expiryMs)} />
+          <ReceiptRow
+            label="续订状态"
+            value={entitlement.autoRenewing ? '自动续订中' : '到期后不再续订'}
+          />
+          {!!entitlement.transactionId && (
+            <ReceiptRow label="交易号" value={entitlement.transactionId} mono />
+          )}
+          <TouchableOpacity
+            onPress={() => openLink('https://apps.apple.com/account/subscriptions')}
+            hitSlop={6}
+          >
+            <Text style={styles.receiptLink}>在 App Store 查看官方购买记录 ›</Text>
+          </TouchableOpacity>
+          <Text style={styles.receiptHint}>
+            App Store 会把收据邮件发到你 Apple ID 的邮箱，那是可用于报销的正式凭据。
+          </Text>
+        </View>
+      )}
 
       {/* 订阅条款说明（Apple 3.1.2 要求） */}
       <View style={styles.legalBox}>
@@ -341,6 +429,78 @@ const styles = StyleSheet.create({
   },
   restoreBtn: { alignItems: 'center' },
   restoreText: { color: '#6c5ce7', fontSize: 14 },
+
+  // —— 账号归属行 ——
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#E8DDF7',
+  },
+  accountEmoji: { fontSize: 22, marginRight: 10 },
+  accountTitle: { fontSize: 14, fontWeight: '700', color: '#6B4F3F' },
+  accountSub: { fontSize: 11.5, color: '#9C8579', marginTop: 3, lineHeight: 16 },
+  accountArrow: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#6c5ce7',
+    marginLeft: 8,
+    backgroundColor: '#F0EAFF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+
+  // —— 订阅凭证 ——
+  receiptCard: {
+    backgroundColor: '#FFFDF7',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 6,
+    borderWidth: 1.5,
+    borderColor: '#F0E0C0',
+  },
+  receiptTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#6B4F3F',
+    marginBottom: 10,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+  },
+  receiptLabel: { fontSize: 12.5, color: '#9C8579' },
+  receiptValue: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#6B4F3F',
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: 12,
+  },
+  receiptMono: { fontFamily: undefined, letterSpacing: 0.2 },
+  receiptLink: {
+    fontSize: 12.5,
+    color: '#6c5ce7',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    marginTop: 12,
+  },
+  receiptHint: {
+    fontSize: 11,
+    color: '#B9A79C',
+    lineHeight: 16,
+    marginTop: 8,
+  },
   legalBox: {
     marginTop: 22,
     padding: 14,

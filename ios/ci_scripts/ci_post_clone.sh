@@ -20,6 +20,8 @@ echo "PWD=$(pwd)"
 #   EXPO_PUBLIC_TTS_BASE_URL        DashScope TTS 端点（预留）
 #   EXPO_PUBLIC_VOICE_ENROLL_URL    声音克隆注册端点（预留）
 #   EXPO_PUBLIC_VOICE_WORKSPACE_ID  百炼 workspace（预留）
+#   EXPO_PUBLIC_SUPABASE_URL        Supabase 项目 URL（账号登录）
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY   Supabase anon key（公开可暴露，前端设计如此）
 #
 # 未配置的变量会写成空串，应用层会自行降级（见 services/ai.ts 的说明）。
 #
@@ -29,7 +31,7 @@ echo "PWD=$(pwd)"
 set +x
 
 MISSING=""
-for v in EXPO_PUBLIC_AI_API_KEY EXPO_PUBLIC_AI_BASE_URL EXPO_PUBLIC_TTS_BASE_URL EXPO_PUBLIC_VOICE_ENROLL_URL EXPO_PUBLIC_VOICE_WORKSPACE_ID; do
+for v in EXPO_PUBLIC_AI_API_KEY EXPO_PUBLIC_AI_BASE_URL EXPO_PUBLIC_TTS_BASE_URL EXPO_PUBLIC_VOICE_ENROLL_URL EXPO_PUBLIC_VOICE_WORKSPACE_ID EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY; do
   eval "val=\${$v:-}"
   if [ -z "$val" ]; then
     echo "WARN: env var not configured in Xcode Cloud workflow: $v"
@@ -43,7 +45,7 @@ fi
 # —— Secret 接收确认（脱敏：只打印存在性与长度，绝不打印明文值）——
 # 注意：本段位于 set +x 区域内，命令本身不会被回显；且只输出名称与长度。
 echo "=== Secret check (masked) ==="
-for v in EXPO_PUBLIC_AI_API_KEY EXPO_PUBLIC_AI_BASE_URL EXPO_PUBLIC_TTS_BASE_URL EXPO_PUBLIC_VOICE_ENROLL_URL EXPO_PUBLIC_VOICE_WORKSPACE_ID; do
+for v in EXPO_PUBLIC_AI_API_KEY EXPO_PUBLIC_AI_BASE_URL EXPO_PUBLIC_TTS_BASE_URL EXPO_PUBLIC_VOICE_ENROLL_URL EXPO_PUBLIC_VOICE_WORKSPACE_ID EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY; do
   eval "val=\${$v:-}"
   if [ -z "$val" ]; then
     echo "SECRET_CHECK: $v = absent"
@@ -60,6 +62,8 @@ echo "=== Secret check done ==="
   echo "EXPO_PUBLIC_TTS_BASE_URL=${EXPO_PUBLIC_TTS_BASE_URL:-}"
   echo "EXPO_PUBLIC_VOICE_ENROLL_URL=${EXPO_PUBLIC_VOICE_ENROLL_URL:-}"
   echo "EXPO_PUBLIC_VOICE_WORKSPACE_ID=${EXPO_PUBLIC_VOICE_WORKSPACE_ID:-}"
+  echo "EXPO_PUBLIC_SUPABASE_URL=${EXPO_PUBLIC_SUPABASE_URL:-}"
+  echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}"
 } > .env
 
 echo ".env generated successfully"

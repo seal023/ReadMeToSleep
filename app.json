@@ -17,6 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.seal023.ReadMeToSleep",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Generate stories about your location (data stays on device)",
         "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)",
@@ -51,6 +52,7 @@
       "expo-file-system",
       "expo-audio",
       "expo-localization",
+      "expo-apple-authentication",
       ["expo-build-properties", {
         "ios": {
           "enableSceneSupport": true

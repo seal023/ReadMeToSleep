@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Modal, View, Text, Pressable, Linking, StyleSheet, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LanguageProvider, useLanguage } from '../hooks/useLanguage';
+import { AuthProvider, useAuth } from '../hooks/useAuth';
+import { trySilentRestore } from '../services/iap';
 import { useAppStore } from '../store/appStore';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -121,6 +123,25 @@ function GreetingOnOpen() {
   return null;
 }
 
+/**
+ * 登录成功后静默找回会员。
+ * 换新手机的完整链路：装 App → 登录 → 这里自动向 App Store 查一次已有订阅 →
+ * 命中就写回本地权益，用户打开就到账，不需要自己去点「恢复购买」。
+ * 静默查询，不弹系统框；查不到也不做任何破坏性操作。
+ */
+function EntitlementSyncOnLogin() {
+  const { isSignedIn, loading } = useAuth();
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || !isSignedIn || doneRef.current) return;
+    doneRef.current = true;
+    void trySilentRestore();
+  }, [loading, isSignedIn]);
+
+  return null;
+}
+
 const PRIVACY_CONSENT_KEY = 'rms_privacy_consent_v1';
 const PRIVACY_POLICY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 
@@ -163,20 +184,25 @@ export default function RootLayout() {
 
   return (
     <LanguageProvider>
-      <StatusBar style="dark" />
-      <GreetingOnOpen />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(parent)" />
-      </Stack>
+      <AuthProvider>
+        <StatusBar style="dark" />
+        <GreetingOnOpen />
+        <EntitlementSyncOnLogin />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(parent)" />
+          <Stack.Screen name="auth/login" />
+          <Stack.Screen name="auth/perks" />
+        </Stack>
 
-      {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}
-      <PrivacyModal
-        visible={showPrivacy}
-        onAgree={handlePrivacyAgree}
-        onOpenPolicy={handleOpenPrivacyPolicy}
-      />
+        {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}
+        <PrivacyModal
+          visible={showPrivacy}
+          onAgree={handlePrivacyAgree}
+          onOpenPolicy={handleOpenPrivacyPolicy}
+        />
+      </AuthProvider>
     </LanguageProvider>
   );
 }

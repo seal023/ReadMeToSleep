@@ -78,6 +78,15 @@ export interface Entitlement {
   /** 是否处于自动续订状态 */
   autoRenewing: boolean;
   updatedAt: number;
+  /**
+   * App Store 交易号。给客户对账、找 Apple 客服申诉时唯一有用的编号。
+   * 商店偶尔不返回（例如从缓存恢复的老记录），所以是可选的。
+   */
+  transactionId?: string;
+  /** 首次购买的交易号（Apple 的 originalTransactionId，续订时保持不变） */
+  originalTransactionId?: string;
+  /** 购买时间（毫秒时间戳） */
+  purchasedAtMs?: number;
 }
 
 export interface PlanOffer {
@@ -288,6 +297,35 @@ export async function refreshEntitlement(): Promise<Entitlement | null> {
   }
 }
 
+/**
+ * 登录后静默恢复：这是「换新手机 → 登录 → 会员自动回来」的关键一环。
+ *
+ * 与 restorePurchasesAsync 的两个关键差别：
+ *   1. 只在本地「没有」有效权益时才去问 App Store —— 本地已有的权益绝不被覆盖；
+ *   2. 找不到订阅时**不删除**本地记录（不擅自清户），只返回 null。
+ * 整个调用不弹任何系统框（getAvailablePurchases 是静默查询），可以放心在登录后自动跑。
+ */
+export async function trySilentRestore(): Promise<Entitlement | null> {
+  if (!(await ensureConnection())) return null;
+
+  const current = await loadEntitlement();
+  if (current && current.expiryMs > Date.now()) return current;
+
+  try {
+    const purchases = await getAvailablePurchases({
+      onlyIncludeActiveItemsIOS: true,
+      alsoPublishToEventListenerIOS: false,
+    });
+    const best = pickBestEntitlement(purchases ?? []);
+    if (!best) return null;
+    await saveEntitlement(best);
+    return best;
+  } catch (err) {
+    console.warn('[IAP] trySilentRestore failed:', err);
+    return null;
+  }
+}
+
 /** 从当前有效购买中挑出最优权益（年度优先，其次到期时间最晚） */
 function pickBestEntitlement(purchases: Purchase[]): Entitlement | null {
   const list = purchases
@@ -307,11 +345,17 @@ function entitlementFromPurchase(purchase: Purchase): Entitlement | null {
   const plan = planFromProductId(purchase?.productId);
   if (!plan) return null;
 
-  // iOS 特有字段：expirationDateIOS（毫秒）
-  const ios = purchase as unknown as { expirationDateIOS?: number | null };
+  // iOS 特有字段（v16 的 Purchase 类型在不同小版本上字段名略有差异，
+  // 本地 node_modules 还是旧的 v12 类型，所以这里用宽松读取，避免类型假错）
+  const raw = purchase as unknown as {
+    expirationDateIOS?: number | null;
+    transactionId?: string | null;
+    originalTransactionId?: string | null;
+    transactionDate?: number | null;
+  };
   const expiryMs =
-    typeof ios.expirationDateIOS === 'number' && ios.expirationDateIOS > 0
-      ? ios.expirationDateIOS
+    typeof raw.expirationDateIOS === 'number' && raw.expirationDateIOS > 0
+      ? raw.expirationDateIOS
       : estimateExpiry(purchase.transactionDate, plan);
 
   return {
@@ -320,6 +364,12 @@ function entitlementFromPurchase(purchase: Purchase): Entitlement | null {
     expiryMs,
     autoRenewing: !!purchase.isAutoRenewing,
     updatedAt: Date.now(),
+    transactionId: raw.transactionId || undefined,
+    originalTransactionId: raw.originalTransactionId || undefined,
+    purchasedAtMs:
+      typeof raw.transactionDate === 'number' && raw.transactionDate > 0
+        ? raw.transactionDate
+        : undefined,
   };
 }
 
@@ -345,6 +395,19 @@ export async function loadEntitlement(): Promise<Entitlement | null> {
   } catch (err) {
     console.warn('[IAP] loadEntitlement failed:', err);
     return null;
+  }
+}
+
+/**
+ * 清除本地权益。**退出登录时调用**：
+ * 会员是记在账号上的，退出登录后这台设备就不该继续享有会员，
+ * 否则同一台手机换个账号登录仍能白用会员。重新登录会自动 trySilentRestore 找回。
+ */
+export async function clearEntitlement(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(ENTITLEMENT_KEY);
+  } catch (err) {
+    console.warn('[IAP] clearEntitlement failed:', err);
   }
 }
 
