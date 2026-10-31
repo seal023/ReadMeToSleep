@@ -30,10 +30,9 @@ const ENROLL_URL = process.env.EXPO_PUBLIC_VOICE_ENROLL_URL as string | undefine
 const WORKSPACE_ID = process.env.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | undefined;
 const TTS_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
 const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
-// 合成端点可单独指定（关键）：百炼 CosyVoice「语音合成」SpeechSynthesizer 官方仅在
-// 部分地域（如华北2·北京 cn-beijing）提供；而「声音复刻 / 故事生成」可能跑在另一地域
-// （如 ap-southeast-1）。若复刻成功但合成报 Model not exist，多半是合成端点所在
-// workspace 未部署 cosyvoice 系列模型——用此变量把合成指向已部署 cosyvoice 的 cn-beijing 工作空间。
+// 合成端点可单独指定：默认与注册共用同一 workspace（克隆音色就注册在那里，必须同
+// workspace 才能找到该音色）。仅在「注册与合成必须分属不同地域 workspace」的特殊场景
+// 才设置此变量，且务必指向与注册同一个 workspace，否则会找不到克隆音色而报 Model not exist。
 const SYNTH_URL = process.env.EXPO_PUBLIC_VOICE_SYNTH_URL as string | undefined;
 
 // 百炼「声音复刻」与 AI 推理共用专属域名（{workspaceId}.{region}.maas.aliyuncs.com）。
@@ -64,13 +63,15 @@ function resolveSynthEndpoint(): string | undefined {
 }
 
 // 复刻模型：注册（create_voice 的 target_model）使用的模型。可通过
-// EXPO_PUBLIC_VOICE_TARGET_MODEL 覆盖；默认 cosyvoice-v2（百炼文档示例模型）。
-const CLONE_MODEL = (process.env.EXPO_PUBLIC_VOICE_TARGET_MODEL as string | undefined) || 'cosyvoice-v2';
-// 合成模型（与复刻 target_model 解耦）：克隆音色只能用于与之绑定的目标模型合成，
-// 故默认与复刻一致（cosyvoice-v2）；若该 workspace 的 SpeechSynthesizer 目录里没有这个名字，
-// 用 EXPO_PUBLIC_VOICE_SYNTH_MODEL 覆盖为实际部署的模型（如 cosyvoice-v2 / cosyvoice-v3-flash）。
-const SYNTH_MODEL =
-  (process.env.EXPO_PUBLIC_VOICE_SYNTH_MODEL as string | undefined) || CLONE_MODEL || 'cosyvoice-v2';
+// EXPO_PUBLIC_VOICE_TARGET_MODEL 覆盖；默认 qwen-audio-3.0-tts-flash。
+// ⚠️ 克隆音色会「绑定」在该 target_model 上，后续合成必须使用同一模型，否则 Model not exist。
+const CLONE_MODEL =
+  (process.env.EXPO_PUBLIC_VOICE_TARGET_MODEL as string | undefined) || 'qwen-audio-3.0-tts-flash';
+// 合成模型：克隆音色只能用于与之「绑定」的目标模型合成，故合成 model 必须与
+// 复刻 target_model（CLONE_MODEL）完全一致，不允许通过独立变量改成不同值，
+// 否则必然报 Model not exist。直接复用 CLONE_MODEL（不再读 EXPO_PUBLIC_VOICE_SYNTH_MODEL，
+// 那个变量曾导致「复刻用 qwen、合成用 cosyvoice-v2」的不匹配）。
+const SYNTH_MODEL = CLONE_MODEL;
 // 百炼必填：音色名前缀，仅字母数字、≤10 字符
 const CLONE_PREFIX = 'rms';
 
@@ -337,16 +338,14 @@ export async function synthesizeWithClonedVoice(
     });
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '');
-      // 404 / Model not exist：多半是该工作空间的「语音合成」服务未部署 SYNTH_MODEL。
-      // 百炼 CosyVoice 合成官方主要在华北2(北京) cn-beijing 地域提供——复刻可能在另一地域
-      // （如 ap-southeast-1）成功，但合成指回同地域就会查不到模型。指引用户在 Xcode Cloud
-      // 配置 EXPO_PUBLIC_VOICE_SYNTH_URL 指向已部署 cosyvoice 的 cn-beijing 工作空间。
+      // 404 / Model not exist：克隆音色绑定在注册时的 target_model 上，合成必须用同一模型，
+      // 且合成端点须与注册同一 workspace。详见下方 hint。
       const hint =
         res.status === 404
-          ? `。多半是该工作空间「语音合成」服务未部署模型「${SYNTH_MODEL}」。` +
-            `百炼 CosyVoice 合成主要在华北2(北京) cn-beijing 地域提供——请在 Xcode Cloud 配置 ` +
-            `EXPO_PUBLIC_VOICE_SYNTH_URL 指向已部署 cosyvoice 的 cn-beijing 工作空间，` +
-            `或把 EXPO_PUBLIC_VOICE_SYNTH_MODEL 改为该工作空间实际可用的模型名。`
+          ? `。克隆音色绑定在注册时的 target_model（${CLONE_MODEL}）上，合成必须用同一模型。` +
+            `请确认：(1) EXPO_PUBLIC_VOICE_TARGET_MODEL 与合成 model 一致；` +
+            `(2) EXPO_PUBLIC_VOICE_SYNTH_URL（若设置）指向与注册同一 workspace，` +
+            `否则该 workspace 找不到该音色/模型而报 Model not exist。`
           : '';
       return {
         audio: null,
