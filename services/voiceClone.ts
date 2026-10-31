@@ -37,16 +37,24 @@ const SYNTH_URL = process.env.EXPO_PUBLIC_VOICE_SYNTH_URL as string | undefined;
 
 // 百炼「声音复刻」与 AI 推理共用专属域名（{workspaceId}.{region}.maas.aliyuncs.com）。
 // 声音复刻端点固定路径：/api/v1/services/audio/tts/customization。
+// ATS 防护：把任意 http:// 升级为 https://。iOS App Transport Security 会直接拦截
+// 非 HTTPS 请求（报 "requires the use of a secure connection"）。阿里云 maas.aliyuncs.com
+// 全域名支持 https，故对所有从环境变量解析出的端点与百炼返回的音频下载地址做兜底升级，
+// 避免配置里误写 http 或百炼偶发返回 http 音频地址导致试听失败。
+function toHttps(url: string): string {
+  return url.startsWith('http://') ? 'https://' + url.slice('http://'.length) : url;
+}
+
 // 优先使用显式配置的 EXPO_PUBLIC_VOICE_ENROLL_URL（需为完整端点）；
 // 否则基于 EXPO_PUBLIC_AI_BASE_URL 自动拼接（推荐，避免用户填错路径）。
 function resolveEnrollEndpoint(): string | undefined {
   if (ENROLL_URL && /services\/audio\/tts\/customization|api\/v1\/services\/audio/i.test(ENROLL_URL)) {
-    return ENROLL_URL;
+    return toHttps(ENROLL_URL);
   }
   if (TTS_BASE_URL) {
-    return `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/customization`;
+    return toHttps(`${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/customization`);
   }
-  return ENROLL_URL || undefined;
+  return ENROLL_URL ? toHttps(ENROLL_URL) : undefined;
 }
 
 // 合成端点：优先用显式指定的 SYNTH_URL（可指向不同地域 workspace），否则取
@@ -56,10 +64,10 @@ function resolveSynthEndpoint(): string | undefined {
   const src = SYNTH_URL || ENROLL_URL || TTS_BASE_URL;
   if (!src) return undefined;
   // 用户已给完整合成端点则直接使用
-  if (/SpeechSynthesizer/i.test(src)) return src;
+  if (/SpeechSynthesizer/i.test(src)) return toHttps(src);
   const m = src.match(/^https?:\/\/[^/]+/i);
   const host = m ? m[0] : src.replace(/\/+$/, '');
-  return `${host}/api/v1/services/audio/tts/SpeechSynthesizer`;
+  return toHttps(`${host}/api/v1/services/audio/tts/SpeechSynthesizer`);
 }
 
 // 复刻模型：注册（create_voice 的 target_model）使用的模型。可通过
@@ -369,13 +377,21 @@ export async function synthesizeWithClonedVoice(
       const b64 = audioUrl.slice(audioUrl.indexOf(',') + 1);
       return { audio: base64ToUint8(b64).buffer as ArrayBuffer, error: undefined };
     }
+    // ★ ATS 修复（方案A）：百炼返回的音频下载地址偶发为 http://，iOS
+    //   App Transport Security 会直接拦截（"requires the use of a secure connection"）。
+    //   阿里云 DNS 域名均支持 https，这里强制升级为 https 再下载，无需改原生配置。
+    audioUrl = toHttps(audioUrl);
     const audioRes = await fetch(audioUrl);
     if (!audioRes.ok) {
-      return { audio: null, error: `下载合成音频失败（HTTP ${audioRes.status}）` };
+      return { audio: null, error: `下载合成音频失败（HTTP ${audioRes.status}）：${audioUrl.slice(0, 160)}` };
     }
     return { audio: await audioRes.arrayBuffer(), error: undefined };
   } catch (err: any) {
-    return { audio: null, error: `合成异常：${err?.message || String(err)}` };
+    // 诊断信息带上实际使用的 voiceId，便于核对与百炼后台已训练音色是否一致
+    return {
+      audio: null,
+      error: `合成异常（voiceId=${voiceId}）：${err?.message || String(err)}`,
+    };
   }
 }
 

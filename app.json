@@ -20,6 +20,14 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Generate stories about your location (data stays on device)",
         "NSMicrophoneUsageDescription": "Record your child's stories (recordings stay on device)",
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "aliyuncs.com": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        },
         "ITSAppUsesNonExemptEncryption": false
       }
     },
