@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,12 @@ import {
   Keyboard,
   type DimensionValue,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
-import { VOICES, textToSpeech } from '../../services/tts';
-import { playStory, stopStory } from '../../services/playback';
-import { playLocalFile } from '../../services/clonedVoicePlayback';
+import { VOICES } from '../../services/tts';
+import { playStory, stopStory, speakWithBestVoice } from '../../services/playback';
+import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
@@ -155,6 +155,13 @@ export default function StoryPlayScreen() {
   // 睡眠定时：倒计时剩余（ms，>0 表示会话进行中）与「到点是否锁定」标记
   const [sleepRemaining, setSleepRemaining] = useState(0);
   const [sleepLocked, setSleepLocked] = useState(false);
+  // 正在准备克隆声（合成/下载中）：给「点播放后等待」一个可见反馈，
+  // 同时作为并发保护，避免等待期间重复点击开出第二路播放（双声叠加）。
+  const [preparing, setPreparing] = useState(false);
+  const startingRef = useRef(false);
+  // 每次播放递增；过期的 onDone / 定时器回调一律作废，避免旧播放把新播放的界面推走
+  const playTokenRef = useRef(0);
+  const endFiredRef = useRef(false);
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
@@ -262,18 +269,18 @@ export default function StoryPlayScreen() {
   // 进入问答环节时，用语音把「该做什么」说出来，而不是只靠文字
   useEffect(() => {
     if (phase === 'qa_round1') {
-      textToSpeech(
+      speakWithBestVoice(
         displayLang === 'en'
           ? "Let's play a question game! Listen to the question and tap an answer you like."
           : '我们来玩问答小游戏吧！听清楚问题，选一个你喜欢的答案～',
-        'system', displayLang
+        displayLang
       );
     } else if (phase === 'qa_round2') {
-      textToSpeech(
+      speakWithBestVoice(
         displayLang === 'en'
           ? 'Now it is your turn! Hold the microphone and tell me your question. After I answer, tap the round button below to ask another, or tap finish when you are done.'
           : '现在轮到你啦！按住小话筒，把你的问题说出来。听完我的回答，想再问一个就点下面的圆圈按钮，都说完就点完成哦～',
-        'system', displayLang
+        displayLang
       );
     }
   }, [phase]);
@@ -285,7 +292,7 @@ export default function StoryPlayScreen() {
       const tail = q.type === 'voice'
         ? (displayLang === 'en' ? ' Hold the microphone and say it.' : '，按住小话筒说出来。')
         : '';
-      textToSpeech(q.question + tail, 'system', displayLang);
+      speakWithBestVoice(q.question + tail, displayLang);
     }
   }, [phase, qaIndex, qaLoading]);
 
@@ -312,6 +319,23 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
+  // 离开本页（切 tab / 打开别的页面）立即停止朗读，避免「已经退出界面了声音还在读」。
+  // 回到本页时播放控件仍在，可重新播放 / 暂停 / 停止。
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        playTokenRef.current++;
+        startingRef.current = false;
+        stopStory();
+        setIsPlaying(false);
+        setPreparing(false);
+        cancelSleepSession();
+        if (progressInterval.current) clearInterval(progressInterval.current);
+        if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+      };
+    }, []),
+  );
+
   // 默认声线：优先用全局设置；若全局是 system 但已克隆某位亲属，则默认用该克隆声
   useEffect(() => {
     let cancelled = false;
@@ -333,6 +357,23 @@ export default function StoryPlayScreen() {
       cancelled = true;
     };
   }, []);
+
+  // 预热：进故事页就先把克隆音频合成好（不播放），使「点播放」几乎瞬时出声。
+  // 仅在选中亲属声线且已克隆、且不是本地录音时预热。
+  useEffect(() => {
+    if (!story || story.audioUri) return;
+    if (!selectedVoice || selectedVoice === 'system') return;
+    if (!storyText) return;
+    let cancelled = false;
+    (async () => {
+      if (!(await hasClonedVoice(selectedVoice))) return;
+      if (cancelled) return;
+      prewarmClonedAudio(storyText, selectedVoice);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [story?.id, selectedVoice, displayLang]);
 
   // 听完一个故事：记入已听列表 + 刷新连续天数 + 结算等级与勋章（需求 5）
   // 放在 completed（故事讲完）而非 finished（答完题），听完立刻给正反馈
@@ -453,58 +494,96 @@ export default function StoryPlayScreen() {
 
   const handlePlay = async () => {
     if (!story) return;
-    // 睡眠定时：读取家长设置，启动倒计时会话（到点自动淡出停止 + 晚安锁屏）
-    const sleepMin = await getSleepTimerMinutes();
-    const sleepLock = await getSleepLockEnabled();
-    const onSleepExpire = () => {
-      setSleepLocked(sleepLock);
-      setPhase('sleep');
-    };
-    // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成），与克隆声共用全局 player
-    if (story.audioUri) {
-      const ok = await playLocalFile(story.audioUri, handleStoryEnded);
-      setUsingClonedVoice(true);
-      clonedPlayingRef.current = ok; // 同用全局 player，支持真实进度 + 拖动快进
-      setIsPlaying(true);
-      startProgressTicker(true);
-      // 兜底：万一 onEnded 没触发，按估算时长到点也结束
-      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-      const safeDur = (story.duration || 30) * 1000;
-      safetyTimerRef.current = setTimeout(handleStoryEnded, safeDur * 1.6);
-      startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
-      return;
-    }
-    const used = await playStory(storyText, selectedVoice, displayLang, handleStoryEnded);
-    setUsingClonedVoice(used);
-    clonedPlayingRef.current = used;
-    setIsPlaying(true);
-
-    // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
-    // 系统音（TTS）：无法读取真实位置，仍用文字长度估算（仅视觉），提示不支持拖动。
-    startProgressTicker(used);
-
-    // 兜底：万一 onDone 没触发（如克隆声 onEnded 不被支持），到点也结束
+    // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
+    // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
+    if (startingRef.current) return;
+    startingRef.current = true;
+    const token = ++playTokenRef.current;
+    endFiredRef.current = false;
+    // 先彻底停掉任何在播的音频，避免叠加
+    stopStory();
+    if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-    const safeDur = used
-      ? ((story.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
-      : (displayLang === 'en'
-          ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
-          : Math.max(storyText.length * 210, 10000));
-    safetyTimerRef.current = setTimeout(handleStoryEnded, safeDur * 1.6);
-    startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
+    setProgress(0);
+    // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
+    setIsPlaying(true);
+    setPreparing(true);
+
+    try {
+      // 睡眠定时：读取家长设置，启动倒计时会话（到点自动淡出停止 + 晚安锁屏）
+      const sleepMin = await getSleepTimerMinutes();
+      const sleepLock = await getSleepLockEnabled();
+      const onSleepExpire = () => {
+        setSleepLocked(sleepLock);
+        setPhase('sleep');
+      };
+      // 故事结束只认当前这次播放：过期的 onDone / 定时器回调一律忽略
+      const onEnded = () => {
+        if (token !== playTokenRef.current) return;
+        if (endFiredRef.current) return;
+        endFiredRef.current = true;
+        handleStoryEnded();
+      };
+
+      // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成），与克隆声共用全局 player
+      if (story.audioUri) {
+        const ok = await playLocalFile(story.audioUri, onEnded);
+        if (token !== playTokenRef.current) return;
+        setUsingClonedVoice(true);
+        clonedPlayingRef.current = ok; // 同用全局 player，支持真实进度 + 拖动快进
+        startProgressTicker(true);
+        // 兜底：万一播完检测没触发，到点也结束（留 45s 余量，避免把故事掐断）
+        if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+        const safeDur = (story.duration || 30) * 1000;
+        safetyTimerRef.current = setTimeout(onEnded, safeDur + 45000);
+        startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
+        return;
+      }
+
+      const used = await playStory(storyText, selectedVoice, displayLang, onEnded);
+      if (token !== playTokenRef.current) return;
+      setUsingClonedVoice(used);
+      clonedPlayingRef.current = used;
+
+      // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
+      // 系统音（TTS）：无法读取真实位置，仍用文字长度估算（仅视觉），提示不支持拖动。
+      startProgressTicker(used);
+
+      // 兜底：万一 onDone / 播完检测都没触发，到点也结束
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+      const safeDur = used
+        ? ((story.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
+        : (displayLang === 'en'
+            ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
+            : Math.max(storyText.length * 210, 10000));
+      safetyTimerRef.current = setTimeout(onEnded, safeDur + 45000);
+      startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
+    } finally {
+      if (token === playTokenRef.current) {
+        setPreparing(false);
+      }
+      startingRef.current = false;
+    }
   };
 
   const handlePause = () => {
+    // 作废进行中的播放回调，并解除并发锁，避免暂停后点播放被拦
+    playTokenRef.current++;
+    startingRef.current = false;
     stopStory();
     setIsPlaying(false);
+    setPreparing(false);
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
 
   const handleStop = () => {
+    playTokenRef.current++;
+    startingRef.current = false;
     stopStory();
     cancelSleepSession();
     setIsPlaying(false);
+    setPreparing(false);
     setProgress(0);
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
@@ -549,7 +628,7 @@ export default function StoryPlayScreen() {
       saveChildQuiz(quiz).catch(() => {});
       const fb = t('story.qa.correct');
       setQaFeedback(fb);
-      textToSpeech(fb, 'system', displayLang);
+      speakWithBestVoice(fb, displayLang);
       setTimeout(() => {
         setQaFeedback('');
         if (qaIndex < qaQuestions.length - 1) {
@@ -562,7 +641,7 @@ export default function StoryPlayScreen() {
       // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
       const fb = t('story.qa.wrong');
       setQaFeedback(fb);
-      textToSpeech(fb, 'system', displayLang);
+      speakWithBestVoice(fb, displayLang);
     }
   };
 
@@ -576,13 +655,13 @@ export default function StoryPlayScreen() {
     // 录音过短（<0.6s）视为误触/没说话：提示重录，不推进
     if (durSec < 0.6) {
       setQaFeedback(t('story.qa.voiceTooShort'));
-      textToSpeech(t('story.qa.voiceTooShort'), 'system', displayLang);
+      speakWithBestVoice(t('story.qa.voiceTooShort'), displayLang);
       setTimeout(() => setQaFeedback(''), 1600);
       return;
     }
     if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
     setQaFeedback(t('story.qa.voiceHeard'));
-    textToSpeech(t('story.qa.voiceHeard'), 'system', displayLang);
+    speakWithBestVoice(t('story.qa.voiceHeard'), displayLang);
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -604,8 +683,8 @@ export default function StoryPlayScreen() {
       setAiAnswer(finalAnswer);
       // 记录第2轮自由提问，供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
-      // 朗读 AI 的回答，让孩子「听到」回复
-      textToSpeech(finalAnswer, 'system', displayLang);
+      // 朗读 AI 的回答，让孩子「听到」回复（有克隆声则用亲人的声音）
+      speakWithBestVoice(finalAnswer, displayLang);
       // 持久化这次问答，供家长后台（统计页）查看
       const qa: ChildQA = {
         id: `${story?.id ?? 'x'}-${Date.now()}`,
@@ -622,7 +701,7 @@ export default function StoryPlayScreen() {
       setAiAnswer(fallback);
       // 记录第2轮自由提问（含失败兜底），供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: fallback }]);
-      textToSpeech(fallback, 'system', displayLang);
+      speakWithBestVoice(fallback, displayLang);
     }
     setIsAsking(false);
   };
@@ -769,6 +848,15 @@ export default function StoryPlayScreen() {
         {seekToast ? <Text style={styles.seekToast}>{seekToast}</Text> : null}
 
         <SoundWave playing={isPlaying} />
+
+        {preparing ? (
+          <View style={styles.preparingRow}>
+            <ActivityIndicator size="small" color="#FF8A65" />
+            <Text style={styles.preparingText}>
+              {uiLang === 'en' ? 'Preparing the voice…' : '正在准备声音，马上开始…'}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.controls}>
           <TouchableOpacity style={styles.controlBtn} onPress={handlePlay} disabled={isPlaying}>
@@ -1191,6 +1279,14 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#FFE0B2', elevation: 1,
   },
   seekBtnText: { fontSize: 14, color: '#FF8A65', fontWeight: '700' },
+  preparingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  preparingText: { fontSize: 14, color: '#8D6E63', fontWeight: '600' },
   voiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 4 },
   voiceLabel: { fontSize: 14, color: '#5D4037' },
   voiceToggle: { fontSize: 14, color: '#FF8A65', fontWeight: '600' },

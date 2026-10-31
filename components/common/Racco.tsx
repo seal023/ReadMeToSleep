@@ -9,6 +9,8 @@ interface RaccoProps {
   speechText?: string;
   /** 气泡背景色；不传则白色底 + 灰字 */
   bubbleColor?: string;
+  /** 自定义图源：不传则用默认小浣熊；家长页可用更可爱的专属版本 */
+  source?: any;
 }
 
 // 卡通小浣熊吉祥物（依据用户参考图生成的无版权 PNG，仿图风格）
@@ -21,6 +23,7 @@ const Racco: React.FC<RaccoProps> = ({
   showSpeechBubble = false,
   speechText = '',
   bubbleColor,
+  source,
 }) => {
   const breathe = useRef(new Animated.Value(1)).current;
   const zzzV = useRef(new Animated.Value(0)).current;
@@ -70,7 +73,7 @@ const Racco: React.FC<RaccoProps> = ({
 
   const img = (
     <Animated.View style={{ transform: [{ scale: breathe }], alignItems: 'center' }}>
-      <Image source={RACCOON} style={{ width: size, height: size, resizeMode: 'contain' }} />
+      <Image source={source ?? RACCOON} style={{ width: size, height: size, resizeMode: 'contain' }} />
 
       {/* 睡觉 Zzz */}
       {state === 'sleeping' && (

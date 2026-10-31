@@ -53,6 +53,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="record"
+        options={{
+          tabBarLabel: t('tab.record'),
+          tabBarIcon: () => <Text style={{ fontSize: 22 }}>🎙️</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           tabBarLabel: t('tab.settings'),

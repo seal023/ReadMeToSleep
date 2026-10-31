@@ -17,7 +17,7 @@ import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName } from '../../services/storage';
-import { textToSpeech } from '../../services/tts';
+import { speakWithBestVoice } from '../../services/playback';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
 
@@ -65,7 +65,7 @@ export default function HomeTab() {
       if (!mounted) return;
       if (on) {
         setGuideVisible(true);
-        textToSpeech(t('home.guide.prompt'), 'system', language);
+        speakWithBestVoice(t('home.guide.prompt'), language);
       }
     });
     return () => {
@@ -74,7 +74,7 @@ export default function HomeTab() {
   }, []);
 
   const speakGuide = () => {
-    textToSpeech(t('home.guide.prompt'), 'system', language);
+    speakWithBestVoice(t('home.guide.prompt'), language);
   };
 
   // 首次启动：未克隆过且未忽略引导 → 展示录制引导横幅

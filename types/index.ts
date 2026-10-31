@@ -64,7 +64,13 @@ export interface LanguageContextType {
   hydrated: boolean;
 }
 
-export type LocaleDict = Record<string, string>;
+/**
+ * 语言包结构：多数文案是扁平点号 key（如 "app.name"），
+ * 少数按模块嵌套（如 sleep.locked.title / privacy.* / record.*）。
+ * 故允许任意层级的嵌套对象，t() 会先按扁平 key 直取、再按点号逐层下钻。
+ */
+export type LocaleValue = string | { [key: string]: LocaleValue };
+export type LocaleDict = Record<string, LocaleValue>;
 
 /** 故事时长分级：short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟 */
 export type StoryLength = 'short' | 'medium' | 'long';

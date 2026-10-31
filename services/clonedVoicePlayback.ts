@@ -22,13 +22,18 @@ import {
  *    真机/Xcode Cloud 构建（npm install 装全依赖）时生效。
  */
 
-let currentPlayer: {
+type AudioPlayerLike = {
   play: () => void;
   pause: () => void;
   remove: () => void;
   seekTo: (millis: number) => void;
   setVolume?: (volume: number) => void;
-} | null = null;
+  currentTime?: number;
+  duration?: number;
+  onEnded?: ((cb: () => void) => void) | (() => void);
+};
+
+let currentPlayer: AudioPlayerLike | null = null;
 
 /** 最近一次克隆声播放/合成失败的具体原因，供 UI 透出诊断（如试听失败弹窗） */
 let lastCloneError = '';
@@ -52,6 +57,152 @@ function hashText(text: string): string {
   return Math.abs(h).toString(36);
 }
 
+// —— 统一「播完」检测 ——
+// expo-audio 的 onEnded 在真机（v54 实测）并不触发，导致故事播完后界面一直不跳转。
+// 这里用 250ms 轮询 currentTime/duration 做可靠兜底：位置接近时长即认定为播完，
+// 同时保留 onEnded 事件注册以兼容支持它的版本；两条路径共用 endFired 去重，保证只回调一次。
+let endWatchTimer: ReturnType<typeof setInterval> | null = null;
+let endFired = false;
+let endOnce: (() => void) | null = null;
+
+function resetEndWatch(): void {
+  if (endWatchTimer) {
+    clearInterval(endWatchTimer);
+    endWatchTimer = null;
+  }
+  endFired = false;
+  endOnce = null;
+}
+
+/** 为当前 player 装上「播完只回调一次」的检测，onDone 为空则不做任何事 */
+function armEndWatch(onDone?: () => void): void {
+  resetEndWatch();
+  if (!onDone) return;
+  endOnce = () => {
+    if (endFired) return;
+    endFired = true;
+    if (endWatchTimer) {
+      clearInterval(endWatchTimer);
+      endWatchTimer = null;
+    }
+    try {
+      onDone();
+    } catch {
+      /* 忽略回调异常 */
+    }
+  };
+  endWatchTimer = setInterval(() => {
+    if (endFired || !currentPlayer) return;
+    const dur = getClonedDuration();
+    const pos = getClonedPosition();
+    // duration 未加载完成（0）时不做判断，避免刚起播就误判结束
+    if (dur > 0.4 && pos >= dur - 0.35) endOnce?.();
+  }, 250);
+}
+
+// —— 合成缓存 ——
+// 同一段文本（同音色）只合成一次并落盘；playClonedAudio 与预热共用，
+// 既让「再次播放」瞬时开始，也避免预热与播放并发重复调用接口。
+const inflight = new Map<string, Promise<{ ok: boolean; error?: string }>>();
+
+function cacheFileName(text: string, target: CloneTarget): string {
+  return `rms_clone_${encodeURIComponent(target)}_${hashText(text)}.mp3`;
+}
+
+function writeBytesToCache(fileName: string, audio: ArrayBuffer): void {
+  const file = new File(Paths.cache, fileName);
+  if (!file.exists) {
+    try {
+      file.create();
+    } catch {
+      /* 并发创建 / 已存在，忽略；write 仍会覆盖 */
+    }
+  }
+  file.write(new Uint8Array(audio));
+}
+
+/** 确保某段文本的克隆音频已落盘（命中缓存直接返回；并发调用只合成一次） */
+async function ensureSynthFile(
+  text: string,
+  target: CloneTarget,
+  fileName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const cached = new File(Paths.cache, fileName);
+  if (cached.exists) return { ok: true };
+  const running = inflight.get(fileName);
+  if (running) return running;
+  const task = (async () => {
+    const { audio, error } = await synthesizeWithClonedVoice(text, target);
+    if (error) return { ok: false, error };
+    if (!audio) return { ok: false, error: '合成返回空音频' };
+    writeBytesToCache(fileName, audio);
+    return { ok: true };
+  })();
+  inflight.set(fileName, task);
+  try {
+    return await task;
+  } finally {
+    inflight.delete(fileName);
+  }
+}
+
+/**
+ * 预热：在用户点播放之前就把整段故事的克隆音频合成好、落到缓存。
+ * 用于故事页打开时后台预热，点播放即可几乎瞬时出声。
+ * 任何失败都静默忽略（正常播放时会再走一次合成并透出错误）。
+ */
+export async function prewarmClonedAudio(text: string, target: CloneTarget): Promise<void> {
+  try {
+    if (!text || text.trim().length < 2) return;
+    const fileName = cacheFileName(text, target);
+    if (new File(Paths.cache, fileName).exists) return;
+    await ensureSynthFile(text, target, fileName);
+  } catch {
+    /* 预热失败不影响正常播放 */
+  }
+}
+
+/** 起播一个已落盘的音频文件，并装上播完检测 */
+async function startPlayback(uri: string, onDone?: () => void): Promise<boolean> {
+  try {
+    // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
+    try {
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: false,
+        staysActiveInBackground: false,
+      });
+    } catch {
+      /* 忽略会话配置异常，继续尝试播放 */
+    }
+
+    const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
+    currentPlayer = player;
+    armEndWatch(onDone);
+    player.play();
+
+    // 事件式兜底（若该版本支持 onEnded）；与轮询共用 endOnce，保证只触发一次
+    if (typeof player.onEnded === 'function') {
+      try {
+        (player.onEnded as (cb: () => void) => void)(() => endOnce?.());
+      } catch {
+        /* 忽略差异 */
+      }
+    } else {
+      try {
+        (player as { onEnded?: () => void }).onEnded = () => endOnce?.();
+      } catch {
+        /* 忽略差异 */
+      }
+    }
+    return true;
+  } catch (err) {
+    lastCloneError = String((err as any)?.message || err);
+    console.warn('[clonedPlayback] startPlayback failed:', err);
+    return false;
+  }
+}
+
 /**
  * 用克隆音色播放一段文本（真声）。返回是否成功发起播放。
  * 失败/未配置/未克隆一律返回 false，调用方据此降级系统音。
@@ -66,65 +217,15 @@ export async function playClonedAudio(
   lastCloneError = '';
 
   try {
-    const { audio, error } = await synthesizeWithClonedVoice(text, target);
-    if (error) {
-      lastCloneError = error;
-      console.warn('[clonedPlayback] synth failed:', error);
+    const fileName = cacheFileName(text, target);
+    const res = await ensureSynthFile(text, target, fileName);
+    if (!res.ok) {
+      lastCloneError = res.error || '合成失败';
+      console.warn('[clonedPlayback] synth failed:', lastCloneError);
       return false;
     }
-    if (!audio) {
-      lastCloneError = '合成返回空音频';
-      return false;
-    }
-
-    // SDK 57：用 next 的 File + Paths.cache 落盘（旧的 FileSystem.cacheDirectory 已失效，
-    // 在真机上返回 undefined，即报「设备缓存目录不可用」的直接原因）。
-    // 合成得到的 ArrayBuffer 直接写字节，无需 base64 中转。
-    const safeTarget = encodeURIComponent(target);
-    const fileName = `rms_clone_${safeTarget}_${hashText(text)}.mp3`;
     const file = new File(Paths.cache, fileName);
-    if (!file.exists) {
-      try {
-        file.create();
-      } catch {
-        /* 并发创建 / 已存在，忽略；write 仍会覆盖 */
-      }
-    }
-    file.write(new Uint8Array(audio));
-    const filePath = file.uri;
-
-    // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
-    try {
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, staysActiveInBackground: false });
-    } catch {
-      /* 忽略会话配置异常，继续尝试播放 */
-    }
-
-    const player = createAudioPlayer({ uri: filePath }) as unknown as {
-      play: () => void;
-      pause: () => void;
-      remove: () => void;
-      seekTo: (millis: number) => void;
-      setVolume?: (volume: number) => void;
-      onEnded?: (cb: () => void) => void;
-    };
-    currentPlayer = player;
-    player.play();
-    // expo-audio 的 onEnded 在不同版本可能是「注册方法」或「可赋值属性」，两者都尝试
-    if (typeof player.onEnded === 'function') {
-      try {
-        player.onEnded(() => onDone?.());
-      } catch {
-        /* 忽略差异 */
-      }
-    } else {
-      try {
-        (player as unknown as { onEnded?: () => void }).onEnded = () => onDone?.();
-      } catch {
-        /* 忽略差异 */
-      }
-    }
-    return true;
+    return await startPlayback(file.uri, onDone);
   } catch (err) {
     lastCloneError = String((err as any)?.message || err);
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
@@ -149,6 +250,7 @@ export function seekClonedAudio(positionSeconds: number): void {
 
 /** 停止当前克隆声播放 */
 export function stopClonedAudio(): void {
+  resetEndWatch();
   try {
     if (currentPlayer) {
       currentPlayer.pause();
@@ -219,39 +321,5 @@ export async function fadeOutAndStop(fadeSeconds = 8): Promise<void> {
  */
 export async function playLocalFile(uri: string, onDone?: () => void): Promise<boolean> {
   stopClonedAudio();
-  try {
-    // 播放前配置音频会话，避免 iOS 静音（与 playClonedAudio 一致）
-    try {
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false, staysActiveInBackground: false });
-    } catch {
-      /* 忽略 */
-    }
-    const player = createAudioPlayer({ uri }) as unknown as {
-      play: () => void;
-      pause: () => void;
-      remove: () => void;
-      seekTo: (millis: number) => void;
-      setVolume?: (volume: number) => void;
-      onEnded?: (cb: () => void) => void;
-    };
-    currentPlayer = player;
-    player.play();
-    if (typeof player.onEnded === 'function') {
-      try {
-        player.onEnded(() => onDone?.());
-      } catch {
-        /* 忽略差异 */
-      }
-    } else {
-      try {
-        (player as unknown as { onEnded?: () => void }).onEnded = () => onDone?.();
-      } catch {
-        /* 忽略差异 */
-      }
-    }
-    return true;
-  } catch (err) {
-    console.warn('[clonedPlayback] playLocalFile failed:', err);
-    return false;
-  }
+  return startPlayback(uri, onDone);
 }

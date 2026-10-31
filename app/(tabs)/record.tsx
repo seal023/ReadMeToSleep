@@ -152,6 +152,8 @@ export default function RecordScreen() {
     <CartoonScreen gradient="day" decor>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>{t('record.title')}</Text>
+        {/* 说明用途：这个页面到底是干嘛的（此前缺文案，只显示原始 key，家长看不懂） */}
+        <Text style={styles.intro}>{t('record.intro')}</Text>
 
         <View style={styles.raccoWrap}>
           <Racco state={raccoState} size={120} showSpeechBubble speechText={t('record.racco')} />
@@ -241,6 +243,14 @@ export default function RecordScreen() {
 const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40, alignItems: 'center' },
   title: { fontSize: 22, fontWeight: 'bold', color: COLORS.text, marginTop: 8, marginBottom: 8 },
+  intro: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#7A6A5F',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    marginBottom: 6,
+  },
   raccoWrap: { marginVertical: 12 },
   centerCol: { alignItems: 'center', marginVertical: 18 },
   wave: { flexDirection: 'row', alignItems: 'center', height: 56 },

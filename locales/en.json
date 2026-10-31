@@ -326,5 +326,24 @@
     "b3": "After deleting the app, all data is permanently erased and unrecoverable",
     "agree": "Agree & Continue",
     "policy": "View full privacy policy"
+  },
+  "tab.record": "Recordings",
+  "record": {
+    "title": "My Recording",
+    "intro": "Tell a story here and record it to keep it forever. It is transcribed automatically and you can edit the title; once saved it appears in My Stories · Recordings to play back anytime.",
+    "racco": "Want to tell a story? Tap the big button to start, tap again to stop~",
+    "start": "Start recording",
+    "stop": "Stop recording",
+    "processing": "Turning your recording into text…",
+    "transcriptHint": "Transcript (you can edit it)",
+    "titlePlaceholder": "Give this story a name",
+    "save": "Save to My Stories",
+    "saving": "Saving…",
+    "permFail": "Cannot record",
+    "micPerm": "Please allow microphone access in Settings and try again",
+    "noFile": "No recording file was produced. Please record again.",
+    "tooShort": "Too short",
+    "tooShortMsg": "Please record at least 2 seconds so we can transcribe it~",
+    "noTranscript": "No speech recognized. You can type a title and save anyway."
   }
 }

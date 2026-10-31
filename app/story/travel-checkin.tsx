@@ -10,9 +10,9 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import { getProgress, saveProgress } from '../../services/storage';
+import { getProgress, saveProgress, getVoiceSetting } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
-import { textToSpeech } from '../../services/tts';
+import { playStory } from '../../services/playback';
 import { transcribeAudio } from '../../services/voiceClone';
 import Racco from '../../components/common/Racco';
 import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
@@ -276,12 +276,30 @@ export default function TravelCheckinScreen() {
     }, 2000);
   };
 
-  // Play story (real TTS)
+  // Play story (真克隆声优先，未克隆则系统音)
   const handlePlay = async () => {
     if (isPlaying || !story) return;
     setIsPlaying(true);
     try {
-      await textToSpeech(story.content, undefined, language === 'zh' ? 'zh' : 'en');
+      const saved = await getVoiceSetting();
+      const lang = language === 'zh' ? 'zh' : 'en';
+      // 播完（克隆声轮询 / 系统音 onDone）或被兜底超时打断后再打卡，避免流程卡住
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const timer = setTimeout(finish, Math.max(20000, story.content.length * 280));
+        playStory(story.content, saved || 'system', lang, () => {
+          clearTimeout(timer);
+          finish();
+        }).catch(() => {
+          clearTimeout(timer);
+          finish();
+        });
+      });
     } catch (err) {
       console.warn('[checkin] tts failed:', err);
     }
@@ -383,8 +401,8 @@ export default function TravelCheckinScreen() {
             </Text>
             <Text style={styles.cardDesc}>
               {language === 'en'
-                ? 'We\'ll tell a story about that place'
-                : '我们会为那个地方讲一个故事'}
+                ? 'Tap a pin on the map, or say the place you arrived at into the microphone — then we\'ll tell a story about it'
+                : '点一下地图上的小图钉，或者对着麦克风说你抵达的地方，我们会为那里讲一个故事'}
             </Text>
 
             {/* 搜索框：可过滤预设地点，也可输入地图上没有的地名直接打卡 */}

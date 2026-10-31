@@ -4,6 +4,7 @@ import {
   stopClonedAudio,
   hasClonedVoice,
 } from './clonedVoicePlayback';
+import { getVoiceSetting } from './storage';
 import type { CloneTarget } from './voiceClone';
 
 /**
@@ -43,4 +44,41 @@ export async function playStory(
 export function stopStory(): void {
   stopClonedAudio();
   stopSpeech();
+}
+
+/**
+ * 用「当前最好的声音」说一句话（克隆声优先，失败/未克隆降级系统音）。
+ * 用于把克隆声贯穿全 App（每日问候、问答提示/反馈、AI 回答等），
+ * 而不是只有听故事时才用克隆声。
+ *
+ * 不阻塞调用方：内部等待合成完成后才开始播，但调用处一般无需 await。
+ * 同一时刻只会有最后一句在播（playClonedAudio 会先停掉上一段）。
+ */
+export async function speakWithBestVoice(
+  text: string,
+  language: 'zh' | 'en' = 'zh',
+  voiceId?: string,
+): Promise<boolean> {
+  const content = (text || '').trim();
+  if (!content) return false;
+  let voice = voiceId;
+  if (!voice) {
+    try {
+      voice = await getVoiceSetting();
+    } catch {
+      voice = undefined;
+    }
+  }
+  if (voice && voice !== 'system') {
+    try {
+      if (await hasClonedVoice(voice)) {
+        const ok = await playClonedAudio(content, voice as CloneTarget);
+        if (ok) return true;
+      }
+    } catch {
+      /* 克隆声失败，继续降级系统音 */
+    }
+  }
+  textToSpeech(content, voice || 'system', language);
+  return false;
 }

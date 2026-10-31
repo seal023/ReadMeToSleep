@@ -13,6 +13,9 @@ interface CardDef {
   action?: () => void;
 }
 
+// 家长页专属小浣熊：挥手 + 抱月亮 + 腮红，比默认图更可爱（透明背景 PNG）
+const PARENT_RACCOON = require('../../assets/raccoon-parent.png');
+
 export default function ParentHub() {
   const w = useWindowDimensions().width;
   const cardWidth = useMemo(() => (w - 64 - 12) / 2, [w]);
@@ -44,10 +47,13 @@ export default function ParentHub() {
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.raccoWrap}>
-          <Racco state="idle" size={110} />
+        {/* 封面英雄区：柔和光晕 + 星星点缀 + 更大的小浣熊，比原来单张小图更亲切 */}
+        <View style={styles.hero}>
+          <View style={styles.heroGlow} pointerEvents="none" />
+          <Racco state="idle" size={150} source={PARENT_RACCOON} />
         </View>
         <Text style={styles.header}>家长模式</Text>
+        <Text style={styles.headerSub}>在这里管理声音、睡眠时长与孩子的收听记录</Text>
         <View style={styles.grid}>
           {CARDS.map((card, i) => (
             <TouchableOpacity key={i} style={{ ...styles.card, width: cardWidth }} onPress={() => handleCardPress(card)}>
@@ -67,7 +73,30 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: 32 },
   raccoWrap: { alignItems: 'center', paddingTop: 16, marginBottom: 4 },
-  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: COLORS.text, marginBottom: 20, fontFamily: FONT.rounded },
+  hero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 20,
+    paddingBottom: 6,
+    position: 'relative',
+  },
+  heroGlow: {
+    position: 'absolute',
+    top: 8,
+    width: 178,
+    height: 178,
+    borderRadius: 89,
+    backgroundColor: 'rgba(255, 203, 92, 0.34)',
+  },
+  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: COLORS.text, marginBottom: 6, fontFamily: FONT.rounded },
+  headerSub: {
+    fontSize: 13,
+    textAlign: 'center',
+    color: COLORS.textSub,
+    marginBottom: 18,
+    paddingHorizontal: 24,
+    lineHeight: 19,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

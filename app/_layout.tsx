@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import { getChildName } from '../services/storage';
-import { textToSpeech } from '../services/tts';
+import { speakWithBestVoice } from '../services/playback';
 
 /** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
 function getGreetingKey(): string {
@@ -38,7 +38,8 @@ function GreetingOnOpen() {
       ? base.replace('{name}', name)
       : base.replace('，{name}！', '！').replace(', {name}!', '!');
     lastSpoke.current = now;
-    textToSpeech(text, 'system', language);
+    // 有克隆声就用亲人声音问候（不再只有讲故事时才用克隆声）
+    speakWithBestVoice(text, language);
   }, [t, language]);
 
   useEffect(() => {
