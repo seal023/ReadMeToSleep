@@ -1,5 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+// SDK 57 起顶层 expo-file-system 的 cacheDirectory / writeAsStringAsync / EncodingType
+// 已失效（cacheDirectory 返回 undefined、write 抛错），必须改用 next 的 File + Paths。
+import { File, Paths } from 'expo-file-system/next';
 import {
   synthesizeWithClonedVoice,
   getClonedVoiceId,
@@ -40,39 +42,6 @@ export async function hasClonedVoice(target: CloneTarget): Promise<boolean> {
   return Boolean(id);
 }
 
-const BASE64 =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-/** ArrayBuffer → base64（RN/Hermes 无 btoa，手写） */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.length;
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < len; i += chunk) {
-    const slice = bytes.subarray(i, Math.min(i + chunk, len));
-    for (let j = 0; j < slice.length; j++) {
-      binary += String.fromCharCode(slice[j]);
-    }
-  }
-  let output = '';
-  for (let i = 0; i < binary.length; i += 3) {
-    const a = binary.charCodeAt(i);
-    const b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : NaN;
-    const c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : NaN;
-    const e1 = a >> 2;
-    const e2 = ((a & 3) << 4) | (isNaN(b) ? 0 : b >> 4);
-    const e3 = isNaN(b) ? 64 : ((b & 15) << 2) | (isNaN(c) ? 0 : c >> 6);
-    const e4 = isNaN(c) ? 64 : c & 63;
-    output +=
-      BASE64[e1] +
-      BASE64[e2] +
-      (e3 === 64 ? '=' : BASE64[e3]) +
-      (e4 === 64 ? '=' : BASE64[e4]);
-  }
-  return output;
-}
-
 /** 简单 hash，作为缓存文件名，避免同一故事反复合成 */
 function hashText(text: string): string {
   let h = 0;
@@ -108,18 +77,21 @@ export async function playClonedAudio(
       return false;
     }
 
-    if (!FileSystem.cacheDirectory) {
-      lastCloneError = '设备缓存目录不可用，无法落盘音频';
-      return false;
-    }
+    // SDK 57：用 next 的 File + Paths.cache 落盘（旧的 FileSystem.cacheDirectory 已失效，
+    // 在真机上返回 undefined，即报「设备缓存目录不可用」的直接原因）。
+    // 合成得到的 ArrayBuffer 直接写字节，无需 base64 中转。
     const safeTarget = encodeURIComponent(target);
-    const filePath =
-      FileSystem.cacheDirectory + `rms_clone_${safeTarget}_${hashText(text)}.mp3`;
-
-    const b64 = arrayBufferToBase64(audio);
-    await FileSystem.writeAsStringAsync(filePath, b64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    const fileName = `rms_clone_${safeTarget}_${hashText(text)}.mp3`;
+    const file = new File(Paths.cache, fileName);
+    if (!file.exists) {
+      try {
+        file.create();
+      } catch {
+        /* 并发创建 / 已存在，忽略；write 仍会覆盖 */
+      }
+    }
+    file.write(new Uint8Array(audio));
+    const filePath = file.uri;
 
     // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
     try {
