@@ -8,7 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
-import { playClonedAudio } from '@/services/clonedVoicePlayback';
+import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayback';
 import { saveVoiceSetting } from '@/services/storage';
 
 // 预设对象；自定义克隆以 key = 'custom:<名称>' 形式存在
@@ -57,11 +57,14 @@ export default function VoiceClonePage() {
       const ok = await playClonedAudio(text, target, () => setPreviewing(false));
       if (!ok) {
         setPreviewing(false);
-        // 合成/播放失败（多为音色仍在训练、或音频会话受限）时给出明确提示，而不是静默没声
+        // 透出真实失败原因（合成 HTTP 状态/响应内容），便于一步定位，而不是只弹模糊提示
+        const detail = getLastCloneError();
         Alert.alert(
           t('vc.previewFailedTitle') || '试听失败',
-          t('vc.previewFailedMsg') ||
-            '没能用克隆声播放。常见原因：音色仍在训练（提交后约几分钟），或设备处于静音模式。请稍后重试，或在设置里用系统音试听。'
+          detail
+            ? `${t('vc.previewFailedMsg') || '没能用克隆声播放。'}\n\n诊断信息：${detail}`
+            : (t('vc.previewFailedMsg') ||
+                '没能用克隆声播放。常见原因：音色仍在训练（提交后约几分钟），或设备处于静音模式。请稍后重试，或在设置里用系统音试听。')
         );
       }
     } catch {

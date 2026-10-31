@@ -45,16 +45,15 @@ function resolveEnrollEndpoint(): string | undefined {
   return ENROLL_URL || undefined;
 }
 
-// 合成端点：与注册端点解析出同一个域名（避免 VOICE_ENROLL_URL 单独配置、
-// 而 AI_BASE_URL 是另一个域名时合成失败），仅把 customization 换成 SpeechSynthesizer
+// 合成端点：取 ENROLL_URL / AI_BASE_URL 的「协议+主机」，拼官方合成路径。
+// 不复用字符串后缀替换（容易因配置里多一个斜杠/query 而静默失败、合成打到错误端点），
+// 注册与合成同属一个 MaaS workspace 主机，故直接用主机拼规范路径最稳。
 function resolveSynthEndpoint(): string | undefined {
-  if (ENROLL_URL && /services\/audio\/tts\/customization|api\/v1\/services\/audio/i.test(ENROLL_URL)) {
-    return ENROLL_URL.replace(/services\/audio\/tts\/customization$/, 'services/audio/tts/SpeechSynthesizer');
-  }
-  if (TTS_BASE_URL) {
-    return `${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/SpeechSynthesizer`;
-  }
-  return undefined;
+  const src = ENROLL_URL || TTS_BASE_URL;
+  if (!src) return undefined;
+  const m = src.match(/^https?:\/\/[^/]+/i);
+  const host = m ? m[0] : src.replace(/\/+$/, '');
+  return `${host}/api/v1/services/audio/tts/SpeechSynthesizer`;
 }
 
 // 复刻模型：必须与合成（synthesizeWithClonedVoice）使用的 model 完全一致，否则合成失败。
@@ -263,26 +262,57 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
 
 /**
  * 用克隆音色合成语音（TTS）。
- * 合成端点/字段以你实际开通的百炼 API 为准；下面为 OpenAI 兼容
- * 「audio speech」风格骨架，待真实端点确认后替换 TTS_BASE_URL 与 path。
- * @returns 音频二进制（调用方用 expo-av / expo-audio 播放）；未配置或失败返回 null
+ * 百炼 MaaS CosyVoice 非实时合成：POST SpeechSynthesizer，响应 output.audio.url 为
+ * 音频「下载地址」，需二次 GET 取二进制（官方文档确认此结构）。
+ * @returns { audio, error }：audio 为二进制（调用方落盘播放），error 为失败原因（透出给 UI）
  */
+export interface SynthResult {
+  audio: ArrayBuffer | null;
+  error?: string;
+}
+
+/** base64 → Uint8Array（Hermes 无 atob，手写；与 uint8ToBase64 互为逆运算） */
+function base64ToUint8(b64: string): Uint8Array {
+  const clean = b64.replace(/[^A-Za-z0-9+/=]/g, '');
+  const len = clean.length;
+  const outLen =
+    (len * 3) / 4 - (clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0);
+  const out = new Uint8Array(outLen < 0 ? 0 : outLen);
+  let p = 0;
+  for (let i = 0; i < clean.length; i += 4) {
+    const e1 = BASE64_CHARS.indexOf(clean[i]);
+    const e2 = BASE64_CHARS.indexOf(clean[i + 1]);
+    const e3 = BASE64_CHARS.indexOf(clean[i + 2]);
+    const e4 = BASE64_CHARS.indexOf(clean[i + 3]);
+    out[p++] = (e1 << 2) | (e2 >> 4);
+    if (e3 !== 64 && p < out.length) out[p++] = ((e2 & 15) << 4) | (e3 >> 2);
+    if (e4 !== 64 && p < out.length) out[p++] = ((e3 & 3) << 6) | e4;
+  }
+  return out;
+}
+
 export async function synthesizeWithClonedVoice(
   text: string,
   target: CloneTarget
-): Promise<ArrayBuffer | null> {
-    const voiceId = await getClonedVoiceId(target);
-    const synthEndpoint = resolveSynthEndpoint();
-    if (!voiceId || !synthEndpoint) return null;
-    try {
-      // 百炼 CosyVoice 非实时合成：返回的是音频「下载地址」(output.audio.url)，需二次 GET 取二进制
+): Promise<SynthResult> {
+  const voiceId = await getClonedVoiceId(target);
+  const synthEndpoint = resolveSynthEndpoint();
+  if (!voiceId) return { audio: null, error: '尚未克隆该音色（voiceId 为空）' };
+  if (!synthEndpoint) return { audio: null, error: '合成端点未配置（VOICE_ENROLL_URL / AI_BASE_URL 缺失）' };
+  if (!AI_API_KEY) return { audio: null, error: '缺少 AI_API_KEY，无法鉴权合成' };
+
+  try {
+    // 百炼 MaaS 官方示例：鉴权仅靠 URL 子域名里的 workspace + Bearer Key，
+    // 不依赖 X-Workspace-Id；仅当显式配置了才带上，避免发送空 header 引发异常。
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${AI_API_KEY}`,
+    };
+    if (WORKSPACE_ID) headers['X-Workspace-Id'] = WORKSPACE_ID;
+
     const res = await fetch(synthEndpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${AI_API_KEY ?? ''}`,
-        'X-Workspace-Id': WORKSPACE_ID ?? '',
-      },
+      headers,
       body: JSON.stringify({
         model: CLONE_MODEL,
         input: {
@@ -293,15 +323,37 @@ export async function synthesizeWithClonedVoice(
         },
       }),
     });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({} as any));
-    const audioUrl = data?.output?.audio?.url;
-    if (!audioUrl || typeof audioUrl !== 'string') return null;
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      return {
+        audio: null,
+        error: `合成请求失败（HTTP ${res.status}）：${bodyText.slice(0, 300)}`,
+      };
+    }
+    const data = (await res.json().catch(() => null)) as any;
+    // 非流式：音频以下载地址返回（output.audio.url）；个别配置也可能直接给 base64，一并兼容
+    let audioUrl: string | undefined = data?.output?.audio?.url;
+    if (!audioUrl && typeof data?.output?.audio === 'string') {
+      audioUrl = data.output.audio;
+    }
+    if (!audioUrl) {
+      return {
+        audio: null,
+        error: `合成成功但响应缺少音频地址：${JSON.stringify(data).slice(0, 300)}`,
+      };
+    }
+    // base64 直返：直接解码（极少情况）
+    if (audioUrl.startsWith('data:')) {
+      const b64 = audioUrl.slice(audioUrl.indexOf(',') + 1);
+      return { audio: base64ToUint8(b64).buffer as ArrayBuffer, error: undefined };
+    }
     const audioRes = await fetch(audioUrl);
-    if (!audioRes.ok) return null;
-    return await audioRes.arrayBuffer();
-  } catch {
-    return null;
+    if (!audioRes.ok) {
+      return { audio: null, error: `下载合成音频失败（HTTP ${audioRes.status}）` };
+    }
+    return { audio: await audioRes.arrayBuffer(), error: undefined };
+  } catch (err: any) {
+    return { audio: null, error: `合成异常：${err?.message || String(err)}` };
   }
 }
 

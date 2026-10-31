@@ -27,6 +27,12 @@ let currentPlayer: {
   seekTo: (millis: number) => void;
 } | null = null;
 
+/** 最近一次克隆声播放/合成失败的具体原因，供 UI 透出诊断（如试听失败弹窗） */
+let lastCloneError = '';
+export function getLastCloneError(): string {
+  return lastCloneError;
+}
+
 /** 该亲属是否已克隆出音色 */
 export async function hasClonedVoice(target: CloneTarget): Promise<boolean> {
   const id = await getClonedVoiceId(target);
@@ -87,12 +93,24 @@ export async function playClonedAudio(
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
+  lastCloneError = '';
 
   try {
-    const audio = await synthesizeWithClonedVoice(text, target);
-    if (!audio) return false;
+    const { audio, error } = await synthesizeWithClonedVoice(text, target);
+    if (error) {
+      lastCloneError = error;
+      console.warn('[clonedPlayback] synth failed:', error);
+      return false;
+    }
+    if (!audio) {
+      lastCloneError = '合成返回空音频';
+      return false;
+    }
 
-    if (!FileSystem.cacheDirectory) return false;
+    if (!FileSystem.cacheDirectory) {
+      lastCloneError = '设备缓存目录不可用，无法落盘音频';
+      return false;
+    }
     const safeTarget = encodeURIComponent(target);
     const filePath =
       FileSystem.cacheDirectory + `rms_clone_${safeTarget}_${hashText(text)}.mp3`;
@@ -134,6 +152,7 @@ export async function playClonedAudio(
     }
     return true;
   } catch (err) {
+    lastCloneError = String((err as any)?.message || err);
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
     return false;
   }
