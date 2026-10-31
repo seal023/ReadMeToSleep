@@ -21,13 +21,16 @@ import type { Session, User } from '@supabase/supabase-js';
 import {
   deleteAccountAsync,
   getSession,
+  handleAuthUrl,
   isAppleSignInAvailable,
+  isAuthCallbackUrl,
   onAuthStateChange,
   sendEmailCode,
   signInWithApple,
   signOutAsync,
   verifyEmailCode,
 } from '@/services/auth';
+import * as Linking from 'expo-linking';
 import { isAuthConfigured } from '@/services/supabase';
 import { clearEntitlement } from '@/services/iap';
 
@@ -44,6 +47,11 @@ export interface AuthContextValue {
   displayName: string;
   /** 当前设备是否支持 Apple 登录 */
   appleAvailable: boolean;
+  /**
+   * 深链登录成功次数（只增不减）。
+   * 邮件模板只有链接时，用户点链接回到 App 会在此自增，登录页据此自动关闭。
+   */
+  linkLoginSeq: number;
   signInApple: () => Promise<void>;
   sendCode: (email: string) => Promise<void>;
   verifyCode: (email: string, code: string) => Promise<void>;
@@ -57,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [linkLoginSeq, setLinkLoginSeq] = useState(0);
 
   // 冷启动恢复会话
   useEffect(() => {
@@ -90,13 +99,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAppleSignInAvailable().then(setAppleAvailable).catch(() => setAppleAvailable(false));
   }, []);
 
+  /**
+   * 深链回跳登录。
+   * Supabase 免费版可能不允许改邮件模板（默认只发一条链接、没有 6 位数字），
+   * 用户点链接后系统会用 readmetosleep://auth-callback#... 把 App 拉回来，
+   * 在这里解析 token 建立会话。模板能改成 {{ .Token }} 时这条路用不到，但留着不冲突。
+   */
+  useEffect(() => {
+    if (!isAuthConfigured) return;
+    let cancelled = false;
+
+    const consume = async (url: string | null) => {
+      if (cancelled || !isAuthCallbackUrl(url)) return;
+      try {
+        const s = await handleAuthUrl(url as string);
+        if (cancelled || !s) return;
+        setSession(s);
+        setLinkLoginSeq((n) => n + 1);
+      } catch (err) {
+        console.warn('[Auth] 深链登录失败:', (err as Error)?.message);
+      }
+    };
+
+    // 冷启动时可能正是这个链接把 App 拉起来的，要先查一次
+    Linking.getInitialURL()
+      .then(consume)
+      .catch(() => {});
+
+    const sub = Linking.addEventListener('url', (e) => {
+      void consume(e.url);
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
   const signInApple = useCallback(async () => {
     const result = await signInWithApple();
     if (result.session) setSession(result.session);
   }, []);
 
   const sendCode = useCallback(async (email: string) => {
-    await sendEmailCode(email);
+    // 带上回跳地址：邮件模板只有链接时，点链接回 App 即可完成登录
+    const redirectTo = Linking.createURL('auth-callback');
+    await sendEmailCode(email, redirectTo);
   }, []);
 
   const verifyCode = useCallback(async (email: string, code: string) => {
@@ -137,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       displayName,
       appleAvailable,
+      linkLoginSeq,
       signInApple,
       sendCode,
       verifyCode,
@@ -150,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       displayName,
       appleAvailable,
+      linkLoginSeq,
       signInApple,
       sendCode,
       verifyCode,

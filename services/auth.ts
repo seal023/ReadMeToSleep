@@ -4,9 +4,13 @@
  * 两种方式都落到同一个 Supabase 用户体系（同一个人的 Pro 权益只有一份）：
  *   1) Apple：expo-apple-authentication 拿到 identityToken → supabase.auth.signInWithIdToken
  *      —— 纯原生，不需要跳浏览器，也不会离开 App。
- *   2) 邮件：signInWithOtp 发 6 位验证码 → verifyOtp 校验。
- *      ⚠️ 需要 Supabase 后台把「Magic Link」邮件模板里的 {{ .ConfirmationURL }}
- *         改成 {{ .Token }}，否则邮件里只有链接、没有 6 位数字，用户没法在本页输入。
+ *   2) 邮件：signInWithOtp 发验证码 → verifyOtp 校验。
+ *      这里兼容两种邮件形态，因为 Supabase 免费版可能不允许改邮件模板：
+ *        a) 模板已改成 {{ .Token }}  → 邮件里有 6 位数字，用户在本页输入。
+ *        b) 模板还是默认的 {{ .ConfirmationURL }} → 邮件里只有一个链接，
+ *           用户点它，系统用 readmetosleep:// 深链把 App 拉回来，
+ *           由 handleAuthUrl() 从链接里取出 token 建立会话（见该函数）。
+ *      两条路最终都落到同一个 Supabase 用户，权益一致。
  *
  * 会话持久化由 services/supabase.ts 的 storage: AsyncStorage 负责，
  * 重开 App 自动恢复登录态，不需要重复登录。
@@ -103,8 +107,11 @@ export async function signInWithApple(): Promise<AppleSignInResult> {
 // 邮件验证码
 // ---------------------------------------------------------------------------
 
-/** 发送 6 位验证码到邮箱（新邮箱自动注册） */
-export async function sendEmailCode(email: string): Promise<void> {
+/** 发送 6 位验证码到邮箱（新邮箱自动注册）
+ *  redirectTo 用于「邮件模板不可改、只有链接」时的回跳地址（如 readmetosleep://auth-callback）。
+ *  该地址必须同时被加入 Supabase 的 Authentication → URL Configuration → Redirect URLs。
+ */
+export async function sendEmailCode(email: string, redirectTo?: string): Promise<void> {
   const sb = client();
   const clean = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
@@ -112,7 +119,10 @@ export async function sendEmailCode(email: string): Promise<void> {
   }
   const { error } = await sb.auth.signInWithOtp({
     email: clean,
-    options: { shouldCreateUser: true },
+    options: {
+      shouldCreateUser: true,
+      ...(redirectTo ? { emailRedirectTo: redirectTo } : {}),
+    },
   });
   if (error) throw friendlyAuthError(error);
 }
@@ -134,6 +144,74 @@ export async function verifyEmailCode(
   });
   if (error) throw friendlyAuthError(error);
   return { session: data.session ?? null, user: data.user ?? null };
+}
+
+// ---------------------------------------------------------------------------
+// 深链回跳登录（邮件模板只有链接时走这条路）
+// ---------------------------------------------------------------------------
+
+/** 从 readmetosleep://auth-callback#access_token=... 这类 URL 里取出参数 */
+function parseUrlParams(url: string): Record<string, string> {
+  const hashIdx = url.indexOf('#');
+  const hash = hashIdx >= 0 ? url.slice(hashIdx + 1) : '';
+  const beforeHash = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+  const qIdx = beforeHash.indexOf('?');
+  const query = qIdx >= 0 ? beforeHash.slice(qIdx + 1) : '';
+
+  // 优先用 hash（implicit 流把 token 放在 # 后面），再退回 query（PKCE 流放 code）
+  const raw = hash || query;
+  const out: Record<string, string> = {};
+  for (const pair of raw.split('&')) {
+    if (!pair) continue;
+    const eq = pair.indexOf('=');
+    const k = eq >= 0 ? pair.slice(0, eq) : pair;
+    const v = eq >= 0 ? pair.slice(eq + 1) : '';
+    // token 里可能有 %xx，decodeURIComponent 对残缺序列会抛错，这里兜住
+    try {
+      out[decodeURIComponent(k)] = decodeURIComponent(v);
+    } catch {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/**
+ * 处理认证回跳 URL，成功则返回会话。
+ * 兼容 implicit（#access_token=…&refresh_token=…）与 PKCE（?code=…）两种形态。
+ * 不是认证链接时返回 null，调用方不必处理。
+ */
+export async function handleAuthUrl(url: string): Promise<Session | null> {
+  const sb = client();
+  const p = parseUrlParams(url);
+
+  if (p.error || p.error_description) {
+    throw new Error(p.error_description || p.error || '登录链接已失效，请重新获取');
+  }
+
+  if (p.access_token && p.refresh_token) {
+    const { data, error } = await sb.auth.setSession({
+      access_token: p.access_token,
+      refresh_token: p.refresh_token,
+    });
+    if (error) throw friendlyAuthError(error);
+    return data.session ?? null;
+  }
+
+  if (p.code) {
+    const { data, error } = await sb.auth.exchangeCodeForSession(p.code);
+    if (error) throw friendlyAuthError(error);
+    return data.session ?? null;
+  }
+
+  return null;
+}
+
+/** 判断一个 URL 是否是登录回跳（供 useAuth 过滤无关深链） */
+export function isAuthCallbackUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  if (!url.startsWith('readmetosleep://')) return false;
+  return /(access_token|refresh_token|code|error_description)=/.test(url);
 }
 
 // ---------------------------------------------------------------------------

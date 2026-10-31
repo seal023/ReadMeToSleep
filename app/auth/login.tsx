@@ -36,7 +36,7 @@ const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { configured, appleAvailable, signInApple, sendCode, verifyCode } = useAuth();
+  const { configured, appleAvailable, signInApple, sendCode, verifyCode, linkLoginSeq } = useAuth();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -52,6 +52,18 @@ export default function LoginScreen() {
     const timer = setTimeout(() => setCountdown((n) => n - 1), 1000);
     return () => clearTimeout(timer);
   }, [countdown]);
+
+  /**
+   * 邮件里只有一个链接（模板不可改）时，用户点链接会回到本 App，
+   * useAuth 解析完深链后 linkLoginSeq 自增，这里把登录页关掉。
+   * 用 ref 记住初值，避免进页面就误触发返回。
+   */
+  const linkSeqRef = useRef(linkLoginSeq);
+  useEffect(() => {
+    if (linkLoginSeq === linkSeqRef.current) return;
+    linkSeqRef.current = linkLoginSeq;
+    router.back();
+  }, [linkLoginSeq, router]);
 
   const handleApple = useCallback(async () => {
     setError(null);
@@ -202,7 +214,7 @@ export default function LoginScreen() {
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={styles.label}>我们已把 6 位验证码发到</Text>
+              <Text style={styles.label}>我们已把验证码发到</Text>
               <Text style={styles.emailEcho}>{email.trim().toLowerCase()}</Text>
 
               <TextInput
@@ -229,6 +241,11 @@ export default function LoginScreen() {
                 onPress={handleVerify}
                 disabled={busy || code.length < 6}
               />
+
+              <Text style={styles.hint}>
+                邮件里如果有 6 位数字，填在上面对话框；如果只有一条蓝色链接，
+                直接点它，回到本 App 会自动登录。
+              </Text>
 
               <View style={styles.codeActions}>
                 <ElasticPressable onPress={() => setStep('email')} disabled={busy}>
