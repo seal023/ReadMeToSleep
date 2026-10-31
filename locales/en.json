@@ -317,5 +317,14 @@
       "unlock": "Parent unlock to continue",
       "continue": "Keep listening"
     }
+  },
+  "privacy": {
+    "title": "Privacy Notice",
+    "intro": "Read Me To Sleep respects and protects your privacy:",
+    "b1": "All data (recordings, voice clones, story history) is stored only on this device",
+    "b2": "We do not upload, collect, or share any personal information",
+    "b3": "After deleting the app, all data is permanently erased and unrecoverable",
+    "agree": "Agree & Continue",
+    "policy": "View full privacy policy"
   }
 }

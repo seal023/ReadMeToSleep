@@ -22,7 +22,7 @@ import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
 import { playLocalFile } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
@@ -425,6 +425,32 @@ export default function StoryPlayScreen() {
     setPhase('completed');
   };
 
+  // 启动进度条计时器：isReal=true 用真实播放位置（克隆/本地录音，与实际时长一致），
+  // false 用文字长度估算（系统音 TTS 无法读取真实位置，仅供视觉参考）
+  const startProgressTicker = (isReal: boolean) => {
+    if (progressInterval.current) clearInterval(progressInterval.current);
+    if (isReal) {
+      progressInterval.current = setInterval(() => {
+        const pos = getClonedPosition();
+        const dur = getClonedDuration();
+        if (dur > 0) {
+          lastTotalDuration.current = dur * 1000;
+          setProgress(Math.min(100, (pos / dur) * 100));
+        }
+      }, 250);
+    } else {
+      const totalDuration =
+        displayLang === 'en'
+          ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
+          : Math.max(storyText.length * 210, 10000);
+      lastTotalDuration.current = totalDuration;
+      const step = 100 / (totalDuration / 500);
+      progressInterval.current = setInterval(() => {
+        setProgress((prev) => (prev >= 100 ? 100 : prev + step));
+      }, 500);
+    }
+  };
+
   const handlePlay = async () => {
     if (!story) return;
     // 睡眠定时：读取家长设置，启动倒计时会话（到点自动淡出停止 + 晚安锁屏）
@@ -434,21 +460,17 @@ export default function StoryPlayScreen() {
       setSleepLocked(sleepLock);
       setPhase('sleep');
     };
-    // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成）
+    // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成），与克隆声共用全局 player
     if (story.audioUri) {
       const ok = await playLocalFile(story.audioUri, handleStoryEnded);
-      setUsingClonedVoice(false);
-      clonedPlayingRef.current = ok; // 同用全局 player，支持进度条拖动
+      setUsingClonedVoice(true);
+      clonedPlayingRef.current = ok; // 同用全局 player，支持真实进度 + 拖动快进
       setIsPlaying(true);
-      const totalDuration = (story.duration || 30) * 1000;
-      lastTotalDuration.current = totalDuration;
-      const step = 100 / (totalDuration / 500);
-      if (progressInterval.current) clearInterval(progressInterval.current);
-      progressInterval.current = setInterval(() => {
-        setProgress((prev) => (prev >= 100 ? 100 : prev + step));
-      }, 500);
+      startProgressTicker(true);
+      // 兜底：万一 onEnded 没触发，按估算时长到点也结束
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-      safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
+      const safeDur = (story.duration || 30) * 1000;
+      safetyTimerRef.current = setTimeout(handleStoryEnded, safeDur * 1.6);
       startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
       return;
     }
@@ -457,21 +479,18 @@ export default function StoryPlayScreen() {
     clonedPlayingRef.current = used;
     setIsPlaying(true);
 
-    // 进度条为视觉估算；克隆声支持真实拖动跳转，系统音仅视觉
-    const isEn = displayLang === 'en';
-    const totalDuration = isEn
-      ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
-      : Math.max(storyText.length * 210, 10000);
-    lastTotalDuration.current = totalDuration;
-    const step = 100 / (totalDuration / 500);
-    if (progressInterval.current) clearInterval(progressInterval.current);
-    progressInterval.current = setInterval(() => {
-      setProgress((prev) => (prev >= 100 ? 100 : prev + step));
-    }, 500);
+    // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
+    // 系统音（TTS）：无法读取真实位置，仍用文字长度估算（仅视觉），提示不支持拖动。
+    startProgressTicker(used);
 
     // 兜底：万一 onDone 没触发（如克隆声 onEnded 不被支持），到点也结束
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-    safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
+    const safeDur = used
+      ? ((story.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
+      : (displayLang === 'en'
+          ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
+          : Math.max(storyText.length * 210, 10000));
+    safetyTimerRef.current = setTimeout(handleStoryEnded, safeDur * 1.6);
     startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
   };
 
@@ -491,38 +510,60 @@ export default function StoryPlayScreen() {
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
 
+  // 快进 / 后退（±delta 秒）：克隆声 / 本地录音用真实播放位置跳转；系统音不支持，给提示
+  const handleSeekBy = (delta: number) => {
+    if (clonedPlayingRef.current) {
+      const pos = Math.max(0, getClonedPosition() + delta);
+      seekClonedAudio(pos);
+      const dur = getClonedDuration();
+      if (dur > 0) {
+        lastTotalDuration.current = dur * 1000;
+        setProgress(Math.min(100, (pos / dur) * 100));
+      }
+    } else {
+      setSeekToast(t('story.seekHint'));
+      setTimeout(() => setSeekToast(''), 2200);
+    }
+  };
+
   const handleChoiceAnswer = (optionIndex: number) => {
     const q = qaQuestions[qaIndex];
     if (q.type !== 'choice') return;
     const isCorrect = q.correctIndex === optionIndex;
-    // 记录第1轮问答（含对错），供「完成」页回显
-    setQaRound1Log((prev) => [
-      ...prev,
-      { q: q.question, a: q.options[optionIndex], correct: isCorrect },
-    ]);
-    // 持久化这次选择题作答，供家长后台（统计页）查看对错
-    const quiz: ChildQuiz = {
-      id: `${story?.id ?? 'x'}-q-${Date.now()}`,
-      storyId: story?.id ?? '',
-      storyTitle: story?.title ?? '',
-      question: q.question,
-      chosen: q.options[optionIndex],
-      correctText: q.options[q.correctIndex] ?? '',
-      isCorrect,
-      at: new Date().toISOString(),
-    };
-    saveChildQuiz(quiz).catch(() => {});
-    const fb = isCorrect ? t('story.qa.correct') : t('story.qa.wrong');
-    setQaFeedback(fb);
-    textToSpeech(fb, 'system', displayLang);
-    setTimeout(() => {
-      setQaFeedback('');
-      if (qaIndex < qaQuestions.length - 1) {
-        setQaIndex(qaIndex + 1);
-      } else {
-        setPhase('qa_round2');
-      }
-    }, 1500);
+    if (isCorrect) {
+      // 答对：记录第1轮问答（供「完成」页回显）+ 持久化作答，再进入下一题/第2轮
+      setQaRound1Log((prev) => [
+        ...prev,
+        { q: q.question, a: q.options[optionIndex], correct: true },
+      ]);
+      const quiz: ChildQuiz = {
+        id: `${story?.id ?? 'x'}-q-${Date.now()}`,
+        storyId: story?.id ?? '',
+        storyTitle: story?.title ?? '',
+        question: q.question,
+        chosen: q.options[optionIndex],
+        correctText: q.options[q.correctIndex] ?? '',
+        isCorrect: true,
+        at: new Date().toISOString(),
+      };
+      saveChildQuiz(quiz).catch(() => {});
+      const fb = t('story.qa.correct');
+      setQaFeedback(fb);
+      textToSpeech(fb, 'system', displayLang);
+      setTimeout(() => {
+        setQaFeedback('');
+        if (qaIndex < qaQuestions.length - 1) {
+          setQaIndex(qaIndex + 1);
+        } else {
+          setPhase('qa_round2');
+        }
+      }, 1500);
+    } else {
+      // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
+      const fb = t('story.qa.wrong');
+      setQaFeedback(fb);
+      textToSpeech(fb, 'system', displayLang);
+    }
   };
 
   // 第 1 轮 voice 题：松开麦克风后停止录音并推进到下一题 / 第 2 轮
@@ -741,6 +782,15 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.seekRow}>
+          <TouchableOpacity style={styles.seekBtn} onPress={() => handleSeekBy(-15)}>
+            <Text style={styles.seekBtnText}>⏪ 15秒</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.seekBtn} onPress={() => handleSeekBy(15)}>
+            <Text style={styles.seekBtnText}>15秒 ⏩</Text>
+          </TouchableOpacity>
+        </View>
+
         {sleepRemaining > 0 ? (
           <View style={styles.sleepBadge}>
             <Text style={styles.sleepBadgeText}>😴 {formatSleep(sleepRemaining)}</Text>
@@ -869,16 +919,17 @@ export default function StoryPlayScreen() {
             )}
 
             {q.type === 'voice' && (
-              <View style={styles.voiceRecordWrap}>
+              <>
+                <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
                 <TouchableOpacity
-                  style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
+                  style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
                   onPressIn={startQaRecording}
                   onPressOut={handleVoiceRecord}
                 >
                   <Text style={styles.micIcon}>🎤</Text>
                   <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
                 </TouchableOpacity>
-              </View>
+              </>
             )}
 
             {qaFeedback ? (
@@ -894,32 +945,10 @@ export default function StoryPlayScreen() {
   if (phase === 'qa_round2') {
     return (
       <CartoonScreen gradient="day" decor>
+      <View style={styles.qaRound2Wrap}>
       <ScrollView style={styles.container} contentContainerStyle={styles.qaContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.qaRoundTitle}>{t('story.qa.yourQaTime')} 💬</Text>
         <Text style={styles.qaQuestion}>{t('story.qa.yourQuestion')}</Text>
-
-        <TouchableOpacity
-          style={[isRecording ? styles.micBtnActive : styles.micBtn, { transform: [{ scale: micPulse }] }]}
-          onPressIn={startQaRecording}
-          onPressOut={async () => {
-            setIsRecording(false);
-            await stopQaRecording();
-            const durSec = (recEndTs.current - recStartTs.current) / 1000;
-            const uri = audioRecorder.uri;
-            if (uri && durSec >= 0.6) {
-              setTranscribing(true);
-              const text = await transcribeAudio(uri);
-              setTranscribing(false);
-              if (text) setChildQuestion(text);
-              else if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
-            } else if (!childQuestion.trim()) {
-              setChildQuestion(t('story.qa.sample'));
-            }
-          }}
-        >
-          <Text style={styles.micIcon}>🎤</Text>
-          <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
-        </TouchableOpacity>
 
         {transcribing ? (
           <View style={styles.qaLoadingWrap}>
@@ -975,6 +1004,32 @@ export default function StoryPlayScreen() {
           <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </ScrollView>
+      {/* 右下角悬浮大圆钮：方便右手按住说话提问（替代原顶部居中） */}
+      <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
+      <TouchableOpacity
+        style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
+        onPressIn={startQaRecording}
+        onPressOut={async () => {
+          setIsRecording(false);
+          await stopQaRecording();
+          const durSec = (recEndTs.current - recStartTs.current) / 1000;
+          const uri = audioRecorder.uri;
+          if (uri && durSec >= 0.6) {
+            setTranscribing(true);
+            const text = await transcribeAudio(uri);
+            setTranscribing(false);
+            if (text) setChildQuestion(text);
+            else if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
+          } else if (!childQuestion.trim()) {
+            setChildQuestion(t('story.qa.sample'));
+          }
+        }}
+      >
+        <Text style={styles.micIcon}>🎤</Text>
+        <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
+      </TouchableOpacity>
+      </View>
+
       </CartoonScreen>
     );
   }
@@ -1130,6 +1185,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', elevation: 2,
   },
   controlIcon: { fontSize: 22 },
+  seekRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10 },
+  seekBtn: {
+    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFF',
+    borderWidth: 1, borderColor: '#FFE0B2', elevation: 1,
+  },
+  seekBtnText: { fontSize: 14, color: '#FF8A65', fontWeight: '700' },
   voiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingHorizontal: 4 },
   voiceLabel: { fontSize: 14, color: '#5D4037' },
   voiceToggle: { fontSize: 14, color: '#FF8A65', fontWeight: '600' },
@@ -1150,13 +1211,21 @@ const styles = StyleSheet.create({
   },
   optionText: { fontSize: 18, color: '#5D4037', fontWeight: '600' },
   voiceRecordWrap: { alignItems: 'center', marginTop: 10 },
-  micBtn: {
-    width: 100, height: 100, borderRadius: 50, backgroundColor: '#7C4DFF',
-    justifyContent: 'center', alignItems: 'center', elevation: 3,
+  // 右下角悬浮大圆钮：方便右手按住说话（替代原先顶部居中）
+  micFab: {
+    position: 'absolute', bottom: 28, right: 24, width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#7C4DFF', justifyContent: 'center', alignItems: 'center', elevation: 6,
+    zIndex: 20, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
   },
-  micBtnActive: {
-    width: 100, height: 100, borderRadius: 50, backgroundColor: '#651FFF',
-    justifyContent: 'center', alignItems: 'center', elevation: 3,
+  micFabActive: {
+    position: 'absolute', bottom: 28, right: 24, width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#651FFF', justifyContent: 'center', alignItems: 'center', elevation: 6,
+    zIndex: 20, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+  },
+  // 麦克风外圈脉冲光环（录音时随 micPulse 呼吸），让不识字的孩子也能看到「在录」
+  micRing: {
+    position: 'absolute', bottom: 20, right: 16, width: 104, height: 104, borderRadius: 52,
+    borderWidth: 3, borderColor: 'rgba(124,77,255,0.45)', zIndex: 19,
   },
   micIcon: { fontSize: 32 },
   micLabel: { fontSize: 12, color: '#FFF', marginTop: 4 },
@@ -1186,7 +1255,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center', marginTop: 12,
   },
   askBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
-  qaContent: { paddingTop: 64, paddingHorizontal: 20, paddingBottom: 48 },
+  qaContent: { paddingTop: 64, paddingHorizontal: 20, paddingBottom: 130 },
+  qaRound2Wrap: { flex: 1, position: 'relative' },
   seekToast: { textAlign: 'center', color: '#fff', backgroundColor: 'rgba(108,92,231,0.92)', fontSize: 13, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, marginTop: 10, alignSelf: 'center' },
   aiAnswerWrap: { marginTop: 16, backgroundColor: '#F3E5F5', borderRadius: 16, padding: 16 },
   aiAnswer: { fontSize: 15, color: '#4A148C', lineHeight: 24 },

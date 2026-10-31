@@ -104,42 +104,60 @@ export default function RootLayout() {
         <Stack.Screen name="(parent)" />
       </Stack>
 
-      {/* 需求 五：隐私声明弹窗 */}
-      <Modal
+      {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}
+      <PrivacyModal
         visible={showPrivacy}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-      >
-        <View style={styles.privacyOverlay}>
-          <View style={styles.privacyCard}>
-            <Text style={styles.privacyEmoji}>📖</Text>
-            <Text style={styles.privacyTitle}>隐私声明</Text>
-            <Text style={styles.privacyIntro}>Read Me To Sleep 尊重并保护你的隐私：</Text>
-
-            <View style={styles.privacyBulletRow}>
-              <Text style={styles.privacyCheck}>✅</Text>
-              <Text style={styles.privacyBullet}>所有数据（录音、声音克隆、故事记录）仅保存在本设备上</Text>
-            </View>
-            <View style={styles.privacyBulletRow}>
-              <Text style={styles.privacyCheck}>✅</Text>
-              <Text style={styles.privacyBullet}>我们不会上传、收集或分享任何个人信息</Text>
-            </View>
-            <View style={styles.privacyBulletRow}>
-              <Text style={styles.privacyCheck}>✅</Text>
-              <Text style={styles.privacyBullet}>删除 App 后，所有数据将被永久删除，无法恢复</Text>
-            </View>
-
-            <View style={styles.privacyBtnWrap}>
-              <CartoonButton title="同意并继续" emoji="✅" full onPress={handlePrivacyAgree} />
-            </View>
-            <Pressable onPress={handleOpenPrivacyPolicy} hitSlop={8}>
-              <Text style={styles.privacyLink}>查看完整隐私政策</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        onAgree={handlePrivacyAgree}
+        onOpenPolicy={handleOpenPrivacyPolicy}
+      />
     </LanguageProvider>
+  );
+}
+
+/**
+ * 隐私声明弹窗：必须置于 LanguageProvider 内部才能用 useLanguage() 跟随系统语言。
+ * 否则像之前那样在 Provider 外硬编码中文，英文系统也会显示中文。
+ */
+function PrivacyModal({
+  visible,
+  onAgree,
+  onOpenPolicy,
+}: {
+  visible: boolean;
+  onAgree: () => void;
+  onOpenPolicy: () => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.privacyOverlay}>
+        <View style={styles.privacyCard}>
+          <Text style={styles.privacyEmoji}>📖</Text>
+          <Text style={styles.privacyTitle}>{t('privacy.title')}</Text>
+          <Text style={styles.privacyIntro}>{t('privacy.intro')}</Text>
+
+          <View style={styles.privacyBulletRow}>
+            <Text style={styles.privacyCheck}>✅</Text>
+            <Text style={styles.privacyBullet}>{t('privacy.b1')}</Text>
+          </View>
+          <View style={styles.privacyBulletRow}>
+            <Text style={styles.privacyCheck}>✅</Text>
+            <Text style={styles.privacyBullet}>{t('privacy.b2')}</Text>
+          </View>
+          <View style={styles.privacyBulletRow}>
+            <Text style={styles.privacyCheck}>✅</Text>
+            <Text style={styles.privacyBullet}>{t('privacy.b3')}</Text>
+          </View>
+
+          <View style={styles.privacyBtnWrap}>
+            <CartoonButton title={t('privacy.agree')} emoji="✅" full onPress={onAgree} />
+          </View>
+          <Pressable onPress={onOpenPolicy} hitSlop={8}>
+            <Text style={styles.privacyLink}>{t('privacy.policy')}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 

@@ -189,6 +189,29 @@ export function stopClonedAudio(): void {
 }
 
 /**
+ * 当前克隆声 / 本地音的播放位置（秒）。仅对 expo-audio 播放器有效；
+ * 系统音（TTS）不支持，返回 0 —— 调用方据此决定是否显示真实进度 / 允许拖动快进。
+ */
+export function getClonedPosition(): number {
+  try {
+    const p = currentPlayer as unknown as { currentTime?: number } | null;
+    return p && typeof p.currentTime === 'number' ? p.currentTime : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** 当前克隆声 / 本地音的总时长（秒）；未加载完成返回 0 */
+export function getClonedDuration(): number {
+  try {
+    const p = currentPlayer as unknown as { duration?: number } | null;
+    return p && typeof p.duration === 'number' ? p.duration : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * 温和淡出后停止：用于睡眠定时到点。
  * - 克隆声 / 本地录音（expo-audio）支持 setVolume，逐级降到 0 再停，避免突兀；
  * - 系统音（expo-speech）无法中途调音量，这里直接停（sleepTimer 在调用本函数前

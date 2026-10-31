@@ -58,9 +58,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }
 
   const t = (key: string): string => {
-    const locale = locales[language];
-    return locale[key] || key;
-  }
+    const locale: any = locales[language];
+    // 先按扁平 key 直接取（如 app.name / common.back）
+    if (typeof locale[key] === 'string') return locale[key];
+    // 再按嵌套 key 取（如 sleep.locked.title / privacy.title）
+    const val = key.split('.').reduce(
+      (o: any, k) => (o && typeof o === 'object' ? o[k] : undefined),
+      locale,
+    );
+    return typeof val === 'string' ? val : key;
+  };
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t, hydrated }}>
