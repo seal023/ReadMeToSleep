@@ -39,6 +39,7 @@
     padding-left: 10px;
     border-left: 3px solid var(--accent);
   }
+  h3 { font-size: 15px; margin: 20px 0 6px; }
   p, li, td { font-size: 15px; }
   ul, ol { padding-left: 22px; margin: 10px 0; }
   li { margin: 6px 0; }
@@ -60,10 +61,19 @@
     border: 1px solid var(--border);
     padding: 10px 12px;
     text-align: left;
+    vertical-align: top;
   }
   th { background: #f0edff; font-weight: 600; }
   .highlight {
     background: #f0edff;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  .warn {
+    background: #fff5f0;
+    border: 1px solid #f6d9c9;
     border-radius: 10px;
     padding: 12px 16px;
     font-size: 14px;
@@ -87,19 +97,20 @@
     <p class="sub">Read Me To Sleep · 儿童睡前故事</p>
 
     <div class="meta">
-      <div><strong>生效日期：</strong>2026 年</div>
+      <div><strong>生效日期：</strong>2026 年 10 月 31 日</div>
+      <div><strong>版本：</strong>2.0（本次新增账号、会员归属、缴费凭证与跨设备恢复条款）</div>
       <div><strong>开发者：</strong><span class="todo">【开发者名称】</span></div>
       <div><strong>联系邮箱：</strong>seal023@163.com</div>
     </div>
 
     <h2>一、服务说明</h2>
-    <p>Read Me To Sleep（「本 App」）为 3–8 岁儿童提供 AI 生成的睡前故事。使用本 App 即表示您同意本条款。</p>
+    <p>Read Me To Sleep（「本 App」）为 3–8 岁儿童提供 AI 生成的睡前故事，并支持用家长自己的声音朗读。使用本 App 即表示您同意本条款。</p>
 
     <h2>二、免费版与会员</h2>
     <table>
       <tr><th>功能</th><th>免费版</th><th>会员</th></tr>
       <tr><td>每日生成故事</td><td>1 个</td><td>不限</td></tr>
-      <tr><td>声音克隆</td><td>不可用</td><td>可用</td></tr>
+      <tr><td>声音克隆</td><td>可体验 1 次</td><td>不限次</td></tr>
       <tr><td>旅行打卡</td><td>累计 3 次</td><td>不限</td></tr>
       <tr><td>家长控制面板</td><td>可用</td><td>可用</td></tr>
     </table>
@@ -123,24 +134,64 @@
       <li>订阅由您的 Apple ID 管理，我们无法代为取消或退款；退款请通过 Apple 处理。</li>
     </ul>
 
-    <h2>五、管理与取消</h2>
-    <p>您可以在 iOS 设备上前往 <strong>设置 → Apple ID → 订阅</strong> 管理或取消订阅；也可在 App 内「家长中心 → 订阅管理」跳转。</p>
+    <h2>五、账号、会员归属与缴费凭证</h2>
 
-    <h2>六、合理使用</h2>
+    <h3>1. 为什么需要在开通会员前登录</h3>
+    <p>本 App 的会员权益与您的<strong>账号</strong>绑定，而不是与某一台手机绑定。<strong>因此开通会员前需要先登录</strong>（可使用「通过 Apple 登录」或「邮箱验证码登录」，二者任选其一）。</p>
+    <p>这样做是为了解决一个具体问题：缴费记录需要有明确归属，否则您换手机、重装 App 后将难以证明这笔费用是您支付的。</p>
+
+    <h3>2. 您的缴费凭证在哪里查看</h3>
+    <p>订阅成功后，您可以在 App 内 <strong>「家长中心 → 订阅管理」</strong> 页面的「订阅凭证」区域查看：</p>
     <ul>
-      <li>请妥善保管设备，家长中心可设置敏感词以过滤不适内容。</li>
-      <li>AI 生成内容可能存在偏差，请家长酌情陪伴使用。</li>
-      <li>不得对本 App 进行逆向工程、批量抓取或用于任何违法用途。</li>
+      <li>订阅方案（月度 / 年度）；</li>
+      <li>购买时使用的账号；</li>
+      <li>购买日期与有效期截止日；</li>
+      <li>是否处于自动续订状态；</li>
+      <li>App Store 交易号（用于向 Apple 核对或申诉）。</li>
+    </ul>
+    <p>该页面还提供「在 App Store 查看官方购买记录」的入口。此外，<strong>Apple 会将正式收据邮件发送到您 Apple ID 绑定的邮箱</strong>，该邮件可作为报销或留存的正式凭据。</p>
+    <div class="warn">
+      请理解：本 App 不接触、也不存储您的支付卡信息。扣款与收据由 Apple 出具，我方提供的是订阅状态与交易号的查询入口。
+    </div>
+
+    <h3>3. 更换设备或重装后如何找回会员</h3>
+    <ol>
+      <li>在新设备上安装本 App；</li>
+      <li>使用<strong>当初购买时的同一个账号</strong>登录（Apple 或邮箱）；</li>
+      <li>登录后 App 会自动向 App Store 查询并恢复您的会员，通常无需额外操作；</li>
+      <li>若未自动恢复，请进入「家长中心 → 订阅管理」，点击<strong>「恢复购买」</strong>。</li>
+    </ol>
+    <div class="highlight">
+      <strong>关键前提：</strong>Apple 的自动续订订阅是记在 <strong>Apple ID</strong> 上的。因此新设备的 App Store 必须登录<strong>当初购买时那个 Apple ID</strong>，否则 Apple 不会把订阅交还给本 App，我们技术上也无法恢复。
+    </div>
+
+    <h3>4. 必须知晓的限制</h3>
+    <ul>
+      <li><strong>更换 Apple ID 无法恢复会员。</strong>这是 Apple 订阅机制的硬性限制，非本 App 可绕过。若您更换了 Apple ID，原订阅仍留在旧 Apple ID 下，本 App 内无法继续使用该权益。</li>
+      <li><strong>退出账号登录会失去会员状态。</strong>因为会员归属账号；重新登录后会自动恢复。</li>
+      <li><strong>注销账号不会退款。</strong>注销仅删除账号与关联数据，已产生的费用需按 Apple 的退款流程单独申请。</li>
     </ul>
 
-    <h2>七、免责声明</h2>
+    <h2>六、管理与取消</h2>
+    <p>您可以在 iOS 设备上前往 <strong>设置 → Apple ID → 订阅</strong> 管理或取消订阅；也可在 App 内「家长中心 → 订阅管理」跳转。</p>
+
+    <h2>七、合理使用</h2>
+    <ul>
+      <li>请妥善保管设备与账号，家长中心可设置敏感词以过滤不适内容。</li>
+      <li>请仅克隆您本人或已获得明确同意的成年人声音，不得用于冒充他人或任何违法用途。</li>
+      <li>AI 生成内容可能存在偏差，请家长酌情陪伴使用。</li>
+      <li>不得对本 App 进行逆向工程、批量抓取、转售会员权益或用于任何违法用途。</li>
+      <li>账号仅供购买者本人及其家庭使用，不得出租、出借或转售。</li>
+    </ul>
+
+    <h2>八、免责声明</h2>
     <p>本 App 按「现状」提供。AI 生成的故事内容不构成任何专业建议。在法律允许的范围内，我们不对使用本 App 产生的间接损失承担责任。</p>
 
-    <h2>八、条款更新</h2>
-    <p>我们可能更新本条款，更新后将在本页面调整生效日期。继续使用本 App 即视为接受更新后的条款。</p>
+    <h2>九、条款更新</h2>
+    <p>我们可能更新本条款，更新后将在本页面调整版本号与生效日期。涉及会员权益或费用的实质性变更，我们会在 App 内以显著方式提示。继续使用本 App 即视为接受更新后的条款。</p>
 
-    <h2>九、联系我们</h2>
-    <p>如有疑问，请通过 <a href="mailto:seal023@163.com">seal023@163.com</a> 联系我们。</p>
+    <h2>十、联系我们</h2>
+    <p>如对订阅、凭证或账号有任何疑问，请通过 <a href="mailto:seal023@163.com">seal023@163.com</a> 联系我们。</p>
     <p>隐私政策请见：<a href="./privacy.html">隐私政策</a></p>
 
     <footer>

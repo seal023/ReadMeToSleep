@@ -334,9 +334,9 @@
   "privacy": {
     "title": "Privacy Notice",
     "intro": "Read Me To Sleep respects and protects your privacy:",
-    "b1": "All data (recordings, voice clones, story history) is stored only on this device",
-    "b2": "We do not upload, collect, or share any personal information",
-    "b3": "After deleting the app, all data is permanently erased and unrecoverable",
+    "b1": "Story prompts are sent to our AI service; voice features upload recordings for speech recognition",
+    "b2": "Sign-in is optional and only used to bind and restore membership across devices. No ads, no data selling",
+    "b3": "Local data is erased when you delete the app; uploaded voice samples can be removed on request",
     "agree": "Agree & Continue",
     "policy": "View full privacy policy"
   },
