@@ -298,5 +298,24 @@
   "story.qa.wrong": "That's okay, give it another think~",
   "story.qa.voiceTooShort": "Didn't catch that — hold and speak again~",
   "story.qa.transcribing": "Listening to you…",
-  "story.seekHint": "System voice can't be dragged — continuing playback"
+  "story.seekHint": "System voice can't be dragged — continuing playback",
+  "sleep": {
+    "title": "Sleep Timer",
+    "desc": "Set a listening limit. When time is up, audio gently fades out and stops, entering good-night mode so stories won't keep playing after your child falls asleep.",
+    "sectionDuration": "Stop after",
+    "optionOff": "Off (play forever)",
+    "option15": "15 minutes",
+    "option30": "30 minutes",
+    "option45": "45 minutes",
+    "option60": "60 minutes",
+    "option90": "90 minutes",
+    "lockTitle": "Lock screen when time is up",
+    "lockDesc": "On: enters a good-night lock screen that needs the parent PIN to resume. Off: just stops; child can play again.",
+    "locked": {
+      "title": "🌙 Good night, little one",
+      "desc": "Story time is over. Racco will stay with you — close your eyes and sleep tight~",
+      "unlock": "Parent unlock to continue",
+      "continue": "Keep listening"
+    }
+  }
 }

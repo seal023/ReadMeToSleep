@@ -56,6 +56,8 @@ const KEYS = {
   CHILD_NAME: 'rms_child_name',
   CHILD_QA: 'rms_child_qa',
   CHILD_QUIZ: 'rms_child_quiz',
+  SLEEP_TIMER_MINUTES: 'rms_sleep_timer_minutes',
+  SLEEP_LOCK_ENABLED: 'rms_sleep_lock_enabled',
 };
 
 export interface ParentComment {
@@ -304,4 +306,28 @@ export async function saveChildQuiz(q: ChildQuiz): Promise<void> {
   const list = await getChildQuizzes();
   const next = [q, ...list.filter((x) => x.id !== q.id)].slice(0, 200);
   await AsyncStorage.setItem(KEYS.CHILD_QUIZ, JSON.stringify(next));
+}
+
+// ---- 睡眠定时（家长端设置，防止孩子睡着后故事仍不停播放） ----
+/** 睡眠定时分钟数：0 表示关闭（一直播放），默认 0 */
+export async function getSleepTimerMinutes(): Promise<number> {
+  const raw = await AsyncStorage.getItem(KEYS.SLEEP_TIMER_MINUTES);
+  if (!raw) return 0;
+  const n = parseInt(raw, 10);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
+
+export async function setSleepTimerMinutes(min: number): Promise<void> {
+  await AsyncStorage.setItem(KEYS.SLEEP_TIMER_MINUTES, String(min));
+}
+
+/** 到点后是否锁定屏幕（需家长密码才能继续播放），默认开启 */
+export async function getSleepLockEnabled(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(KEYS.SLEEP_LOCK_ENABLED);
+  if (raw === null) return true;
+  return raw === '1' || raw === 'true';
+}
+
+export async function setSleepLockEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.SLEEP_LOCK_ENABLED, enabled ? '1' : '0');
 }

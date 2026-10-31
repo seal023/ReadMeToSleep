@@ -25,6 +25,7 @@ let currentPlayer: {
   pause: () => void;
   remove: () => void;
   seekTo: (millis: number) => void;
+  setVolume?: (volume: number) => void;
 } | null = null;
 
 /** 最近一次克隆声播放/合成失败的具体原因，供 UI 透出诊断（如试听失败弹窗） */
@@ -132,6 +133,7 @@ export async function playClonedAudio(
       pause: () => void;
       remove: () => void;
       seekTo: (millis: number) => void;
+      setVolume?: (volume: number) => void;
       onEnded?: (cb: () => void) => void;
     };
     currentPlayer = player;
@@ -187,6 +189,35 @@ export function stopClonedAudio(): void {
 }
 
 /**
+ * 温和淡出后停止：用于睡眠定时到点。
+ * - 克隆声 / 本地录音（expo-audio）支持 setVolume，逐级降到 0 再停，避免突兀；
+ * - 系统音（expo-speech）无法中途调音量，这里直接停（sleepTimer 在调用本函数前
+ *   已对系统音无淡出需求，停即停）。
+ */
+export async function fadeOutAndStop(fadeSeconds = 8): Promise<void> {
+  if (currentPlayer && typeof currentPlayer.setVolume === 'function') {
+    try {
+      const steps = 10;
+      const stepMs = (fadeSeconds * 1000) / steps;
+      for (let i = 1; i <= steps; i++) {
+        currentPlayer.setVolume(Math.max(0, 1 - i / steps));
+        await new Promise((r) => setTimeout(r, stepMs));
+      }
+    } catch {
+      /* 忽略淡出异常 */
+    }
+  }
+  // 无论克隆/本地/系统音，最后统一确保全部停止
+  stopClonedAudio();
+  try {
+    const { stopSpeech } = await import('./tts');
+    await stopSpeech();
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/**
  * 播放本地音频文件（如孩子/家长录制的故事），直接 createAudioPlayer 播放，
  * 不走 TTS / 克隆合成。用于「我的录音」中保留录音的回放。
  * 复用全局 currentPlayer 槽位，故 stopClonedAudio() / 进度拖动 seekClonedAudio() 同样适用。
@@ -205,6 +236,7 @@ export async function playLocalFile(uri: string, onDone?: () => void): Promise<b
       pause: () => void;
       remove: () => void;
       seekTo: (millis: number) => void;
+      setVolume?: (volume: number) => void;
       onEnded?: (cb: () => void) => void;
     };
     currentPlayer = player;

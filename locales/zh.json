@@ -298,5 +298,24 @@
   "story.qa.wrong": "没关系，再想想～",
   "story.qa.voiceTooShort": "没听清呢，再按住说一次吧～",
   "story.qa.transcribing": "正在听你说话…",
-  "story.seekHint": "系统音暂不支持拖动，已为你继续播放"
+  "story.seekHint": "系统音暂不支持拖动，已为你继续播放",
+  "sleep": {
+    "title": "睡眠定时",
+    "desc": "设定听故事的时间上限，到点后声音会缓缓淡出并自动停止，进入晚安模式，防止孩子睡着后故事还在播放。",
+    "sectionDuration": "到点停止时间",
+    "optionOff": "关闭（一直播放）",
+    "option15": "15 分钟",
+    "option30": "30 分钟",
+    "option45": "45 分钟",
+    "option60": "60 分钟",
+    "option90": "90 分钟",
+    "lockTitle": "到点后锁定屏幕",
+    "lockDesc": "开启后，时间到会进入晚安锁屏，需家长密码才能继续播放；关闭则仅自动停止，孩子可自己再播放。",
+    "locked": {
+      "title": "🌙 晚安，小宝贝",
+      "desc": "故事时间到啦，小浣熊陪你闭上眼睛，乖乖睡觉觉～",
+      "unlock": "家长解锁后继续",
+      "continue": "继续听"
+    }
+  }
 }

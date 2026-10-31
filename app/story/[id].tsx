@@ -21,9 +21,10 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES, textToSpeech } from '../../services/tts';
 import { playStory, stopStory } from '../../services/playback';
 import { playLocalFile } from '../../services/clonedVoicePlayback';
+import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -31,7 +32,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { getLevel, getNewBadges, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
 
-type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished';
+type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished' | 'sleep';
 
 type QAItem =
   | { type: 'choice'; question: string; options: string[]; correctIndex: number }
@@ -48,6 +49,14 @@ const FALLBACK_QA: QAItem[] = [
 ];
 
 const { width } = Dimensions.get('window');
+
+/** 把剩余毫秒格式化为 mm:ss，用于睡眠定时倒计时展示 */
+function formatSleep(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 // 随声波形：播放时一排竖条循环跳动，暂停时静止——给不识字的孩子可见的「声音在流动」反馈
 function SoundWave({ playing }: { playing: boolean }) {
@@ -143,6 +152,9 @@ export default function StoryPlayScreen() {
   // 家长悄悄话（需求 2：家长评语以动画展现）
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
   const commentOpacity = useRef(new Animated.Value(0)).current;
+  // 睡眠定时：倒计时剩余（ms，>0 表示会话进行中）与「到点是否锁定」标记
+  const [sleepRemaining, setSleepRemaining] = useState(0);
+  const [sleepLocked, setSleepLocked] = useState(false);
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
@@ -196,6 +208,25 @@ export default function StoryPlayScreen() {
       shootLoop.stop();
     };
   }, [moonAnim, starAnim, shootAnim]);
+
+  // 退出播放页时取消睡眠定时会话（避免后台继续计时触发锁屏）
+  useEffect(() => {
+    return () => {
+      cancelSleepSession();
+    };
+  }, []);
+
+  // 播放中为睡眠定时会话刷新剩余时间（仅在 playing 阶段计时）
+  useEffect(() => {
+    if (phase !== 'playing') {
+      setSleepRemaining(0);
+      return;
+    }
+    const tick = setInterval(() => {
+      setSleepRemaining(isSleepSessionActive() ? getSleepRemainingMs() : 0);
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [phase]);
 
   // 双语解析：英文模式且故事有英文正文时取英文，否则中文。
   // 派生值每次渲染重算，跟随界面语言实时切换。
@@ -386,6 +417,7 @@ export default function StoryPlayScreen() {
 
   // 故事真正讲完（系统音 onDone / 克隆声 onEnded）→ 才进入「讲完啦/提问」环节
   const handleStoryEnded = () => {
+    cancelSleepSession();
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     if (progressInterval.current) clearInterval(progressInterval.current);
     setProgress(100);
@@ -395,6 +427,13 @@ export default function StoryPlayScreen() {
 
   const handlePlay = async () => {
     if (!story) return;
+    // 睡眠定时：读取家长设置，启动倒计时会话（到点自动淡出停止 + 晚安锁屏）
+    const sleepMin = await getSleepTimerMinutes();
+    const sleepLock = await getSleepLockEnabled();
+    const onSleepExpire = () => {
+      setSleepLocked(sleepLock);
+      setPhase('sleep');
+    };
     // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成）
     if (story.audioUri) {
       const ok = await playLocalFile(story.audioUri, handleStoryEnded);
@@ -410,6 +449,7 @@ export default function StoryPlayScreen() {
       }, 500);
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
+      startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
       return;
     }
     const used = await playStory(storyText, selectedVoice, displayLang, handleStoryEnded);
@@ -432,6 +472,7 @@ export default function StoryPlayScreen() {
     // 兜底：万一 onDone 没触发（如克隆声 onEnded 不被支持），到点也结束
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     safetyTimerRef.current = setTimeout(handleStoryEnded, totalDuration * 1.6);
+    startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
   };
 
   const handlePause = () => {
@@ -443,6 +484,7 @@ export default function StoryPlayScreen() {
 
   const handleStop = () => {
     stopStory();
+    cancelSleepSession();
     setIsPlaying(false);
     setProgress(0);
     if (progressInterval.current) clearInterval(progressInterval.current);
@@ -699,6 +741,12 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         </View>
 
+        {sleepRemaining > 0 ? (
+          <View style={styles.sleepBadge}>
+            <Text style={styles.sleepBadgeText}>😴 {formatSleep(sleepRemaining)}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.voiceRow}>
           <Text style={styles.voiceLabel}>🔊 {currentVoice?.name ?? t('story.voice.default')}</Text>
           <TouchableOpacity onPress={() => setShowVoicePicker(!showVoicePicker)}>
@@ -757,6 +805,38 @@ export default function StoryPlayScreen() {
           onDone={() => setNewBadge(null)}
         />
       </>
+      </CartoonScreen>
+    );
+  }
+
+  if (phase === 'sleep') {
+    return (
+      <CartoonScreen gradient="night" decor decorVariant="night">
+        <View style={styles.sleepScreen}>
+          <Animated.View
+            style={[
+              styles.moonGlow,
+              {
+                opacity: moonAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
+                transform: [{ scale: moonAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.08] }) }],
+              },
+            ]}
+          >
+            <Text style={styles.sleepMoon}>🌙</Text>
+          </Animated.View>
+          <Text style={styles.sleepTitle}>{t('sleep.locked.title')}</Text>
+          <Text style={styles.sleepDesc}>{t('sleep.locked.desc')}</Text>
+          <Text style={styles.sleepStars}>⭐ ✨ 🌟 ✨ ⭐</Text>
+          {sleepLocked ? (
+            <TouchableOpacity style={styles.sleepBtn} onPress={() => router.push('/(parent)/index')}>
+              <Text style={styles.sleepBtnText}>{t('sleep.locked.unlock')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.sleepBtn} onPress={() => { setPhase('playing'); }}>
+              <Text style={styles.sleepBtnText}>{t('sleep.locked.continue')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </CartoonScreen>
     );
   }
@@ -1153,4 +1233,24 @@ const styles = StyleSheet.create({
   qaRecapItem: { marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#AED581', paddingLeft: 10 },
   qaRecapQ: { fontSize: 14, fontWeight: '600', color: '#33691E', marginBottom: 4, lineHeight: 20 },
   qaRecapA: { fontSize: 14, color: '#555', lineHeight: 21 },
+  // 睡眠定时倒计时徽标（播放页底部）
+  sleepBadge: {
+    alignSelf: 'center', marginTop: 10, paddingVertical: 6, paddingHorizontal: 16,
+    borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.85)',
+  },
+  sleepBadgeText: { fontSize: 14, color: '#6B5B95', fontWeight: '600' },
+  // 晚安锁屏页
+  sleepScreen: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32,
+  },
+  moonGlow: { marginBottom: 8 },
+  sleepMoon: { fontSize: 96 },
+  sleepTitle: { fontSize: 26, fontWeight: 'bold', color: '#fff', marginTop: 12, textAlign: 'center' },
+  sleepDesc: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 12, lineHeight: 24, textAlign: 'center' },
+  sleepStars: { fontSize: 24, marginTop: 18, letterSpacing: 6 },
+  sleepBtn: {
+    marginTop: 32, backgroundColor: '#FFD66B', paddingVertical: 14, paddingHorizontal: 36,
+    borderRadius: 24,
+  },
+  sleepBtnText: { fontSize: 16, fontWeight: '700', color: '#5B4B23' },
 });

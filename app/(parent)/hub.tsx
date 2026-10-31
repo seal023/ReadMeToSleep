@@ -19,6 +19,7 @@ export default function ParentHub() {
 
   const CARDS: CardDef[] = useMemo(() => [
     { icon: '🛡️', title: '敏感词管理', desc: '管理睡眠内容的敏感词汇过滤', href: '/(parent)/sensitive-words' },
+    { icon: '😴', title: '睡眠定时', desc: '到点自动停止播放，防止孩子睡着后还在听', href: '/(parent)/sleep-timer' },
     { icon: '🎤', title: '孩子录音收听', desc: '收听孩子在应用中的语音记录', href: '/(parent)/child-recordings' },
     { icon: '🔊', title: '声音克隆', desc: '克隆自定义哄睡声源', href: '/(parent)/voice-clone' },
     { icon: '💳', title: '订阅管理', desc: '查看和续费会员订阅', href: '/(parent)/subscription' },
