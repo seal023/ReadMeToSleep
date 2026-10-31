@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link, router, useFocusEffect } from 'expo-router';
 import { getStories, deleteStory } from '../../services/storage';
 import { getProgress } from '../../services/storage';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -41,7 +41,8 @@ export default function MyStoriesScreen() {
     setProgress(prog);
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  // #6 同步：从打卡/创作页返回时刷新，否则切 tab 不重新读，列表与故事库对不上
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const filtered = stories.filter(s => {
     if (tab === 'created') return s.type === 'ai_generated';
@@ -191,7 +192,8 @@ export default function MyStoriesScreen() {
             <Text style={styles.badgeTitle}>🏆 {t('myStories.badgeWall')}</Text>
             <View style={styles.badgeRow}>
               {BADGES.map(b => {
-                const earned = progress?.badges.includes(b.key);
+                // travel-checkin 存储的 badges 是 emoji 串（🚩🏅🥈🥇），故按 emoji 比对（之前误用 key 永不命中）
+                const earned = progress?.badges.includes(b.emoji);
                 return (
                   <View key={b.key} style={[styles.badge, !earned && styles.badgeLocked]}>
                     <Text style={[styles.badgeEmoji, !earned && styles.badgeEmojiLocked]}>

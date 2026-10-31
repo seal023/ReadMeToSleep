@@ -28,6 +28,7 @@ export default function ParentHub() {
     { icon: '💳', title: '订阅管理', desc: '查看和续费会员订阅', href: '/(parent)/subscription' },
     { icon: '📊', title: '使用统计', desc: '查看使用情况与数据统计', href: '/(parent)/statistics' },
     { icon: '💌', title: '给孩子写悄悄话', desc: '给某篇故事写下专属鼓励', href: '/(parent)/parent-comments' },
+    { icon: '🧪', title: '奖励测试', desc: '测试用：直接推进等级/勋章，不必逐条听完', href: '/(parent)/reward-test' },
     { icon: '🚪', title: '退出登录', desc: '退出家长模式', action: () => {
       Alert.alert('确认退出', '确定要退出吗？', [
         { text: '取消' },

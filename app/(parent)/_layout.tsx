@@ -10,6 +10,7 @@ export default function ParentLayout() {
       <Stack.Screen name="voice-clone" />
       <Stack.Screen name="subscription" />
       <Stack.Screen name="statistics" />
+      <Stack.Screen name="reward-test" />
     </Stack>
   );
 }

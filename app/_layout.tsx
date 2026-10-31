@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import { getChildName } from '../services/storage';
-import { speakWithBestVoice } from '../services/playback';
+import { speakWithBestVoice, stopStory } from '../services/playback';
 import { ensurePhraseWarmup } from '../services/phraseCache';
 
 /** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
@@ -60,7 +60,13 @@ function GreetingOnOpen() {
     ensurePhraseWarmup();
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') speak('hello');
-      else if (s === 'background') speak('bye'); // 锁屏/切后台时说「再见xxx」
+      else if (s === 'background') {
+        // 修复 #2：切后台/锁屏时立即停掉所有朗读（故事 / 克隆声 / 系统音），
+        // 否则故事会一直念到自然结束。speak('bye') 内部也会 stopStory，
+        // 但这里先无条件停一次，确保即使用户快速重复锁屏被节流、bye 没播，故事也停。
+        stopStory();
+        speak('bye'); // 锁屏/切后台时说「再见xxx」
+      }
     });
     return () => sub.remove();
   }, [hydrated, speak]);

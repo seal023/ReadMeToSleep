@@ -74,30 +74,43 @@ const TRAVEL_HOOKS: Record<string, { title: string; hook: string }> = {
   '基督像': { title: '山巅的张开双臂', hook: '里约的山顶上，基督像张开双臂，像在给整座城市一个温柔的拥抱。一只小鹦鹉停在雕像的肩上，看城市灯火一盏盏熄灭。' },
 };
 
-/** 通用舒缓中段（约 900 字，朗读约 6-8 分钟），地名嵌入其中 */
-function travelMiddle(name: string): string {
-  return [
-    `夜色里的${name}渐渐安静下来。月光轻轻铺在${name}的每一处角落，远处的灯光一盏盏变得温柔，连风都放慢了脚步。星星在天上眨着眼睛，好像在悄悄守护着这座城市，也守护着这里每一个准备睡觉的小朋友。`,
-    `一只毛茸茸的小浣熊悄悄来到小朋友的窗前。它不想吵醒谁，只是轻轻坐下，用最慢、最软的声音，把${name}白天里那些好玩的事情又讲了一遍——白天热闹的街道、笑闹的声音、被阳光晒得暖暖的石头，到了晚上都变成了一个安静又温柔的梦乡。`,
-    `小浣熊带着小朋友，在故事里又慢慢地逛了一遍${name}。他们看见安静的树影在轻轻摇晃，听见远处传来的声音越来越轻，像有人在很远处哼着歌。${name}的一切都慢慢睡熟了，只剩下月亮还醒着，把银色的光轻轻盖在屋顶上。`,
-    `慢慢地，周围的声音越来越小，灯光也越来越柔和。小朋友的眼皮一点点变沉，呼吸变得轻轻的、慢慢的，就像海浪一下一下拍着岸边。小浣熊不再说话，只是陪在旁边，用软软的尾巴给小朋友当枕头。`,
-    `不知什么时候，风也停了，星星也眯起了眼。小朋友的手慢慢松开了，进入了甜甜的梦乡。`,
-  ].join('\n\n');
+/** 故事长度档位（与创作页一致）：short≈5分钟 / medium≈8分钟 / long≈12分钟 */
+type TravelLength = 'short' | 'medium' | 'long';
+
+/** 通用舒缓中段（地名嵌入其中）。按长度返回不同段落数：
+ *  short≈4段 / medium≈5段（默认）/ long≈7段，朗读时长随之变化 */
+function travelMiddle(name: string, length: TravelLength = 'medium'): string {
+  const p1 = `夜色里的${name}渐渐安静下来。月光轻轻铺在${name}的每一处角落，远处的灯光一盏盏变得温柔，连风都放慢了脚步。星星在天上眨着眼睛，好像在悄悄守护着这座城市，也守护着这里每一个准备睡觉的小朋友。`;
+  const p2 = `一只毛茸茸的小浣熊悄悄来到小朋友的窗前。它不想吵醒谁，只是轻轻坐下，用最慢、最软的声音，把${name}白天里那些好玩的事情又讲了一遍——白天热闹的街道、笑闹的声音、被阳光晒得暖暖的石头，到了晚上都变成了一个安静又温柔的梦乡。`;
+  const p3 = `小浣熊带着小朋友，在故事里又慢慢地逛了一遍${name}。他们看见安静的树影在轻轻摇晃，听见远处传来的声音越来越轻，像有人在很远处哼着歌。${name}的一切都慢慢睡熟了，只剩下月亮还醒着，把银色的光轻轻盖在屋顶上。`;
+  const p4 = `慢慢地，周围的声音越来越小，灯光也越来越柔和。小朋友的眼皮一点点变沉，呼吸变得轻轻的、慢慢的，就像海浪一下一下拍着岸边。小浣熊不再说话，只是陪在旁边，用软软的尾巴给小朋友当枕头。`;
+  const p5 = `不知什么时候，风也停了，星星也眯起了眼。小朋友的手慢慢松开了，进入了甜甜的梦乡。`;
+  // long 专属：让节奏再舒缓一点，延长助眠感
+  const p6 = `小朋友在故事里打了个小小的哈欠，小浣熊轻轻拍着他的背，像在哄一个最珍贵的宝贝。远处的${name}传来若有若无的虫鸣，和着小浣熊轻轻的呼吸，哼起了一首最温柔的安眠曲。`;
+  const p7 = `${name}的夜色越来越深，一朵云慢慢飘过月亮的脸，洒下斑驳的光影。小朋友的手指松开了小浣熊的尾巴，整个人都舒舒服服地陷进了软软的被窝里。`;
+
+  let paras: string[];
+  if (length === 'short') paras = [p1, p2, p4, p5];
+  else if (length === 'long') paras = [p1, p2, p3, p6, p7, p4, p5];
+  else paras = [p1, p2, p3, p4, p5];
+  return paras.join('\n\n');
 }
 
-/** 晚安收尾（含地名），让故事安宁助眠地结束 */
+/** 晚安收尾（含地名），让故事安宁助眠地结束。
+ *  修复 #1：原句用了全角分号「晚安，x；晚安，小朋友。」（中文里不自然），
+ *  且直接套用了半角英文双引号；这里改为句号断句 + 中文全角引号「“”」。 */
 function travelEnding(name: string): string {
-  return `小浣熊把软软的毯子轻轻盖在小朋友身上，哼起了一首谁也听不懂、却让人心里很安稳的摇篮曲。它小声说："晚安，${name}；晚安，小朋友。今晚的月亮会一直陪着你，做个关于星星和云的好梦吧。"说完，小浣熊也蜷起尾巴，在${name}温柔的夜色里，悄悄地睡着了。`;
+  return `小浣熊把软软的毯子轻轻盖在小朋友身上，哼起了一首谁也听不懂、却让人心里很安稳的摇篮曲。它小声说：“晚安，${name}。晚安，小朋友。今晚的月亮会一直陪着你，做个关于星星和云的好梦吧。”说完，小浣熊也蜷起尾巴，在${name}温柔的夜色里，悄悄地睡着了。`;
 }
 
-/** 由「地标特色钩子 + 通用长中段 + 晚安收尾」拼成 5-10 分钟离线睡前故事 */
-function buildLongTravelStory(name: string, hook?: string): { title: string; content: string } {
+/** 由「地标特色钩子 + 通用长中段 + 晚安收尾」拼成离线睡前故事（长度可选） */
+function buildLongTravelStory(name: string, hook?: string, length: TravelLength = 'medium'): { title: string; content: string } {
   const head = hook
     ? `${hook}\n\n小浣熊没有打扰这份安静，它轻轻坐在旁边，想把这个地方的夜晚，讲成一个长长的、暖暖的睡前故事。`
     : `夜深了，${name}慢慢安静下来。窗外的风轻轻吹过，星星在天上眨着眼睛。一只温柔的小动物悄悄来到${name}，想给这里的小朋友讲一个甜甜的睡前故事。`;
   return {
     title: `${name}的睡前奇遇`,
-    content: `${head}\n\n${travelMiddle(name)}\n\n${travelEnding(name)}`,
+    content: `${head}\n\n${travelMiddle(name, length)}\n\n${travelEnding(name)}`,
   };
 }
 
@@ -108,10 +121,17 @@ for (const [place, info] of Object.entries(TRAVEL_HOOKS)) {
 }
 
 /** 地图上没有的自定义地点，用这个通用睡前故事兜底（不依赖 AI，离线零 token） */
-function genericTravelStory(name: string): { title: string; content: string } {
-  const s = buildLongTravelStory(name);
+function genericTravelStory(name: string, length: TravelLength = 'medium'): { title: string; content: string } {
+  const s = buildLongTravelStory(name, undefined, length);
   return { title: s.title, content: s.content };
 }
+
+/** 长度档位展示文案（与创作页长度选择一致） */
+const LENGTH_LABELS: Record<TravelLength, { zh: string; en: string; tag: string }> = {
+  short: { zh: '短', en: 'Short', tag: '~5分钟' },
+  medium: { zh: '中', en: 'Medium', tag: '~8分钟' },
+  long: { zh: '长', en: 'Long', tag: '~12分钟' },
+};
 
 const BADGE_RULES = [
   { count: 1, emoji: '🚩', label: { zh: '首次打卡', en: 'First Check-in' } },
@@ -143,6 +163,8 @@ export default function TravelCheckinScreen() {
   // 奖励增强：累计打卡数 + 已得徽章列表，供 success 页陈列
   const [checkInTotal, setCheckInTotal] = useState(0);
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+  // 故事长度选择（#3：与创作页一致，short/medium/long），默认中
+  const [storyLength, setStoryLength] = useState<TravelLength>('medium');
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
   // 语音输入：复用 expo-audio 录音 + 百炼 ASR 转写，写入搜索框并自动匹配已有城市
@@ -263,7 +285,10 @@ export default function TravelCheckinScreen() {
     setStep('generate');
     // Simulate story generation (2s)
     setTimeout(() => {
-      setStory(STORIES[loc.place] || genericTravelStory(loc.cn));
+      const s = STORIES[loc.place]
+        ? buildLongTravelStory(loc.place, TRAVEL_HOOKS[loc.place]?.hook, storyLength)
+        : genericTravelStory(loc.cn, storyLength);
+      setStory(s);
       setStep('play');
     }, 2000);
   };
@@ -537,6 +562,30 @@ export default function TravelCheckinScreen() {
                   : `还可打卡 ${snapshot.checkInsRemaining} 次 · 会员不限`}
               </Text>
             )}
+
+            {/* 故事长度选择（#3：与创作页一致） */}
+            <View style={styles.lengthWrap}>
+              <Text style={styles.lengthTitle}>
+                {language === 'en' ? 'Story length' : '故事长度'}
+              </Text>
+              <View style={styles.lengthRow}>
+                {(['short', 'medium', 'long'] as TravelLength[]).map((k) => (
+                  <TouchableOpacity
+                    key={k}
+                    style={[styles.lengthChip, storyLength === k && styles.lengthChipActive]}
+                    onPress={() => setStoryLength(k)}
+                  >
+                    <Text style={[styles.lengthChipText, storyLength === k && styles.lengthChipTextActive]}>
+                      {language === 'en' ? LENGTH_LABELS[k].en : LENGTH_LABELS[k].zh}
+                    </Text>
+                    <Text style={[styles.lengthChipSub, storyLength === k && styles.lengthChipSubActive]}>
+                      {LENGTH_LABELS[k].tag}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             <TouchableOpacity
               style={[styles.primaryBtn, !selectedLoc && styles.primaryBtnDisabled]}
               onPress={handleStart}
@@ -683,6 +732,20 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
   header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
   quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },
+
+  // 故事长度选择（#3）
+  lengthWrap: { width: '100%', marginBottom: 16, alignItems: 'center' },
+  lengthTitle: { fontSize: 14, color: '#8D6E63', fontWeight: '600', marginBottom: 10 },
+  lengthRow: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  lengthChip: {
+    backgroundColor: '#FFF8F0', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16,
+    borderWidth: 1, borderColor: '#F0D9B5', alignItems: 'center', minWidth: 84,
+  },
+  lengthChipActive: { backgroundColor: '#FFE0D6', borderColor: '#FF8A65', borderWidth: 2 },
+  lengthChipText: { fontSize: 15, fontWeight: '700', color: '#5D4037' },
+  lengthChipTextActive: { color: '#FF5722' },
+  lengthChipSub: { fontSize: 11, color: '#A0937D', marginTop: 2 },
+  lengthChipSubActive: { color: '#FF8A65' },
 
   // 搜索框
   searchBox: {

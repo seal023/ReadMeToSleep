@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
-import { CLASSIC_EN_IDS } from '../../services/storage';
+import { CLASSIC_EN_IDS, getStories, getProgress } from '../../services/storage';
+import type { Story, Progress } from '../../types';
 
 // 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
 const TAGS = [
@@ -64,24 +65,62 @@ export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('classic');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // #6 同步：AI / 旅行两个标签原来恒返回 []（与「我的故事」对不上）。
+  // 现从存储真实加载，与「我的故事」(created=ai_generated / checkins) 同源。
+  const [aiStories, setAiStories] = useState<Story[]>([]);
+  const [travelCheckins, setTravelCheckins] = useState<Progress['checkIns']>([]);
+
+  // 每次回到本页（从创作 / 打卡页返回）都刷新，保证与「我的故事」实时同步
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const [all, prog] = await Promise.all([getStories(), getProgress()]);
+          if (!alive) return;
+          setAiStories(all.filter((s) => s.type === 'ai_generated'));
+          setTravelCheckins(prog.checkIns ?? []);
+        } catch {
+          /* 读取失败保持空列表，不阻塞浏览 */
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
 
   const filtered = useMemo(() => {
-    if (activeTab !== 'classic') return [];
-    let list = storiesIndex as StoryItem[];
-    // 英文模式：经典故事库仅有部分具备英文正文，过滤到只有英文的故事，
-    // 保证「英文界面下故事必须是英文」（不含英文的故事不会以中文出现在英文列表）
-    if (language === 'en') list = list.filter(s => CLASSIC_EN_IDS.has(s.id));
-    if (activeTag) list = list.filter(s => s.tags.includes(activeTag));
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter(s => s.title.zh.toLowerCase().includes(q) || s.title.en.toLowerCase().includes(q));
+    const q = search.trim().toLowerCase();
+    if (activeTab === 'classic') {
+      let list = storiesIndex as StoryItem[];
+      // 英文模式：经典故事库仅有部分具备英文正文，过滤到只有英文的故事，
+      // 保证「英文界面下故事必须是英文」（不含英文的故事不会以中文出现在英文列表）
+      if (language === 'en') list = list.filter((s) => CLASSIC_EN_IDS.has(s.id));
+      if (activeTag) list = list.filter((s) => s.tags.includes(activeTag));
+      if (q) list = list.filter((s) => s.title.zh.toLowerCase().includes(q) || s.title.en.toLowerCase().includes(q));
+      return list;
     }
+    if (activeTab === 'ai') {
+      let list = aiStories;
+      if (q) list = list.filter((s) => (s.title || '').toLowerCase().includes(q));
+      return list;
+    }
+    // travel：与「我的故事 → 旅行打卡」同一数据源
+    let list = travelCheckins;
+    if (q) list = list.filter((c) => c.location.toLowerCase().includes(q));
     return list;
-  }, [activeTab, activeTag, search, language]);
+  }, [activeTab, activeTag, search, language, aiStories, travelCheckins]);
 
   const fmtDuration = (sec: number) => `${Math.floor(sec / 60)} ${t('common.minute')}`;
 
-  const renderCard = ({ item }: { item: StoryItem }) => (
+  const fmtDate = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const renderClassic = ({ item }: { item: StoryItem }) => (
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.7}
@@ -108,6 +147,56 @@ export default function LibraryScreen() {
       </View>
     </TouchableOpacity>
   );
+
+  const renderAi = ({ item }: { item: Story }) => (
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.7}
+      onPress={() => router.push(`/story/${item.id}`)}
+    >
+      <View style={styles.cardLeft}>
+        <Text style={styles.cardEmoji}>✨</Text>
+      </View>
+      <View style={styles.cardCenter}>
+        <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+        <View style={styles.tagRow}>
+          <Text style={styles.tag}>{t('library.tab.ai')}</Text>
+          {item.duration ? <Text style={styles.duration}>{fmtDuration(item.duration)}</Text> : null}
+        </View>
+      </View>
+      <View style={styles.cardRight}>
+        <Text style={styles.playBtn}>▶️</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderTravel = ({ item }: { item: Progress['checkIns'][number] }) => (
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.7}
+      onPress={() => router.push('/story/travel-checkin')}
+    >
+      <View style={styles.cardLeft}>
+        <Text style={styles.cardEmoji}>✈️</Text>
+      </View>
+      <View style={styles.cardCenter}>
+        <Text style={styles.cardTitle} numberOfLines={1}>{item.location}</Text>
+        <View style={styles.tagRow}>
+          <Text style={styles.tag}>{t('library.tab.travel')}</Text>
+          <Text style={styles.duration}>{fmtDate(item.date)}</Text>
+        </View>
+      </View>
+      <View style={styles.cardRight}>
+        <Text style={styles.playBtn}>▶️</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderItem = ({ item }: { item: any }) => {
+    if (activeTab === 'classic') return renderClassic({ item: item as StoryItem });
+    if (activeTab === 'ai') return renderAi({ item: item as Story });
+    return renderTravel({ item: item as Progress['checkIns'][number] });
+  };
 
   return (
     <CartoonScreen gradient="day" decor>
@@ -170,9 +259,12 @@ export default function LibraryScreen() {
       )}
 
       <FlatList
-        data={filtered}
-        keyExtractor={item => item.id}
-        renderItem={renderCard}
+        data={filtered as any}
+        keyExtractor={(item, index) => {
+          const it = item as any;
+          return it?.id ?? `${it?.location ?? 'x'}_${it?.date ?? index}`;
+        }}
+        renderItem={renderItem}
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
         ListEmptyComponent={
           <View style={styles.empty}>

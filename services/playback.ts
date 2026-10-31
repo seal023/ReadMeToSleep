@@ -103,6 +103,11 @@ export async function speakWithBestVoice(
           () => mySeq === speakSeq,
         );
         if (ok) return true;
+        // 关键修复（#4/#5）：若本请求已被更新的旁白请求取代（abortCheck 失败），
+        // 则本句必须「静默放弃」——由取代它的新请求负责出声。
+        // 否则旧的这请求会落到下面的 textToSpeech 用系统女声补一句，
+        // 与正在响的克隆声叠加成「双声 / 几个声音同时出来」（首题长延迟、好几个语音挨个或同时出）。
+        if (mySeq !== speakSeq) return false;
       }
     } catch {
       /* 克隆声失败，继续降级系统音 */

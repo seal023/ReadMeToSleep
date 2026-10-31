@@ -16,7 +16,7 @@ import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
-import { getVoiceGuidance, getChildName, setChildName as saveChildName } from '../../services/storage';
+import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
 import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
@@ -25,6 +25,12 @@ import type { RaccoState } from '../../types';
 const FIRST_RUN_CLONE_KEY = 'rms_firstrun_clone';
 
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
+
+function fmtDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function getGreetingKey(): string {
   // 按机器本地时钟分四段问候，避免大晚上还显示"早上好"
@@ -46,6 +52,47 @@ export default function HomeTab() {
   const [onboardText, setOnboardText] = useState('');
   // P1：首次启动引导——尚未克隆任何亲人声线时，强提示录制（核心卖点前置）
   const [cloneBannerVisible, setCloneBannerVisible] = useState(false);
+
+  // #6 同步：首页「最近故事」原本恒显示空态，现从真实数据填充（AI 故事 + 旅行打卡）
+  type RecentItem = { key: string; title: string; sub: string; kind: 'ai' | 'travel'; route: string };
+  const [recent, setRecent] = useState<RecentItem[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const [all, prog] = await Promise.all([getStories(), getProgress()]);
+          if (!alive) return;
+          const ai = all
+            .filter((s) => s.type === 'ai_generated')
+            .map((s) => ({
+              key: s.id,
+              title: s.title,
+              sub: fmtDate(s.createdAt),
+              kind: 'ai' as const,
+              route: `/story/${s.id}`,
+            }));
+          const tr = (prog.checkIns ?? []).map((c) => ({
+            key: `${c.location}_${c.date}`,
+            title: c.location,
+            sub: fmtDate(c.date),
+            kind: 'travel' as const,
+            route: '/story/travel-checkin',
+          }));
+          const merged = [...ai, ...tr]
+            .sort((a, b) => (b.sub || '').localeCompare(a.sub || ''))
+            .slice(0, 4);
+          setRecent(merged);
+        } catch {
+          /* 忽略读取异常，保持空态 */
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
 
   const { width: screenW } = useWindowDimensions();
   // iPad 横屏（以及大屏）视为宽屏：内容限宽居中，浣熊不要占满整个高度
@@ -302,9 +349,21 @@ export default function HomeTab() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('home.recentStories')}</Text>
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>{t('home.noStories')}</Text>
-        </View>
+        {recent.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>{t('home.noStories')}</Text>
+          </View>
+        ) : (
+          recent.map((r) => (
+            <TouchableOpacity key={r.key} style={styles.recentItem} onPress={() => router.push(r.route)}>
+              <Text style={styles.recentItemEmoji}>{r.kind === 'ai' ? '✨' : '✈️'}</Text>
+              <View style={styles.recentItemInfo}>
+                <Text style={styles.recentItemTitle} numberOfLines={1}>{r.title}</Text>
+                <Text style={styles.recentItemSub}>{r.sub}</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
       </View>
       </ScrollView>
 
@@ -603,6 +662,35 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#BDBDBD',
+  },
+
+  // #6 首页「最近故事」真实条目
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
+    elevation: 2,
+  },
+  recentItemEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  recentItemInfo: {
+    flex: 1,
+  },
+  recentItemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  recentItemSub: {
+    fontSize: 12,
+    color: '#999',
   },
 
   // 需求 3 占位：语音引导卡片

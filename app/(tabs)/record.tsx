@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   useAudioRecorder,
   RecordingPresets,
@@ -17,7 +17,8 @@ import {
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
 import { Directory, File, Paths } from 'expo-file-system/next';
-import { saveStory } from '../../services/storage';
+import { saveStory, getStories, deleteStory } from '../../services/storage';
+import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -41,11 +42,74 @@ export default function RecordScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
 
+  // 历史录音目录：录音页下方列出每次录音的标题 / 日期 / 时长，可直接试听、删除
+  const [recordings, setRecordings] = useState<Story[]>([]);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const loadRecordings = useCallback(async () => {
+    try {
+      const all = await getStories();
+      const recs = all
+        .filter((s) => s.type === 'recorded')
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      setRecordings(recs);
+    } catch {
+      /* 读取异常保持空列表 */
+    }
+  }, []);
+
+  // 每次回到本页刷新（保存新录音返回、或从别处删除后）；离开本 tab 时停掉试听
+  useFocusEffect(
+    useCallback(() => {
+      loadRecordings();
+      return () => {
+        stopClonedAudio();
+        setPreviewId(null);
+      };
+    }, [loadRecordings])
+  );
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      stopClonedAudio(); // 离开时停掉试听
     };
   }, []);
+
+  const togglePreview = async (story: Story) => {
+    if (!story.audioUri) return;
+    if (recording) return; // 录音进行中不打断
+    if (previewId === story.id) {
+      stopClonedAudio();
+      setPreviewId(null);
+      return;
+    }
+    stopClonedAudio();
+    const ok = await playLocalFile(story.audioUri, () => setPreviewId(null));
+    setPreviewId(ok ? story.id : null);
+  };
+
+  const confirmDelete = (story: Story) => {
+    Alert.alert(
+      language === 'en' ? 'Delete recording?' : '删除这段录音？',
+      story.title,
+      [
+        { text: language === 'en' ? 'Cancel' : '取消', style: 'cancel' },
+        {
+          text: language === 'en' ? 'Delete' : '删除',
+          style: 'destructive',
+          onPress: async () => {
+            if (previewId === story.id) {
+              stopClonedAudio();
+              setPreviewId(null);
+            }
+            await deleteStory(story.id);
+            await loadRecordings();
+          },
+        },
+      ],
+    );
+  };
 
   const startRecording = async () => {
     try {
@@ -162,6 +226,14 @@ export default function RecordScreen() {
     const ss = s % 60;
     return `${m}:${String(ss).padStart(2, '0')}`;
   };
+  const formatDate = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return language === 'en'
+      ? `${d.getMonth() + 1}/${d.getDate()}`
+      : `${d.getMonth() + 1}月${d.getDate()}日`;
+  };
+  const totalSec = recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
 
   return (
     <CartoonScreen gradient="day" decor>
@@ -250,6 +322,50 @@ export default function RecordScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* 历史录音目录：每次录音的标题 / 日期 / 时长一览，可试听、可删除 */}
+        <View style={styles.dirSection}>
+          <View style={styles.dirHeader}>
+            <Text style={styles.dirTitle}>{language === 'en' ? '📁 Recording list' : '📁 历史录音目录'}</Text>
+            <Text style={styles.dirSummary}>
+              {recordings.length === 0
+                ? (language === 'en' ? 'No recordings yet' : '还没有录音')
+                : (language === 'en'
+                    ? `${recordings.length} clip(s) · total ${fmt(totalSec)}`
+                    : `共 ${recordings.length} 段 · 总计 ${fmt(totalSec)}`)}
+            </Text>
+          </View>
+
+          {recordings.length === 0 ? (
+            <Text style={styles.dirEmpty}>
+              {language === 'en'
+                ? 'Record a story above — it will show up here.'
+                : '在上面录一个故事，录完就会出现在这里～'}
+            </Text>
+          ) : (
+            recordings.map((story, i) => (
+              <View key={story.id} style={styles.dirRow}>
+                <Text style={styles.dirIndex}>{i + 1}</Text>
+                <View style={styles.dirInfo}>
+                  <Text style={styles.dirName} numberOfLines={1}>{story.title}</Text>
+                  <Text style={styles.dirMeta}>
+                    {formatDate(story.createdAt)} · {story.duration ? fmt(story.duration) : '—'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.dirIconBtn}
+                  onPress={() => togglePreview(story)}
+                  disabled={!story.audioUri}
+                >
+                  <Text style={styles.dirIcon}>{previewId === story.id ? '⏸' : '▶'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dirIconBtn} onPress={() => confirmDelete(story)}>
+                  <Text style={styles.dirIcon}>🗑</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
     </CartoonScreen>
   );
@@ -295,4 +411,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40, alignItems: 'center', marginTop: 8,
   },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  // 历史录音目录
+  dirSection: { width: '100%', marginTop: 32 },
+  dirHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  dirTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  dirSummary: { fontSize: 12, color: '#8D6E63' },
+  dirRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+    elevation: 1,
+  },
+  dirIndex: { width: 22, fontSize: 13, color: '#B0A395', fontWeight: '700' },
+  dirInfo: { flex: 1, marginRight: 8 },
+  dirName: { fontSize: 15, fontWeight: '600', color: COLORS.text },
+  dirMeta: { fontSize: 12, color: '#999', marginTop: 2 },
+  dirIconBtn: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFF0ED',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 6,
+  },
+  dirIcon: { fontSize: 15 },
+  dirEmpty: { fontSize: 13, color: '#AAA', textAlign: 'center', paddingVertical: 20 },
 });

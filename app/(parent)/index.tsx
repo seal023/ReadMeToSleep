@@ -4,10 +4,11 @@ import {
   Keyboard, KeyboardAvoidingView, ScrollView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
+import Racco from '@/components/common/Racco';
 import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
 
-const RACCO_SLEEPING = '🦝💤';
-const RACCO_IDLE = '🦝';
+// 家长模式专属可爱浣熊（与家长中心 hub 同一张图），替换原先写实的 🦝 表情
+const PARENT_RACCOON = require('../../assets/raccoon-parent.png');
 
 export default function ParentIndex() {
   const [mode, setMode] = useState<'setup' | 'unlock'>('setup');
@@ -94,7 +95,10 @@ export default function ParentIndex() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-      <Text style={styles.racco}>{RACCO_SLEEPING}</Text>
+      {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
+      <View style={styles.racco}>
+        <Racco state="sleeping" size={170} source={PARENT_RACCOON} />
+      </View>
       <Text style={styles.title}>家长模式</Text>
 
       {locked ? (
@@ -170,7 +174,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 24,
   },
-  racco: { fontSize: 140, marginBottom: 8 },
+  racco: { alignItems: 'center', marginBottom: 4 },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32, color: '#333' },
   label: { fontSize: 16, color: '#555', marginBottom: 12 },
   input: {

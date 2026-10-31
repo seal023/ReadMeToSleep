@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator, TextInput, Animated } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import Racco from '@/components/common/Racco';
@@ -29,6 +29,22 @@ function targetLabel(key: CloneTarget, t: (k: string) => string): string {
 const READ_TEXT_ZH = `从前有座山，山里有座庙。庙里有个老和尚在给小和尚讲故事。讲的什么呢？老和尚对小和尚说："从前有座山，山里有座庙……"小和尚歪着头问："妈妈，这故事的结尾是什么呀？"老和尚笑着说："这就是故事的魅力呀，我们每天都可以从头开始听。"`;
 const READ_TEXT_EN = `Once upon a time, there was a little bird who wanted to learn how to sing. Every morning, she would sit on a branch and listen to the old birds sing beautiful songs. "Practice makes perfect," the old bird said kindly. So every day, the little bird opened her beak and tried again and again until one day, she discovered her own wonderful voice.`;
 
+/**
+ * 提交克隆后要等 1–2 分钟，底部轮播的诙谐小句子。
+ * 只做视觉陪伴（家长在操作，无需朗读），让"干等"变得有温度。
+ */
+const CLONE_PHRASE_KEYS = [
+  'vc.clonePhrase.1',
+  'vc.clonePhrase.2',
+  'vc.clonePhrase.3',
+  'vc.clonePhrase.4',
+  'vc.clonePhrase.5',
+  'vc.clonePhrase.6',
+  'vc.clonePhrase.7',
+  'vc.clonePhrase.8',
+];
+const CLONE_PHRASE_INTERVAL_MS = 3600;
+
 export default function VoiceClonePage() {
   const { t } = useLanguage();
   const [target, setTarget] = useState<CloneTarget>('mom');
@@ -44,10 +60,36 @@ export default function VoiceClonePage() {
   const [previewing, setPreviewing] = useState(false);
   const [cloneMsg, setCloneMsg] = useState<string | null>(null);
   const [cloneResult, setCloneResult] = useState<VoiceCloneResult | null>(null);
+  // 克隆等待期间底部轮播的诙谐句子
+  const [clonePhraseIdx, setClonePhraseIdx] = useState(0);
+  const clonePhraseFade = useRef(new Animated.Value(1)).current;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerStart = useRef(0);
 
   const router = useRouter();
+
+  // 克隆中：底部小句子每 3.6 秒换一句（等 1–2 分钟时给点陪伴感）
+  useEffect(() => {
+    if (!cloning) {
+      setClonePhraseIdx(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setClonePhraseIdx((i) => (i + 1) % CLONE_PHRASE_KEYS.length);
+    }, CLONE_PHRASE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [cloning]);
+
+  // 换句时淡入，避免文字"啪"地跳变
+  useEffect(() => {
+    if (!cloning) return;
+    clonePhraseFade.setValue(0.1);
+    Animated.timing(clonePhraseFade, {
+      toValue: 1,
+      duration: 520,
+      useNativeDriver: true,
+    }).start();
+  }, [clonePhraseIdx, cloning, clonePhraseFade]);
 
   // 克隆成功后试听：用刚克隆出的音色合成一句欢迎语并播放，确认声音真的"像"
   const handlePreview = async () => {
@@ -240,9 +282,18 @@ export default function VoiceClonePage() {
     return (
       <CartoonScreen gradient="candy" decor>
         <View style={styles.cloningFull}>
-          <ActivityIndicator size="large" color="#6c5ce7" />
-          <Text style={styles.cloningText}>{t('vc.submitting')}</Text>
-          <Text style={styles.cloningSub}>{t('vc.cloningHint')}</Text>
+          <View style={styles.cloningCenter}>
+            <ActivityIndicator size="large" color="#6c5ce7" />
+            <Text style={styles.cloningText}>{t('vc.submitting')}</Text>
+            <Text style={styles.cloningSub}>{t('vc.cloningHint')}</Text>
+          </View>
+
+          {/* 底部：诙谐小句子轮播（视觉陪伴，不朗读） */}
+          <View style={styles.clonePhraseBox} pointerEvents="none">
+            <Animated.Text style={[styles.clonePhraseText, { opacity: clonePhraseFade }]}>
+              {t(CLONE_PHRASE_KEYS[clonePhraseIdx])}
+            </Animated.Text>
+          </View>
         </View>
       </CartoonScreen>
     );
@@ -440,9 +491,25 @@ const styles = StyleSheet.create({
   previewBtn: { backgroundColor: '#FF6B6B', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 28, alignSelf: 'center' },
   previewBtnDisabled: { opacity: 0.6 },
   previewBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  cloningFull: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  cloningFull: { flex: 1, justifyContent: 'center', paddingHorizontal: 40, paddingVertical: 40 },
+  cloningCenter: { alignItems: 'center' },
   cloningText: { fontSize: 20, fontWeight: 'bold', color: '#2d1b69', marginTop: 16 },
   cloningSub: { fontSize: 14, color: '#999', marginTop: 8, textAlign: 'center' },
+  // 底部轮播的诙谐句子：贴在页面下方，不压中间的转圈与标题
+  clonePhraseBox: {
+    position: 'absolute',
+    left: 28,
+    right: 28,
+    bottom: 72,
+    alignItems: 'center',
+  },
+  clonePhraseText: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#8e7cc3',
+    textAlign: 'center',
+    fontFamily: FONT.rounded,
+  },
   customInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 6 },
   customInput: { flex: 1, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: '#333', borderWidth: 1, borderColor: '#e0d4f0' },
   customConfirm: { backgroundColor: '#00b894', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, marginLeft: 8 },

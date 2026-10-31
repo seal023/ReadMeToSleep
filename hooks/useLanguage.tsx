@@ -9,6 +9,28 @@ const STORAGE_KEY = 'rms_language'
 
 const locales: Record<Language, LocaleDict> = { en, zh }
 
+/**
+ * 首次安装（本地还没存过语言偏好）时，跟随手机系统的语言设置：
+ * 按系统语言优先级列表，取第一个 App 支持的语言（中文 / 英文）。
+ *  - 系统为中文（含繁體）→ zh
+ *  - 系统为英文 → en
+ *  - 系统是第一语言为日/韩/法等、但列表里还有中文或英文 → 取列表中靠前的那个
+ *  - 系统语言完全不含中/英 → 走英文（国际默认，避免给非中文用户看中文）
+ */
+function detectSystemLanguage(): Language {
+  try {
+    const systemLocales = Localization.getLocales()
+    for (const l of systemLocales) {
+      const code = (l.languageCode || '').toLowerCase()
+      if (code === 'zh') return 'zh'
+      if (code === 'en') return 'en'
+    }
+    return systemLocales.length > 0 ? 'en' : 'zh'
+  } catch {
+    return 'zh'
+  }
+}
+
 const LanguageContext = createContext<LanguageContextType>({
   language: 'zh',
   setLanguage: async () => {},
@@ -18,14 +40,7 @@ const LanguageContext = createContext<LanguageContextType>({
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   // 首帧即按系统语言初始化，避免先渲染中文再闪成英文（本地无存储偏好时）
-  const [language, setLang] = useState<Language>(() => {
-    try {
-      const sysLang = Localization.getLocales()[0]?.languageCode
-      return sysLang === 'en' ? 'en' : 'zh'
-    } catch {
-      return 'zh'
-    }
-  })
+  const [language, setLang] = useState<Language>(detectSystemLanguage)
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
@@ -33,16 +48,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       if (saved === 'en' || saved === 'zh') {
         setLang(saved)
       } else {
-        // 首次启动且未在 App 内手动选过语言：跟随系统语言（iOS/Android 设备语言）
-        try {
-          const sysLang = Localization.getLocales()[0]?.languageCode;
-          const lang: Language = sysLang === 'en' ? 'en' : 'zh';
-          setLang(lang);
-          AsyncStorage.setItem(STORAGE_KEY, lang);
-        } catch {
-          setLang('zh');
-          AsyncStorage.setItem(STORAGE_KEY, 'zh');
-        }
+        // 首次启动且未在 App 内手动选过语言：跟随系统语言（iOS/Android 设备语言），并落盘
+        const lang = detectSystemLanguage()
+        setLang(lang)
+        AsyncStorage.setItem(STORAGE_KEY, lang).catch(() => {})
       }
     }).catch(() => {
       setLang('zh')

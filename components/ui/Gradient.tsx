@@ -11,7 +11,6 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { DECOR } from '../../constants/theme';
 
 type RGB = [number, number, number];
 
@@ -88,32 +87,61 @@ interface SkyDecorProps {
   enabled?: boolean;
 }
 
+/**
+ * 装饰散点：位置故意不规则（不像之前那样左右交替排成一列），
+ * 字号也大小不一（16–48），并带轻微旋转，看起来像随手撒在天空里。
+ * faint = 落在屏幕中央区域，压到很淡，避免挡住页面中的文字与动画。
+ */
+type DecorSpot = {
+  top: `${number}%`;
+  left: `${number}%`;
+  size: number;
+  rot: number;
+  faint?: boolean;
+};
+
+const DECOR_SPOTS: DecorSpot[] = [
+  { top: '3%', left: '8%', size: 24, rot: -12 },
+  { top: '7%', left: '63%', size: 42, rot: 7 },
+  { top: '14%', left: '30%', size: 16, rot: 16 },
+  { top: '19%', left: '89%', size: 28, rot: -8 },
+  { top: '27%', left: '1%', size: 38, rot: 11 },
+  { top: '33%', left: '78%', size: 18, rot: -15, faint: true },
+  { top: '41%', left: '14%', size: 30, rot: 6, faint: true },
+  { top: '48%', left: '91%', size: 22, rot: -10 },
+  { top: '57%', left: '5%', size: 44, rot: 9 },
+  { top: '64%', left: '72%', size: 20, rot: -14, faint: true },
+  { top: '72%', left: '24%', size: 26, rot: 13 },
+  { top: '80%', left: '86%', size: 32, rot: -7 },
+  { top: '88%', left: '52%', size: 18, rot: 10 },
+  { top: '93%', left: '12%', size: 36, rot: -11 },
+];
+
+const DAY_DECOR = ['☁️', '⭐', '✨', '☁️', '🌤️', '🌟', '✨', '☁️', '🌟', '⭐', '✨', '☁️', '⭐', '✨'];
+const NIGHT_DECOR = ['🌙', '⭐', '✨', '🌟', '✨', '⭐', '🌙', '🌟', '✨', '⭐', '🌙', '✨', '⭐', '🌟'];
+
 export function SkyDecor({ variant = 'day', enabled = true }: SkyDecorProps) {
   if (!enabled) return null;
-  const items =
-    variant === 'night'
-      ? [DECOR.moon, '⭐', '✨', '🌟', '⭐', '✨', '🌙', '⭐']
-      : ['☁️', '✨', '☁️', '⭐', '🌤️', '✨', '☁️', '🌟'];
-
-  const positions = [
-    { top: 36, left: 22 },
-    { top: 84, right: 26 },
-    { top: 150, left: 38 },
-    { top: 220, right: 30 },
-    { top: 300, left: 26 },
-    { top: 380, right: 40 },
-    { top: 470, left: 44 },
-    { top: 560, right: 28 },
-  ];
+  const icons = variant === 'night' ? NIGHT_DECOR : DAY_DECOR;
 
   return (
     <View style={styles.absoluteFill} pointerEvents="none">
-      {items.map((emoji, i) => (
+      {DECOR_SPOTS.map((spot, i) => (
         <View
           key={i}
-          style={[styles.decorItem, positions[i % positions.length] as any]}
+          style={[
+            styles.decorItem,
+            { top: spot.top, left: spot.left, opacity: spot.faint ? 0.14 : 0.6 },
+          ]}
         >
-          <Text style={styles.decorEmoji}>{emoji}</Text>
+          <Text
+            style={[
+              styles.decorEmoji,
+              { fontSize: spot.size, transform: [{ rotate: `${spot.rot}deg` }] },
+            ]}
+          >
+            {icons[i % icons.length]}
+          </Text>
         </View>
       ))}
     </View>
@@ -153,5 +181,6 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   decorItem: { position: 'absolute' },
-  decorEmoji: { fontSize: 34, opacity: 0.7 },
+  // 字号由每个散点单独决定（16–48），这里只保留兜底值
+  decorEmoji: { fontSize: 30 },
 });
