@@ -46,15 +46,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
       if (saved === 'en' || saved === 'zh') {
+        // 用户在 App 内手动选过语言：以手动选择为准
         setLang(saved)
       } else {
-        // 首次启动且未在 App 内手动选过语言：跟随系统语言（iOS/Android 设备语言），并落盘
-        const lang = detectSystemLanguage()
-        setLang(lang)
-        AsyncStorage.setItem(STORAGE_KEY, lang).catch(() => {})
+        // 从没手动选过：每次启动都跟着手机系统语言走。
+        // 这里故意不落盘，这样以后在系统设置里改语言、重装，App 都能自动跟上。
+        setLang(detectSystemLanguage())
       }
     }).catch(() => {
-      setLang('zh')
+      setLang(detectSystemLanguage())
     }).finally(() => {
       // 无论读取成功与否，标记语言已初始化，避免 UI 用默认 zh 提前播报/渲染
       setHydrated(true)
