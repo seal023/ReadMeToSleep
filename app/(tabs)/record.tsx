@@ -16,7 +16,7 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system/next';
 import { saveStory } from '../../services/storage';
 import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -113,11 +113,26 @@ export default function RecordScreen() {
     setSaving(true);
     try {
       const id = `rec_${Date.now()}`;
-      // 把录音从缓存复制到 documents，保证长期保留
-      const dest =
-        `${FileSystem.documentDirectory}recordings/` + id + '.m4a';
-      await FileSystem.copyAsync({ from: uri, to: dest }).catch(() => {});
-      const finalUri = dest;
+      // 把录音从缓存复制到 documents，保证长期保留。
+      // ★ 修复：SDK57 真机上顶层 FileSystem.documentDirectory 可能返回空（克隆音频落盘已踩过同一坑），
+      //   旧代码拼字符串会得到 "nullrecordings/xxx.m4a" 的坏路径；更糟的是 .catch(()=>{}) 把
+      //   复制失败静默吞掉，坏路径照样写进 story.audioUri → 这条录音之后永远播不出来。
+      //   改用 expo-file-system/next 的 Paths.document + Directory/File，失败则退回缓存原件。
+      let finalUri = uri;
+      try {
+        const dir = new Directory(Paths.document, 'recordings');
+        if (!dir.exists) dir.create();
+        const src = new File(uri);
+        const dest = new File(dir, `${id}.m4a`);
+        if (src.exists) {
+          if (dest.exists) dest.delete();
+          src.copy(dest);
+          finalUri = dest.uri;
+        }
+      } catch (copyErr) {
+        // 复制失败不再静默：退回缓存原件，至少本次能正常播放
+        console.warn('[record] copy to documents failed, fallback to cache:', copyErr);
+      }
       const finalTitle =
         title.trim() ||
         `${language === 'zh' ? '我的故事' : 'My Story'} ${new Date().toLocaleDateString()}`;

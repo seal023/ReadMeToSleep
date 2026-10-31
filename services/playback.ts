@@ -5,6 +5,7 @@ import {
   hasClonedVoice,
 } from './clonedVoicePlayback';
 import { getVoiceSetting } from './storage';
+import { pickPhrase, type PhraseCategory } from './phraseBank';
 import type { CloneTarget } from './voiceClone';
 
 /**
@@ -48,20 +49,40 @@ export function stopStory(): void {
 
 /**
  * 用「当前最好的声音」说一句话（克隆声优先，失败/未克隆降级系统音）。
- * 用于把克隆声贯穿全 App（每日问候、问答提示/反馈、AI 回答等），
- * 而不是只有听故事时才用克隆声。
+ * 用于把克隆声贯穿全 App（每日问候、问答提示/反馈、AI 回答等）。
  *
- * 不阻塞调用方：内部等待合成完成后才开始播，但调用处一般无需 await。
- * 同一时刻只会有最后一句在播（playClonedAudio 会先停掉上一段）。
+ * 行为：
+ * - 任何一次调用都会先打断上一段（克隆声 + 系统音），保证「动作/界面切换时旧声立刻停、
+ *   新声立刻响」，解决多个提示音叠加/串台的问题；
+ * - 并发安全：克隆声合成期间若来了更新的请求，旧的那次合成完会放弃播放，不覆盖新声；
+ * - 无论长短提示，都优先用克隆声，且「同一文本 + 同一音色只合成一次」并落盘缓存：
+ *   命中缓存后下次播放零延迟、零重复 token（秒出）；仅首次使用会现合成一次；
+ *   克隆成功后已静默预热高频短句，使常见提示（你好/再见/答对/晚安…）几乎总是命中缓存；
+ * - 未克隆 / 克隆合成失败时降级到系统音（expo-speech），保证一定有声音。
+ *
+ * @param opts.urgent    （已废弃）曾用于强制系统音；现所有提示统一走克隆声优先逻辑，
+ *                       该字段保留仅为兼容旧调用点，不再影响行为。
+ * @param opts.interrupt false=不打断上一段（极少用）；默认 true
+ * @param opts.voiceId   指定声线；缺省则读全局声音设置
  */
+let speakSeq = 0;
+export interface SpeakOptions {
+  urgent?: boolean;
+  interrupt?: boolean;
+  voiceId?: string;
+}
 export async function speakWithBestVoice(
   text: string,
   language: 'zh' | 'en' = 'zh',
-  voiceId?: string,
+  opts: SpeakOptions = {},
 ): Promise<boolean> {
   const content = (text || '').trim();
   if (!content) return false;
-  let voice = voiceId;
+
+  const mySeq = ++speakSeq;
+  if (opts.interrupt !== false) stopStory(); // 立即打断旧的（克隆 + 系统）
+
+  let voice = opts.voiceId;
   if (!voice) {
     try {
       voice = await getVoiceSetting();
@@ -69,10 +90,18 @@ export async function speakWithBestVoice(
       voice = undefined;
     }
   }
+
+  // 统一走克隆声：命中本地缓存则秒出、零 token；未命中则首次现合成一次并落盘缓存。
+  // 克隆声不可用时（未克隆 / 合成失败）自然落到下方系统音降级。
   if (voice && voice !== 'system') {
     try {
       if (await hasClonedVoice(voice)) {
-        const ok = await playClonedAudio(content, voice as CloneTarget);
+        const ok = await playClonedAudio(
+          content,
+          voice as CloneTarget,
+          undefined,
+          () => mySeq === speakSeq,
+        );
         if (ok) return true;
       }
     } catch {
@@ -81,4 +110,21 @@ export async function speakWithBestVoice(
   }
   textToSpeech(content, voice || 'system', language);
   return false;
+}
+
+/**
+ * 从「俏皮短句」词库随机取一句，用最好的声音播报（克隆声优先、缓存秒出）。
+ * 用于让反馈/引导更有烟火气：每次提示语都不一样（答对啦 / 太厉害了 / 你真行…），
+ * 而不是固定重复同一句。取词与预热同源（pickPhrase），保证命中本地缓存、零重复 token。
+ *
+ * @param cat 词库分类（thinking / correct / wrong / voiceHeard …）
+ */
+export async function speakPhrase(
+  cat: PhraseCategory,
+  language: 'zh' | 'en' = 'zh',
+  opts: SpeakOptions = {},
+): Promise<boolean> {
+  const text = pickPhrase(cat, language);
+  if (!text) return false;
+  return speakWithBestVoice(text, language, opts);
 }

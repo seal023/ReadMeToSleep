@@ -19,7 +19,8 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES } from '../../services/tts';
-import { playStory, stopStory, speakWithBestVoice } from '../../services/playback';
+import { playStory, stopStory, speakWithBestVoice, speakPhrase } from '../../services/playback';
+import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration } from '../../services/clonedVoicePlayback';
@@ -115,6 +116,10 @@ export default function StoryPlayScreen() {
   // 进度条拖动跳转
   const [usingClonedVoice, setUsingClonedVoice] = useState(false);
   const clonedPlayingRef = useRef(false);
+  // 页面是否仍在前台：失焦（切走/退出）后置 false，用于「AI 回答到达时若已离开则不朗读」
+  const aliveRef = useRef(true);
+  // 播放按钮呼吸脉冲（isPlaying 时放大+收缩，直观提示「正在播放」）
+  const playPulse = useRef(new Animated.Value(1)).current;
   const lastTotalDuration = useRef(0);
   const [seekToast, setSeekToast] = useState('');
   const barLayout = useRef({ width: 0 });
@@ -269,19 +274,9 @@ export default function StoryPlayScreen() {
   // 进入问答环节时，用语音把「该做什么」说出来，而不是只靠文字
   useEffect(() => {
     if (phase === 'qa_round1') {
-      speakWithBestVoice(
-        displayLang === 'en'
-          ? "Let's play a question game! Listen to the question and tap an answer you like."
-          : '我们来玩问答小游戏吧！听清楚问题，选一个你喜欢的答案～',
-        displayLang
-      );
+      speakPhrase('round1', displayLang);
     } else if (phase === 'qa_round2') {
-      speakWithBestVoice(
-        displayLang === 'en'
-          ? 'Now it is your turn! Hold the microphone and tell me your question. After I answer, tap the round button below to ask another, or tap finish when you are done.'
-          : '现在轮到你啦！按住小话筒，把你的问题说出来。听完我的回答，想再问一个就点下面的圆圈按钮，都说完就点完成哦～',
-        displayLang
-      );
+      speakPhrase('round2', displayLang);
     }
   }, [phase]);
 
@@ -295,6 +290,25 @@ export default function StoryPlayScreen() {
       speakWithBestVoice(q.question + tail, displayLang);
     }
   }, [phase, qaIndex, qaLoading]);
+
+  // 题目预热：进入问答阶段前，把所有题目的克隆音频预先合成好（中英文都备），
+  // 这样「题目一出现就立即朗读」，不再有合成等待的延迟（命中缓存后零 token、零延迟）
+  useEffect(() => {
+    if (!qaQuestions || qaQuestions.length === 0) return;
+    if (!selectedVoice || selectedVoice === 'system') return;
+    let cancelled = false;
+    (async () => {
+      if (!(await hasClonedVoice(selectedVoice))) return;
+      for (const q of qaQuestions) {
+        if (cancelled) break;
+        const tailZh = q.type === 'voice' ? '，按住小话筒说出来。' : '';
+        const tailEn = q.type === 'voice' ? ' Hold the microphone and say it.' : '';
+        await prewarmClonedAudio(q.question + tailZh, selectedVoice);
+        await prewarmClonedAudio(q.question + tailEn, selectedVoice);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [qaQuestions, selectedVoice]);
 
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈
   useEffect(() => {
@@ -323,7 +337,9 @@ export default function StoryPlayScreen() {
   // 回到本页时播放控件仍在，可重新播放 / 暂停 / 停止。
   useFocusEffect(
     useCallback(() => {
+      aliveRef.current = true;
       return () => {
+        aliveRef.current = false;
         playTokenRef.current++;
         startingRef.current = false;
         stopStory();
@@ -357,6 +373,20 @@ export default function StoryPlayScreen() {
       cancelled = true;
     };
   }, []);
+
+  // 播放按钮呼吸脉冲：isPlaying 时循环放大/收缩，直观提示「正在播放」
+  useEffect(() => {
+    if (isPlaying) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(playPulse, { toValue: 1.14, duration: 720, useNativeDriver: true }),
+          Animated.timing(playPulse, { toValue: 1, duration: 720, useNativeDriver: true }),
+        ]),
+      ).start();
+    } else {
+      playPulse.setValue(1);
+    }
+  }, [isPlaying, playPulse]);
 
   // 预热：进故事页就先把克隆音频合成好（不播放），使「点播放」几乎瞬时出声。
   // 仅在选中亲属声线且已克隆、且不是本地录音时预热。
@@ -464,6 +494,8 @@ export default function StoryPlayScreen() {
     setProgress(100);
     setIsPlaying(false);
     setPhase('completed');
+    // 俏皮收尾：克隆声随机来一句「讲完啦」，与屏显的完成页呼应
+    speakPhrase('done', displayLang);
   };
 
   // 启动进度条计时器：isReal=true 用真实播放位置（克隆/本地录音，与实际时长一致），
@@ -626,7 +658,7 @@ export default function StoryPlayScreen() {
         at: new Date().toISOString(),
       };
       saveChildQuiz(quiz).catch(() => {});
-      const fb = t('story.qa.correct');
+      const fb = pickPhrase('correct', displayLang);
       setQaFeedback(fb);
       speakWithBestVoice(fb, displayLang);
       setTimeout(() => {
@@ -639,7 +671,7 @@ export default function StoryPlayScreen() {
       }, 1500);
     } else {
       // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
-      const fb = t('story.qa.wrong');
+      const fb = pickPhrase('wrong', displayLang);
       setQaFeedback(fb);
       speakWithBestVoice(fb, displayLang);
     }
@@ -654,14 +686,16 @@ export default function StoryPlayScreen() {
     const q = qaQuestions[qaIndex];
     // 录音过短（<0.6s）视为误触/没说话：提示重录，不推进
     if (durSec < 0.6) {
-      setQaFeedback(t('story.qa.voiceTooShort'));
-      speakWithBestVoice(t('story.qa.voiceTooShort'), displayLang);
+      const tooShort = pickPhrase('voiceTooShort', displayLang);
+      setQaFeedback(tooShort);
+      speakWithBestVoice(tooShort, displayLang);
       setTimeout(() => setQaFeedback(''), 1600);
       return;
     }
     if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
-    setQaFeedback(t('story.qa.voiceHeard'));
-    speakWithBestVoice(t('story.qa.voiceHeard'), displayLang);
+    const heard = pickPhrase('voiceHeard', displayLang);
+    setQaFeedback(heard);
+    speakWithBestVoice(heard, displayLang);
     setTimeout(() => {
       setQaFeedback('');
       if (qaIndex < qaQuestions.length - 1) {
@@ -676,6 +710,9 @@ export default function StoryPlayScreen() {
     if (!childQuestion.trim() || isAsking) return;
     setIsAsking(true);
     setAiAskError(false);
+    // 立即给一个「我在听」的即时反馈（克隆声、缓存命中即秒出），
+    // 避免孩子问完要等好几秒 AI 才回、还以为没反应
+    speakPhrase('thinking', displayLang);
     try {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
       const answer = await askQuestion(storyText, childQuestion);
@@ -683,8 +720,10 @@ export default function StoryPlayScreen() {
       setAiAnswer(finalAnswer);
       // 记录第2轮自由提问，供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
-      // 朗读 AI 的回答，让孩子「听到」回复（有克隆声则用亲人的声音）
-      speakWithBestVoice(finalAnswer, displayLang);
+      // 若孩子在此期间已切走/退出本页，就不再朗读（数据已保存），避免「退出很久才响」
+      if (aliveRef.current) {
+        speakWithBestVoice(finalAnswer, displayLang);
+      }
       // 持久化这次问答，供家长后台（统计页）查看
       const qa: ChildQA = {
         id: `${story?.id ?? 'x'}-${Date.now()}`,
@@ -701,7 +740,9 @@ export default function StoryPlayScreen() {
       setAiAnswer(fallback);
       // 记录第2轮自由提问（含失败兜底），供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: fallback }]);
-      speakWithBestVoice(fallback, displayLang);
+      if (aliveRef.current) {
+        speakWithBestVoice(fallback, displayLang);
+      }
     }
     setIsAsking(false);
   };
@@ -859,9 +900,15 @@ export default function StoryPlayScreen() {
         ) : null}
 
         <View style={styles.controls}>
-          <TouchableOpacity style={styles.controlBtn} onPress={handlePlay} disabled={isPlaying}>
-            <Text style={styles.controlIcon}>▶️</Text>
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: playPulse }] }}>
+            <TouchableOpacity
+              style={[styles.controlBtn, isPlaying && styles.controlBtnActive]}
+              onPress={handlePlay}
+              disabled={isPlaying}
+            >
+              <Text style={styles.controlIcon}>▶️</Text>
+            </TouchableOpacity>
+          </Animated.View>
           <TouchableOpacity style={styles.controlBtn} onPress={handlePause} disabled={!isPlaying}>
             <Text style={styles.controlIcon}>⏸️</Text>
           </TouchableOpacity>
@@ -1271,6 +1318,13 @@ const styles = StyleSheet.create({
   controlBtn: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: '#FF8A65',
     justifyContent: 'center', alignItems: 'center', elevation: 2,
+  },
+  // 播放中：按钮高亮放大 + 暖色光晕，直观表示「正在播放」
+  controlBtnActive: {
+    backgroundColor: '#FF6F3C',
+    borderWidth: 3, borderColor: '#FFE0CC',
+    shadowColor: '#FF8A65', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6, shadowRadius: 12, elevation: 6,
   },
   controlIcon: { fontSize: 22 },
   seekRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10 },

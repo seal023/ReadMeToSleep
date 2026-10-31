@@ -8,6 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
 import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
+import { warmClonedPhrases, clearClonedPhraseCache } from '@/services/phraseCache';
 import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayback';
 import { saveVoiceSetting } from '@/services/storage';
 
@@ -201,6 +202,11 @@ export default function VoiceClonePage() {
       // 克隆成功：自动把当前故事声音设为该亲属/自定义对象，让孩子立刻听到真人声
       if (res.ok) {
         await saveVoiceSetting(target);
+        // 重新克隆同一对象 → 清掉旧音色缓存，避免旧音频残留 / 误用
+        clearClonedPhraseCache(target);
+        // 静默预合成一批高频短句（你好/再见/答对/晚安…）到本地缓存，
+        // 之后这些提示音都是克隆声且秒出、零 token（失败静默忽略，不阻塞本页）
+        warmClonedPhrases(target);
       }
     } else {
       setCloneResult({ ok: false, message: t('vc.noFile') });

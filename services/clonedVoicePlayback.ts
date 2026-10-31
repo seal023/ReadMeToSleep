@@ -162,6 +162,47 @@ export async function prewarmClonedAudio(text: string, target: CloneTarget): Pro
   }
 }
 
+/**
+ * 批量预热一批高频固定短句（顺序执行）。逐条复用 ensureSynthFile 的「命中缓存即跳过 /
+ * 并发只合成一次」逻辑，故同一文本 + 同一音色绝不会重复合成；单条失败静默忽略。
+ * 用于克隆成功后 / App 启动时，把问候、鼓励、晚安等常用提示音预合成到本地，
+ * 之后每次播这些短句都走本地缓存（秒出、零 token）。
+ */
+export async function prewarmPhraseBatch(target: CloneTarget, phrases: string[]): Promise<void> {
+  for (const p of phrases) {
+    try {
+      await prewarmClonedAudio(p, target);
+    } catch {
+      /* 单条失败不影响其它 */
+    }
+  }
+}
+
+/**
+ * 清空某亲属 / 自定义对象的全部克隆音频缓存文件。
+ * 文件名形如 `rms_clone_<encodedTarget>_<hash>.mp3`，按 target 前缀批量删除。
+ * 用途：用户「重新克隆」同一对象（mom/dad/…）时，旧音色的音频还躺在缓存里，
+ * 若不清理，ensureSynthFile 会因命中旧缓存而跳过重新合成，导致新音色不生效。
+ * 重新克隆后调用本函数清掉旧缓存，下次播放这些短句会用新音色重新合成一次。
+ */
+export function clearClonedCacheForTarget(target: CloneTarget): void {
+  try {
+    const prefix = `rms_clone_${encodeURIComponent(target)}_`;
+    const entries = Paths.cache.list();
+    for (const entry of entries) {
+      if (entry instanceof File && entry.name.startsWith(prefix)) {
+        try {
+          entry.delete();
+        } catch {
+          /* 删除失败忽略 */
+        }
+      }
+    }
+  } catch {
+    /* 缓存目录不存在等异常，忽略 */
+  }
+}
+
 /** 起播一个已落盘的音频文件，并装上播完检测 */
 async function startPlayback(uri: string, onDone?: () => void): Promise<boolean> {
   try {
@@ -211,6 +252,8 @@ export async function playClonedAudio(
   text: string,
   target: CloneTarget,
   onDone?: () => void,
+  /** 合成完成后、真正起播前的「还轮不轮到我」检查；返回 false 则放弃本次播放，避免旧调用慢半拍覆盖新调用 */
+  abortCheck?: () => boolean,
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
@@ -219,12 +262,15 @@ export async function playClonedAudio(
   try {
     const fileName = cacheFileName(text, target);
     const res = await ensureSynthFile(text, target, fileName);
+    // 合成期间可能已有更新的旁白请求进来，若已被取代则放弃，不覆盖新声
+    if (abortCheck && !abortCheck()) return false;
     if (!res.ok) {
       lastCloneError = res.error || '合成失败';
       console.warn('[clonedPlayback] synth failed:', lastCloneError);
       return false;
     }
     const file = new File(Paths.cache, fileName);
+    if (abortCheck && !abortCheck()) return false;
     return await startPlayback(file.uri, onDone);
   } catch (err) {
     lastCloneError = String((err as any)?.message || err);

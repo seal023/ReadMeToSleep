@@ -52,76 +52,65 @@ const LOCATIONS = [
   { cn: '里约', place: '基督像', en: 'Rio · Christ Statue', emoji: '⛪', x: 38.0, y: 62.8 },
 ];
 
-const STORIES: Record<string, { title: string; content: string }> = {
-  '故宫': {
-    title: '红墙里的月亮船',
-    content: '深夜，月光洒在故宫的红墙上，一只小狸猫悄悄溜进太和殿。它发现每块地砖下都藏着一段被遗忘的故事……',
-  },
-  '外滩': {
-    title: '黄浦江的星光',
-    content: '小男孩站在外滩的栏杆旁，看着江水倒映的霓虹灯。突然一颗星星落进江里，化作一条发光的小鱼……',
-  },
-  '兵马俑': {
-    title: '地下军队的秘密',
-    content: '博物馆闭馆后，兵马俑们伸了伸懒腰，开始了他们每晚的巡逻。新来的陶俑编号734号，第一次站岗……',
-  },
-  '大熊猫基地': {
-    title: '滚滚的竹林梦',
-    content: '小熊猫竹宝在竹林里做了一个梦——梦见自己长出了翅膀，飞过了整座青城山……',
-  },
-  '西湖': {
-    title: '断桥上的小纸船',
-    content: '一只纸船从断桥出发，顺着水流漂过三潭印月，船上坐着一只用荷叶做成斗笠的小青蛙……',
-  },
-  '漓江': {
-    title: '山水画的守护者',
-    content: '漓江水中有座小石山，山上住着一只水獭爷爷。他每天都会把路人丢的垃圾叼到岸边，说这是他的职责……',
-  },
-  '布达拉宫': {
-    title: '高原上的风铃',
-    content: '布达拉宫的屋顶挂着一串风铃，每当风吹过，它就会唱起古老的藏歌，歌声飘到雪山脚下……',
-  },
-  '洱海': {
-    title: '海底的月亮集市',
-    content: '洱海的水底有个集市，每月十五满月时才会开放。小鱼小虾都带着发光的贝壳去赶集……',
-  },
-  // —— 世界地标故事 ——
-  '埃菲尔铁塔': {
-    title: '铁塔上的小星星',
-    content: '在巴黎的夜空下，埃菲尔铁塔亮起了金色的灯光。一只小狐狸爬到塔顶，发现每盏灯里都住着一颗想家的星星。它轻轻吹了一口气，星星们便排成一条闪亮的小路，一直通到孩子们温暖的小床上。小狐狸说："晚安啦，远方的朋友们。"说完，它蜷起尾巴，在灯光里甜甜地睡着了。',
-  },
-  '大本钟': {
-    title: '大本钟的钟声',
-    content: '伦敦的雾里，大本钟叮咚敲响了睡前的时间。一只小熊撑着小红伞，沿着泰晤士河慢慢走。河面上的天鹅告诉它："钟声会把今天的烦恼都带走哦。"小熊仰起头，听着悠扬的钟声，觉得心里暖暖的。它回到小窝，盖上软软的被子，听着雨声，渐渐进入了梦乡。',
-  },
-  '自由女神': {
-    title: '港口的灯塔女孩',
-    content: '纽约的港口边，自由女神举着火炬，为夜归的小船指路。一艘小帆船迷了路，火炬的光像温柔的手，牵着它靠向安静的码头。船上的一只小海鸥累了，停在女神的手臂上，听她轻声哼着摇篮曲。海风轻轻摇着小船，小海鸥闭上眼睛，做了一个飞过整片星海的好梦。',
-  },
-  '东京塔': {
-    title: '塔下的纸飞机',
-    content: '东京的夜晚，东京塔闪着红白的光。一个小男孩折了一只蓝色的纸飞机，许愿它能飞到月亮上。纸飞机真的飞起来了，掠过霓虹闪烁的街道，落在一朵软软的云上。云朵载着它，慢慢飘向窗台边熟睡的孩子。小男孩翻了个身，梦见自己坐在纸飞机上，正飞向满是星星的远方。',
-  },
-  '歌剧院': {
-    title: '海湾的白帆',
-    content: '悉尼的海湾里，歌剧院像一朵朵张开的白帆。一只小考拉趴在桅杆上，跟着海浪的节拍轻轻摇晃。远处的灯塔眨着眼睛说："该睡啦。"小考拉点点头，抱着桅杆，听潮水唱起温柔的催眠曲。海风把咸咸的味道送进梦里，它梦见自己变成了一艘小白船，在月光铺成的小路上轻轻漂。',
-  },
-  '金字塔': {
-    title: '沙漠里的月亮船',
-    content: '开罗的沙漠上，金字塔静静守着千年的秘密。一只小骆驼驮着一盏小灯，陪着迷路的小星星回家。沙丘像柔软的枕头，风像轻轻的扇子。小星星趴在小骆驼背上，数着天上的伙伴，眼皮越来越沉。终于，它咕哝了一声"晚安"，在温暖的沙海里睡着了。',
-  },
-  '基督像': {
-    title: '山巅的张开双臂',
-    content: '里约的山顶上，基督像张开双臂，像在给整座城市一个温柔的拥抱。一只小鹦鹉停在雕像的肩上，看城市灯火一盏盏熄灭。它轻声说："大家都睡觉咯。"然后钻进羽毛里，随着晚风轻轻晃。远处的海浪拍着沙滩，像一首慢悠悠的歌，把整座山都哄进了梦乡。',
-  },
+/**
+ * 旅行打卡故事：内置离线长故事（约 5-10 分钟，零运行期 token、零延迟、可缓存）。
+ * 每段以一个地标的特色「钩子」开场，随后接统一舒缓的睡前中段与晚安收尾。
+ */
+const TRAVEL_HOOKS: Record<string, { title: string; hook: string }> = {
+  '故宫': { title: '红墙里的月亮船', hook: '深夜，月光洒在故宫的红墙上。一只小狸猫悄悄溜进太和殿，发现每块地砖下都藏着一段被遗忘的故事。' },
+  '外滩': { title: '黄浦江的星光', hook: '小男孩站在外滩的栏杆旁，看着江水倒映的霓虹灯。突然一颗星星落进江里，化作一条发光的小鱼。' },
+  '兵马俑': { title: '地下军队的秘密', hook: '博物馆闭馆后，兵马俑们伸了伸懒腰，开始了他们每晚的巡逻。新来的陶俑编号734号，第一次站岗。' },
+  '大熊猫基地': { title: '滚滚的竹林梦', hook: '小熊猫竹宝在竹林里做了一个梦——梦见自己长出了翅膀，飞过了整座青城山。' },
+  '西湖': { title: '断桥上的小纸船', hook: '一只纸船从断桥出发，顺着水流漂过三潭印月，船上坐着一只用荷叶做成斗笠的小青蛙。' },
+  '漓江': { title: '山水画的守护者', hook: '漓江水中有座小石山，山上住着一只水獭爷爷。他每天都会把路人丢的垃圾叼到岸边，说这是他的职责。' },
+  '布达拉宫': { title: '高原上的风铃', hook: '布达拉宫的屋顶挂着一串风铃，每当风吹过，它就会唱起古老的藏歌，歌声飘到雪山脚下。' },
+  '洱海': { title: '海底的月亮集市', hook: '洱海的水底有个集市，每月十五满月时才会开放。小鱼小虾都带着发光的贝壳去赶集。' },
+  '埃菲尔铁塔': { title: '铁塔上的小星星', hook: '在巴黎的夜空下，埃菲尔铁塔亮起了金色的灯光。一只小狐狸爬到塔顶，发现每盏灯里都住着一颗想家的星星。' },
+  '大本钟': { title: '大本钟的钟声', hook: '伦敦的雾里，大本钟叮咚敲响了睡前的时间。一只小熊撑着小红伞，沿着泰晤士河慢慢走。' },
+  '自由女神': { title: '港口的灯塔女孩', hook: '纽约的港口边，自由女神举着火炬，为夜归的小船指路。一艘小帆船迷了路，火炬的光像温柔的手牵着它靠向安静的码头。' },
+  '东京塔': { title: '塔下的纸飞机', hook: '东京的夜晚，东京塔闪着红白的光。一个小男孩折了一只蓝色的纸飞机，许愿它能飞到月亮上。' },
+  '歌剧院': { title: '海湾的白帆', hook: '悉尼的海湾里，歌剧院像一朵朵张开的白帆。一只小考拉趴在桅杆上，跟着海浪的节拍轻轻摇晃。' },
+  '金字塔': { title: '沙漠里的月亮船', hook: '开罗的沙漠上，金字塔静静守着千年的秘密。一只小骆驼驮着一盏小灯，陪着迷路的小星星回家。' },
+  '基督像': { title: '山巅的张开双臂', hook: '里约的山顶上，基督像张开双臂，像在给整座城市一个温柔的拥抱。一只小鹦鹉停在雕像的肩上，看城市灯火一盏盏熄灭。' },
 };
 
-/** 地图上没有的自定义地点，用这个通用睡前故事兜底（不依赖 AI） */
-function genericTravelStory(name: string): { title: string; content: string } {
+/** 通用舒缓中段（约 900 字，朗读约 6-8 分钟），地名嵌入其中 */
+function travelMiddle(name: string): string {
+  return [
+    `夜色里的${name}渐渐安静下来。月光轻轻铺在${name}的每一处角落，远处的灯光一盏盏变得温柔，连风都放慢了脚步。星星在天上眨着眼睛，好像在悄悄守护着这座城市，也守护着这里每一个准备睡觉的小朋友。`,
+    `一只毛茸茸的小浣熊悄悄来到小朋友的窗前。它不想吵醒谁，只是轻轻坐下，用最慢、最软的声音，把${name}白天里那些好玩的事情又讲了一遍——白天热闹的街道、笑闹的声音、被阳光晒得暖暖的石头，到了晚上都变成了一个安静又温柔的梦乡。`,
+    `小浣熊带着小朋友，在故事里又慢慢地逛了一遍${name}。他们看见安静的树影在轻轻摇晃，听见远处传来的声音越来越轻，像有人在很远处哼着歌。${name}的一切都慢慢睡熟了，只剩下月亮还醒着，把银色的光轻轻盖在屋顶上。`,
+    `慢慢地，周围的声音越来越小，灯光也越来越柔和。小朋友的眼皮一点点变沉，呼吸变得轻轻的、慢慢的，就像海浪一下一下拍着岸边。小浣熊不再说话，只是陪在旁边，用软软的尾巴给小朋友当枕头。`,
+    `不知什么时候，风也停了，星星也眯起了眼。小朋友的手慢慢松开了，进入了甜甜的梦乡。`,
+  ].join('\n\n');
+}
+
+/** 晚安收尾（含地名），让故事安宁助眠地结束 */
+function travelEnding(name: string): string {
+  return `小浣熊把软软的毯子轻轻盖在小朋友身上，哼起了一首谁也听不懂、却让人心里很安稳的摇篮曲。它小声说："晚安，${name}；晚安，小朋友。今晚的月亮会一直陪着你，做个关于星星和云的好梦吧。"说完，小浣熊也蜷起尾巴，在${name}温柔的夜色里，悄悄地睡着了。`;
+}
+
+/** 由「地标特色钩子 + 通用长中段 + 晚安收尾」拼成 5-10 分钟离线睡前故事 */
+function buildLongTravelStory(name: string, hook?: string): { title: string; content: string } {
+  const head = hook
+    ? `${hook}\n\n小浣熊没有打扰这份安静，它轻轻坐在旁边，想把这个地方的夜晚，讲成一个长长的、暖暖的睡前故事。`
+    : `夜深了，${name}慢慢安静下来。窗外的风轻轻吹过，星星在天上眨着眼睛。一只温柔的小动物悄悄来到${name}，想给这里的小朋友讲一个甜甜的睡前故事。`;
   return {
     title: `${name}的睡前奇遇`,
-    content: `夜深了，${name}慢慢安静下来。窗外的风轻轻吹过，星星在天上眨着眼睛。一只温柔的小动物悄悄来到${name}，想给这里的小朋友讲一个甜甜的睡前故事。\n\n它轻声说："无论你在哪里，今晚的月亮都会陪着你。"小动物把软软的毯子盖在小朋友身上，哼起了轻柔的摇篮曲。\n\n慢慢地，小朋友的眼皮越来越沉，呼吸变得轻轻的。在${name}的怀抱里，他做了一个关于星星和云的梦。晚安，${name}；晚安，小朋友。`,
+    content: `${head}\n\n${travelMiddle(name)}\n\n${travelEnding(name)}`,
   };
+}
+
+const STORIES: Record<string, { title: string; content: string }> = {};
+for (const [place, info] of Object.entries(TRAVEL_HOOKS)) {
+  const s = buildLongTravelStory(place, info.hook);
+  STORIES[place] = { title: info.title, content: s.content };
+}
+
+/** 地图上没有的自定义地点，用这个通用睡前故事兜底（不依赖 AI，离线零 token） */
+function genericTravelStory(name: string): { title: string; content: string } {
+  const s = buildLongTravelStory(name);
+  return { title: s.title, content: s.content };
 }
 
 const BADGE_RULES = [
@@ -151,6 +140,9 @@ export default function TravelCheckinScreen() {
   const [badge, setBadge] = useState<{ emoji: string; label: string } | null>(null);
   const [confetti, setConfetti] = useState<{ x: number; color: string; delay: number }[]>([]);
   const confettiAnims = useRef<Animated.Value[]>([]);
+  // 奖励增强：累计打卡数 + 已得徽章列表，供 success 页陈列
+  const [checkInTotal, setCheckInTotal] = useState(0);
+  const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
   // 语音输入：复用 expo-audio 录音 + 百炼 ASR 转写，写入搜索框并自动匹配已有城市
@@ -327,6 +319,8 @@ export default function TravelCheckinScreen() {
     await refresh();
 
     setBadge(newBadge);
+    setCheckInTotal(total);
+    setEarnedBadges(newBadges);
     setStep('success');
   };
 
@@ -613,6 +607,47 @@ export default function TravelCheckinScreen() {
               </View>
             )}
 
+            {/* 累计打卡数 */}
+            <View style={styles.rewardStats}>
+              <Text style={styles.rewardCount}>
+                {language === 'en' ? `You've checked in ${checkInTotal} place(s)!` : `已打卡 ${checkInTotal} 个地方 ✨`}
+              </Text>
+            </View>
+
+            {/* 勋章墙：陈列所有已得徽章 */}
+            {earnedBadges.length > 0 && (
+              <View style={styles.badgeWall}>
+                <Text style={styles.badgeWallTitle}>
+                  {language === 'en' ? 'Your Badges' : '我的勋章墙'}
+                </Text>
+                <View style={styles.badgeRow}>
+                  {earnedBadges.map((emoji) => {
+                    const rule = BADGE_RULES.find((r) => r.emoji === emoji);
+                    return (
+                      <View key={emoji} style={styles.badgeChip}>
+                        <Text style={styles.badgeChipEmoji}>{emoji}</Text>
+                        <Text style={styles.badgeChipName}>{rule ? rule.label[language] : ''}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* 星星墙：已打卡地点金色星星 */}
+            {visitedPlaces.length > 0 && (
+              <View style={styles.starWall}>
+                <Text style={styles.starWallTitle}>
+                  {language === 'en' ? 'Places You Visited' : '去过的地方'}
+                </Text>
+                <View style={styles.starRow}>
+                  {visitedPlaces.map((p, i) => (
+                    <Text key={`${p}-${i}`} style={styles.starChip}>⭐ {p}</Text>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <TouchableOpacity
               style={styles.primaryBtn}
               onPress={() => {
@@ -744,4 +779,24 @@ const styles = StyleSheet.create({
   badgeEmoji: { fontSize: 48, marginBottom: 8 },
   badgeLabel: { fontSize: 14, color: '#FF8F00', marginBottom: 4 },
   badgeName: { fontSize: 18, fontWeight: 'bold', color: '#5D4037' },
+
+  // 奖励增强：累计 / 勋章墙 / 星星墙
+  rewardStats: { alignItems: 'center', marginBottom: 16 },
+  rewardCount: { fontSize: 16, fontWeight: '700', color: '#FF8A65' },
+  badgeWall: { alignItems: 'center', marginBottom: 20, width: '100%' },
+  badgeWallTitle: { fontSize: 14, color: '#8D6E63', marginBottom: 10 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 },
+  badgeChip: {
+    backgroundColor: '#FFF8E1', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14,
+    alignItems: 'center', borderWidth: 2, borderColor: '#FFD54F', minWidth: 72,
+  },
+  badgeChipEmoji: { fontSize: 32, marginBottom: 4 },
+  badgeChipName: { fontSize: 11, color: '#5D4037', textAlign: 'center' },
+  starWall: { alignItems: 'center', marginBottom: 20, width: '100%' },
+  starWallTitle: { fontSize: 14, color: '#8D6E63', marginBottom: 10 },
+  starRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
+  starChip: {
+    fontSize: 13, color: '#5D4037', backgroundColor: '#FFF3E0',
+    borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: '#FFE0B2',
+  },
 });

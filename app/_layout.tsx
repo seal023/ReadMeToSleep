@@ -9,6 +9,7 @@ import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import { getChildName } from '../services/storage';
 import { speakWithBestVoice } from '../services/playback';
+import { ensurePhraseWarmup } from '../services/phraseCache';
 
 /** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
 function getGreetingKey(): string {
@@ -26,28 +27,40 @@ function getGreetingKey(): string {
 function GreetingOnOpen() {
   const { t, language, hydrated } = useLanguage();
   const lastSpoke = useRef(0);
+  const lastBye = useRef(0);
 
-  const speak = useCallback(async () => {
+  const speak = useCallback(async (kind: 'hello' | 'bye') => {
     const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
     if (agreed !== 'agreed') return;
     const now = Date.now();
-    if (now - lastSpoke.current < 60000) return;
+    if (kind === 'hello') {
+      if (now - lastSpoke.current < 60000) return;
+      lastSpoke.current = now;
+    } else {
+      // 告别节流短一些，但避免「解锁→锁屏」高频刷屏
+      if (now - lastBye.current < 5000) return;
+      lastBye.current = now;
+      lastSpoke.current = now;
+    }
     const name = (await getChildName()) || '';
-    const base = t(getGreetingKey());
+    const base = kind === 'bye' ? t('home.farewell') : t(getGreetingKey());
     const text = name
       ? base.replace('{name}', name)
       : base.replace('，{name}！', '！').replace(', {name}!', '!');
-    lastSpoke.current = now;
-    // 有克隆声就用亲人声音问候（不再只有讲故事时才用克隆声）
+    // 问候 / 告别都用最好的声音（克隆声优先；告别在后台也可靠，未克隆时降级系统音）
     speakWithBestVoice(text, language);
   }, [t, language]);
 
   useEffect(() => {
     // 等语言从存储/系统完成初始化后再问候：避免默认 zh 先播、hydrate 后又用英文重播的竞态
     if (!hydrated) return;
-    speak();
+    speak('hello');
+    // 若已克隆声音，后台预热高频短句到本地缓存：使提示音是克隆声且秒出、零 token
+    // （克隆较早 / 缓存被系统清理也能补上；同进程只跑一次）
+    ensurePhraseWarmup();
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') speak();
+      if (s === 'active') speak('hello');
+      else if (s === 'background') speak('bye'); // 锁屏/切后台时说「再见xxx」
     });
     return () => sub.remove();
   }, [hydrated, speak]);
