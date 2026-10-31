@@ -56,11 +56,15 @@ function applyName(base: string, name: string): string {
  *  覆盖：① 整份「俏皮短句」词库（按当前语言，约 40+ 条，随机取用也一定命中缓存）；
  *        ② 含 {name} 的问候 / 告别；③ AI 兜底回答。 */
 function buildWarmPhrases(lang: Language, name: string): string[] {
+  // 顺序有讲究：含名字的「问候 / 告别」必须排在最前面。
+  // 它们是「必须秒出」的短句（锁屏告别尤其不能等），而预热走网络、逐条串行完成；
+  // 若排在几十条俏皮短句之后，App 刚打开就锁屏时它还在队列里没合成 → 只能现场合成，
+  // 后台网络又被 iOS 降速 → 听起来就是「再见」过了十几秒才出来。
   const out: string[] = [];
+  for (const key of NAME_KEYS) out.push(applyName(translate(key, lang), name));
   for (const p of allBankPhrases()) {
     if (p.lang === lang) out.push(p.text);
   }
-  for (const key of NAME_KEYS) out.push(applyName(translate(key, lang), name));
   out.push(translate('story.qa.unknown', lang));
   return out;
 }

@@ -72,6 +72,13 @@ export interface SpeakOptions {
   voiceId?: string;
   /** 真正开始出声时回调（用于让界面文字与语音同时出现，避免"字先出、声后到"的时差） */
   onStart?: () => void;
+  /**
+   * 只用「已落盘的」克隆音频：缓存没命中就立刻用系统音说，不在现场发起网络合成。
+   * 用于锁屏/切后台的告别语等「必须马上出声」的场景（后台网络会被 iOS 降速，等它就会慢十几秒）。
+   */
+  cacheOnly?: boolean;
+  /** 快速起播：跳过音频会话配置的等待，进一步压缩起播延迟（配合 cacheOnly 使用） */
+  fast?: boolean;
 }
 export async function speakWithBestVoice(
   text: string,
@@ -93,6 +100,28 @@ export async function speakWithBestVoice(
     }
   }
 
+  // 快通道（锁屏告别等）：只认本地已缓存的克隆音频，不做任何存储查询 / 网络合成。
+  // 未命中就当场用系统音（本地合成，几乎瞬时），保证「再见了 xxx」不再等十几秒。
+  if (opts.cacheOnly) {
+    if (voice && voice !== 'system') {
+      try {
+        const ok = await playClonedAudio(
+          content,
+          voice as CloneTarget,
+          undefined,
+          () => mySeq === speakSeq,
+          () => opts.onStart?.(),
+          { cacheOnly: true, fast: opts.fast !== false },
+        );
+        if (ok) return true;
+      } catch {
+        /* 继续降级系统音 */
+      }
+    }
+    textToSpeech(content, voice || 'system', language, undefined, () => opts.onStart?.());
+    return false;
+  }
+
   // 统一走克隆声：命中本地缓存则秒出、零 token；未命中则首次现合成一次并落盘缓存。
   // 克隆声不可用时（未克隆 / 合成失败）自然落到下方系统音降级。
   if (voice && voice !== 'system') {
@@ -104,6 +133,7 @@ export async function speakWithBestVoice(
           undefined,
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
+          { fast: opts.fast },
         );
         if (ok) return true;
         // 关键修复（#4/#5）：若本请求已被更新的旁白请求取代（abortCheck 失败），

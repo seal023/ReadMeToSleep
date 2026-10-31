@@ -7,7 +7,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
-import { getChildName } from '../services/storage';
+import { getChildName, getVoiceSetting } from '../services/storage';
 import { speakWithBestVoice, stopStory } from '../services/playback';
 import { ensurePhraseWarmup } from '../services/phraseCache';
 
@@ -29,32 +29,76 @@ function GreetingOnOpen() {
   const lastSpoke = useRef(0);
   const lastBye = useRef(0);
 
+  // 锁屏告别必须「立刻出声」：切后台后再去读 AsyncStorage、或等网络合成音频，会被 iOS 拖到
+  // 十几秒后才响（后台网络被降速/挂起）。所以在前台时就把告别所需的一切预热到 ref：
+  // 是否已同意隐私、孩子昵称、当前声线、当前语言与文案函数，切后台时全程同步取用、一毫秒不等。
+  const agreedRef = useRef(false);
+  const privacyReadyRef = useRef(false);
+  const nameRef = useRef('');
+  const voiceRef = useRef<string | undefined>(undefined);
+  const langRef = useRef(language);
+  langRef.current = language;
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  /** 前台时刷新告别所需的全部信息（启动 / 回到前台 / 家长改过昵称或声线后） */
+  const refreshFarewellCache = useCallback(async () => {
+    try {
+      const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
+      agreedRef.current = agreed === 'agreed';
+      privacyReadyRef.current = true;
+      const [name, voice] = await Promise.all([getChildName(), getVoiceSetting()]);
+      nameRef.current = name || '';
+      voiceRef.current = voice;
+    } catch {
+      /* 预取失败保留旧值，不影响下次刷新 */
+    }
+  }, []);
+
+  /** 同步拼出问候 / 告别文案（与 phraseCache 的预热文本规则逐字一致，保证命中缓存） */
+  const buildText = useCallback((kind: 'hello' | 'bye') => {
+    const base = kind === 'bye' ? tRef.current('home.farewell') : tRef.current(getGreetingKey());
+    const name = nameRef.current;
+    return name
+      ? base.replace('{name}', name)
+      : base.replace('，{name}！', '！').replace(', {name}!', '!');
+  }, []);
+
   const speak = useCallback(async (kind: 'hello' | 'bye') => {
-    const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
-    if (agreed !== 'agreed') return;
     const now = Date.now();
     if (kind === 'hello') {
       if (now - lastSpoke.current < 60000) return;
       lastSpoke.current = now;
-    } else {
-      // 告别节流短一些，但避免「解锁→锁屏」高频刷屏
-      if (now - lastBye.current < 5000) return;
-      lastBye.current = now;
-      lastSpoke.current = now;
+      // 回到前台：顺手刷新告别缓存（昵称 / 声线可能刚在家长端改过）
+      await refreshFarewellCache();
+      if (!agreedRef.current) return;
+      // 问候用最好的声音（克隆声优先；已预热过的问候句命中缓存、秒出）
+      speakWithBestVoice(buildText('hello'), langRef.current, { voiceId: voiceRef.current });
+      return;
     }
-    const name = (await getChildName()) || '';
-    const base = kind === 'bye' ? t('home.farewell') : t(getGreetingKey());
-    const text = name
-      ? base.replace('{name}', name)
-      : base.replace('，{name}！', '！').replace(', {name}!', '!');
-    // 问候 / 告别都用最好的声音（克隆声优先；告别在后台也可靠，未克隆时降级系统音）
-    speakWithBestVoice(text, language);
-  }, [t, language]);
+    // —— 切后台 / 锁屏：全同步快通道 ——
+    // 告别节流短一些，但避免「解锁→锁屏」高频刷屏
+    if (now - lastBye.current < 5000) return;
+    lastBye.current = now;
+    lastSpoke.current = now;
+    // 隐私尚未确认（极冷启动即锁屏）时不静默，等确认过再说
+    if (privacyReadyRef.current && !agreedRef.current) return;
+    speakWithBestVoice(buildText('bye'), langRef.current, {
+      cacheOnly: true, // 只播已落盘的克隆音频；没缓存就立刻用系统音，绝不现场等网络合成
+      fast: true, // 不等音频会话配置，直接起播，进一步压缩延迟
+      voiceId: voiceRef.current, // 用预取的声线，省掉一次存储读取
+    });
+  }, [refreshFarewellCache, buildText]);
 
   useEffect(() => {
     // 等语言从存储/系统完成初始化后再问候：避免默认 zh 先播、hydrate 后又用英文重播的竞态
     if (!hydrated) return;
-    speak('hello');
+    let disposed = false;
+    (async () => {
+      await refreshFarewellCache();
+      if (disposed) return;
+      speak('hello');
+    })();
     // 若已克隆声音，后台预热高频短句到本地缓存：使提示音是克隆声且秒出、零 token
     // （克隆较早 / 缓存被系统清理也能补上；同进程只跑一次）
     ensurePhraseWarmup();
@@ -68,8 +112,11 @@ function GreetingOnOpen() {
         speak('bye'); // 锁屏/切后台时说「再见xxx」
       }
     });
-    return () => sub.remove();
-  }, [hydrated, speak]);
+    return () => {
+      disposed = true;
+      sub.remove();
+    };
+  }, [hydrated, speak, refreshFarewellCache]);
 
   return null;
 }

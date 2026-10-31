@@ -169,13 +169,24 @@ export async function prewarmClonedAudio(text: string, target: CloneTarget): Pro
  * 之后每次播这些短句都走本地缓存（秒出、零 token）。
  */
 export async function prewarmPhraseBatch(target: CloneTarget, phrases: string[]): Promise<void> {
-  for (const p of phrases) {
-    try {
-      await prewarmClonedAudio(p, target);
-    } catch {
-      /* 单条失败不影响其它 */
+  // 小并发（3 路）：逐条串行时几十条要跑一两分钟，排在前面的告别/问候迟迟落不了盘，
+  // 用户一锁屏就得现合成（后台更慢）。3 路足以在十几秒内把高频短句全部落盘，
+  // 又不至于把接口打到限流（同文本仍只会合成一次，见 ensureSynthFile 的 inflight 去重）。
+  const CONCURRENCY = 3;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < phrases.length) {
+      const p = phrases[cursor++];
+      try {
+        await prewarmClonedAudio(p, target);
+      } catch {
+        /* 单条失败不影响其它 */
+      }
     }
-  }
+  };
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, phrases.length); i++) workers.push(worker());
+  await Promise.all(workers);
 }
 
 /**
@@ -209,17 +220,22 @@ async function startPlayback(
   onDone?: () => void,
   /** 真正开始出声时回调（供界面把文字与语音同步呈现） */
   onStart?: () => void,
+  /** 快速模式：不等待音频会话配置完成就起播（切后台/锁屏后必须立刻出声的场景） */
+  fast = false,
 ): Promise<boolean> {
   try {
-    // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
-    try {
-      await setAudioModeAsync({
-        playsInSilentMode: true,
-        allowsRecording: false,
-        staysActiveInBackground: false,
-      });
-    } catch {
+    // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音。
+    // fast：不 await（切后台时这一步可能被系统拖慢，等它就会「过了好久才响」），
+    // 因为此时会话通常已由前面的播放/问候配置好，直接起播更快。
+    const modeTask = setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+      staysActiveInBackground: false,
+    }).catch(() => {
       /* 忽略会话配置异常，继续尝试播放 */
+    });
+    if (!fast) {
+      await modeTask;
     }
 
     const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
@@ -267,6 +283,13 @@ export async function playClonedAudio(
   abortCheck?: () => boolean,
   /** 真正出声时回调（让界面文字与语音同步出现） */
   onStart?: () => void,
+  /**
+   * cacheOnly：只播「已经落盘的」克隆音频，缓存没命中立刻返回 false（调用方马上降级系统音），
+   *   绝不在这一步发起网络合成 —— 用于锁屏告别这类「必须立刻出声」的场景。
+   *   （未命中时会静默补一次后台合成，供下次秒出。）
+   * fast：不等待音频会话配置就起播，进一步压缩切后台时的起播延迟。
+   */
+  opts?: { cacheOnly?: boolean; fast?: boolean },
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
@@ -274,6 +297,11 @@ export async function playClonedAudio(
 
   try {
     const fileName = cacheFileName(text, target);
+    if (opts?.cacheOnly && !new File(Paths.cache, fileName).exists) {
+      // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
+      void prewarmClonedAudio(text, target);
+      return false;
+    }
     const res = await ensureSynthFile(text, target, fileName);
     // 合成期间可能已有更新的旁白请求进来，若已被取代则放弃，不覆盖新声
     if (abortCheck && !abortCheck()) return false;
@@ -284,7 +312,7 @@ export async function playClonedAudio(
     }
     const file = new File(Paths.cache, fileName);
     if (abortCheck && !abortCheck()) return false;
-    return await startPlayback(file.uri, onDone, onStart);
+    return await startPlayback(file.uri, onDone, onStart, opts?.fast);
   } catch (err) {
     lastCloneError = String((err as any)?.message || err);
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
