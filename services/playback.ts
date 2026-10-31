@@ -70,6 +70,8 @@ export interface SpeakOptions {
   urgent?: boolean;
   interrupt?: boolean;
   voiceId?: string;
+  /** 真正开始出声时回调（用于让界面文字与语音同时出现，避免"字先出、声后到"的时差） */
+  onStart?: () => void;
 }
 export async function speakWithBestVoice(
   text: string,
@@ -101,6 +103,7 @@ export async function speakWithBestVoice(
           voice as CloneTarget,
           undefined,
           () => mySeq === speakSeq,
+          () => opts.onStart?.(),
         );
         if (ok) return true;
         // 关键修复（#4/#5）：若本请求已被更新的旁白请求取代（abortCheck 失败），
@@ -113,7 +116,7 @@ export async function speakWithBestVoice(
       /* 克隆声失败，继续降级系统音 */
     }
   }
-  textToSpeech(content, voice || 'system', language);
+  textToSpeech(content, voice || 'system', language, undefined, () => opts.onStart?.());
   return false;
 }
 

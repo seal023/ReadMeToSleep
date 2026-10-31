@@ -59,6 +59,9 @@ function formatSleep(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/** 问答录音的最长时长（秒）：到点自动结束，避免孩子忘了点「结束」一直录 */
+const QA_MAX_REC_SEC = 20;
+
 // 随声波形：播放时一排竖条循环跳动，暂停时静止——给不识字的孩子可见的「声音在流动」反馈
 function SoundWave({ playing }: { playing: boolean }) {
   const bars = useRef(Array.from({ length: 22 }, () => new Animated.Value(0.3))).current;
@@ -113,6 +116,8 @@ export default function StoryPlayScreen() {
   // 导致录音没真正开始就推进（孩子感知为"轻点一下就结束了"）。停止时先 await 开始流程完成。
   const recReady = useRef(false);
   const recStartPromise = useRef<Promise<void> | null>(null);
+  /** 正在启动录音（权限/prepare 中）：忽略期间的重复点击 */
+  const qaStarting = useRef(false);
   // 进度条拖动跳转
   const [usingClonedVoice, setUsingClonedVoice] = useState(false);
   const clonedPlayingRef = useRef(false);
@@ -126,6 +131,12 @@ export default function StoryPlayScreen() {
   // 录音时长（用于语音题误触判定）
   const recStartTs = useRef(0);
   const recEndTs = useRef(0);
+  // 录音计时（秒）+ 自动结束：原来是「按住说话、松开结束」，孩子不习惯按住，
+  // 轻点一下松手时 prepare 还没完成 → 每次都被判「太短录不上」。
+  // 改为「点一下开始说、再点一下结束」，界面实时显示秒数，20 秒自动结束。
+  const [qaRecSec, setQaRecSec] = useState(0);
+  const qaRecTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qaAutoStop = useRef<(() => void) | null>(null);
   // 提问环节语音转文字中
   const [transcribing, setTranscribing] = useState(false);
   const progressPan = useRef(
@@ -285,7 +296,9 @@ export default function StoryPlayScreen() {
     if (phase === 'qa_round1' && !qaLoading && qaQuestions[qaIndex]) {
       const q = qaQuestions[qaIndex];
       const tail = q.type === 'voice'
-        ? (displayLang === 'en' ? ' Hold the microphone and say it.' : '，按住小话筒说出来。')
+        ? (displayLang === 'en'
+            ? ' Tap the microphone to speak, then tap again when you are done.'
+            : '，点一下小话筒说出来，说完再点一下。')
         : '';
       speakWithBestVoice(q.question + tail, displayLang);
     }
@@ -301,8 +314,8 @@ export default function StoryPlayScreen() {
       if (!(await hasClonedVoice(selectedVoice))) return;
       for (const q of qaQuestions) {
         if (cancelled) break;
-        const tailZh = q.type === 'voice' ? '，按住小话筒说出来。' : '';
-        const tailEn = q.type === 'voice' ? ' Hold the microphone and say it.' : '';
+        const tailZh = q.type === 'voice' ? '，点一下小话筒说出来，说完再点一下。' : '';
+        const tailEn = q.type === 'voice' ? ' Tap the microphone to speak, then tap again when you are done.' : '';
         await prewarmClonedAudio(q.question + tailZh, selectedVoice);
         await prewarmClonedAudio(q.question + tailEn, selectedVoice);
       }
@@ -330,6 +343,7 @@ export default function StoryPlayScreen() {
       stopStory();
       if (progressInterval.current) clearInterval(progressInterval.current);
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+      if (qaRecTimer.current) clearInterval(qaRecTimer.current);
     };
   }, []);
 
@@ -706,6 +720,68 @@ export default function StoryPlayScreen() {
     }, 900);
   };
 
+  // 第 1 轮语音题：点一下开始录、再点一下结束。
+  // 原来是「按住说话、松开结束」，孩子习惯轻点，松手时 prepareToRecordAsync 还没完成，
+  // 于是每次都被判「录音太短、录不上」——改为点按切换后不再依赖按住不放。
+  const toggleQaRecordRound1 = () => {
+    if (isRecording) {
+      handleVoiceRecord();
+    } else {
+      qaAutoStop.current = handleVoiceRecord;
+      startQaRecording();
+    }
+  };
+
+  // 第 2 轮自由提问：结束录音 → 转文字回填输入框
+  const finishChildRecording = async () => {
+    setIsRecording(false);
+    await stopQaRecording();
+    const durSec = (recEndTs.current - recStartTs.current) / 1000;
+    const uri = audioRecorder.uri;
+    let text = '';
+    if (uri && durSec >= 0.6) {
+      setTranscribing(true);
+      text = (await transcribeAudio(uri)) ?? '';
+      setTranscribing(false);
+    }
+    if (text && text.trim()) {
+      setChildQuestion(text.trim());
+      return;
+    }
+    if (childQuestion.trim()) return; // 已经手输入过问题，保留原文不打断
+    const tooShort = pickPhrase('voiceTooShort', displayLang);
+    setQaFeedback(tooShort);
+    speakWithBestVoice(tooShort, displayLang);
+    setTimeout(() => setQaFeedback(''), 1600);
+  };
+
+  const toggleQaRecordRound2 = () => {
+    if (isRecording) {
+      finishChildRecording();
+    } else {
+      qaAutoStop.current = finishChildRecording;
+      startQaRecording();
+    }
+  };
+
+  /**
+   * 让答案文字与语音「同时出现」：
+   * 先起播语音，真正出声（onStart）时再把文字显出来；万一音频没起播，8 秒后兜底显示文字。
+   * 这样不会出现「字已经看完、声音几秒后才来」的时差。
+   */
+  const revealAnswerWithVoice = (text: string) =>
+    new Promise<void>((resolve) => {
+      let done = false;
+      const reveal = () => {
+        if (done) return;
+        done = true;
+        if (aliveRef.current) setAiAnswer(text);
+        resolve();
+      };
+      speakWithBestVoice(text, displayLang, { onStart: reveal }).catch(() => {});
+      setTimeout(reveal, 8000);
+    });
+
   const handleChildQuestion = async () => {
     if (!childQuestion.trim() || isAsking) return;
     setIsAsking(true);
@@ -717,13 +793,8 @@ export default function StoryPlayScreen() {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
       const answer = await askQuestion(storyText, childQuestion);
       const finalAnswer = answer && answer.trim() ? answer : t('story.qa.unknown');
-      setAiAnswer(finalAnswer);
       // 记录第2轮自由提问，供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
-      // 若孩子在此期间已切走/退出本页，就不再朗读（数据已保存），避免「退出很久才响」
-      if (aliveRef.current) {
-        speakWithBestVoice(finalAnswer, displayLang);
-      }
       // 持久化这次问答，供家长后台（统计页）查看
       const qa: ChildQA = {
         id: `${story?.id ?? 'x'}-${Date.now()}`,
@@ -734,6 +805,9 @@ export default function StoryPlayScreen() {
         at: new Date().toISOString(),
       };
       await saveChildQA(qa);
+      // 文字与语音同步：语音真正起播的那一刻才把答案显示出来（最多等 8 秒兜底），
+      // 否则会出现「文字很快出现、声音几秒后才来」的时差。
+      await revealAnswerWithVoice(finalAnswer);
     } catch {
       setAiAskError(true);
       const fallback = t('story.qa.unknown');
@@ -753,8 +827,11 @@ export default function StoryPlayScreen() {
     setAiAskError(false);
   };
 
-  // 提问环节真实录音：按住说话（onPressIn 调用），松开停止（onPressOut 调用）
+  // 提问环节真实录音：点一下开始（toggleQaRecordRound1/2 调用），再点一下结束
   const startQaRecording = async () => {
+    // 启动中 / 已在录：忽略重复点击，避免开了两路录音
+    if (qaStarting.current || recReady.current) return;
+    qaStarting.current = true;
     recReady.current = false;
     recStartPromise.current = (async () => {
       try {
@@ -769,15 +846,36 @@ export default function StoryPlayScreen() {
         recReady.current = true;
         recStartTs.current = Date.now();
         setIsRecording(true);
+        // 开始计时：界面显示「3s」，到 QA_MAX_REC_SEC 自动结束
+        setQaRecSec(0);
+        if (qaRecTimer.current) clearInterval(qaRecTimer.current);
+        qaRecTimer.current = setInterval(() => {
+          const s = Math.floor((Date.now() - recStartTs.current) / 1000);
+          setQaRecSec(s);
+          if (s >= QA_MAX_REC_SEC) {
+            if (qaRecTimer.current) {
+              clearInterval(qaRecTimer.current);
+              qaRecTimer.current = null;
+            }
+            qaAutoStop.current?.();
+          }
+        }, 500);
       } catch (err: any) {
         console.error('[story] 提问录音开始失败:', err);
         Alert.alert('录音失败', err?.message ?? '未知错误');
         recReady.current = false;
+      } finally {
+        qaStarting.current = false;
       }
     })();
   };
 
   const stopQaRecording = async () => {
+    if (qaRecTimer.current) {
+      clearInterval(qaRecTimer.current);
+      qaRecTimer.current = null;
+    }
+    setQaRecSec(0);
     // 先等「开始录音」流程跑完，避免快速松手时录音还没真正开始就被判为未就绪而跳过
     if (recStartPromise.current) {
       try {
@@ -789,6 +887,8 @@ export default function StoryPlayScreen() {
     if (!recReady.current) {
       setIsRecording(false);
       recReady.current = false;
+      // 录音没真正开始：把终点对齐到起点，避免用上一次的旧时间戳算出奇怪的时长
+      recEndTs.current = recStartTs.current;
       return;
     }
     try {
@@ -1058,11 +1158,12 @@ export default function StoryPlayScreen() {
                 <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
                 <TouchableOpacity
                   style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
-                  onPressIn={startQaRecording}
-                  onPressOut={handleVoiceRecord}
+                  onPress={toggleQaRecordRound1}
                 >
-                  <Text style={styles.micIcon}>🎤</Text>
-                  <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
+                  <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
+                  <Text style={styles.micLabel}>
+                    {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
+                  </Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1139,29 +1240,16 @@ export default function StoryPlayScreen() {
           <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </ScrollView>
-      {/* 右下角悬浮大圆钮：方便右手按住说话提问（替代原顶部居中） */}
+      {/* 右下角悬浮大圆钮：点一下开始说、再点一下结束（不识字也能看懂秒数在走） */}
       <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
       <TouchableOpacity
         style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
-        onPressIn={startQaRecording}
-        onPressOut={async () => {
-          setIsRecording(false);
-          await stopQaRecording();
-          const durSec = (recEndTs.current - recStartTs.current) / 1000;
-          const uri = audioRecorder.uri;
-          if (uri && durSec >= 0.6) {
-            setTranscribing(true);
-            const text = await transcribeAudio(uri);
-            setTranscribing(false);
-            if (text) setChildQuestion(text);
-            else if (!childQuestion.trim()) setChildQuestion(t('story.qa.sample'));
-          } else if (!childQuestion.trim()) {
-            setChildQuestion(t('story.qa.sample'));
-          }
-        }}
+        onPress={toggleQaRecordRound2}
       >
-        <Text style={styles.micIcon}>🎤</Text>
-        <Text style={styles.micLabel}>{isRecording ? '松开结束' : t('story.qa.pressToTalk')}</Text>
+        <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
+        <Text style={styles.micLabel}>
+          {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
+        </Text>
       </TouchableOpacity>
       </View>
 
@@ -1254,11 +1342,6 @@ export default function StoryPlayScreen() {
       <TouchableOpacity style={styles.finishedBtn} onPress={() => router.push('/(tabs)/library')}>
         <Text style={styles.finishedBtnIcon}>🔄</Text>
         <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.finishedBtnDisabled}>
-        <Text style={styles.finishedBtnIcon}>🎤</Text>
-        <Text style={styles.finishedBtnText}>{t('story.finished.record')}</Text>
       </TouchableOpacity>
     </View>
     </CartoonScreen>

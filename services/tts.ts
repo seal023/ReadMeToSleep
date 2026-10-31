@@ -46,7 +46,9 @@ export async function textToSpeech(
   text: string,
   voiceId?: string,
   language: 'zh' | 'en' = 'zh',
-  onDone?: () => void
+  onDone?: () => void,
+  /** 真正开始出声时回调（用于让界面文字与语音同时出现，避免"字先出、声后到"的时差） */
+  onStart?: () => void,
 ): Promise<string> {
   const params = VOICE_PARAMS[voiceId || 'system'] || VOICE_PARAMS.system;
   const lang = language === 'en' ? 'en-US' : 'zh-CN';
@@ -60,6 +62,7 @@ export async function textToSpeech(
       utterance.lang = lang;
       utterance.rate = params.rate;
       utterance.pitch = params.pitch;
+      utterance.onstart = () => onStart?.();
       utterance.onend = () => onDone?.();
 
       const voices = window.speechSynthesis.getVoices();
@@ -79,6 +82,7 @@ export async function textToSpeech(
         language: lang,
         rate: params.rate,
         pitch: params.pitch,
+        onStart: () => onStart?.(),
         onDone: () => onDone?.(),
       });
     } catch (err) {

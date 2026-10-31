@@ -281,15 +281,15 @@ export default function HomeTab() {
             </View>
           </View>
           <View style={styles.guideActions}>
-            <ElasticPressable style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')} pressScale={0.92} bounciness={16}>
+            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>📚</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.listen')}</Text>
             </ElasticPressable>
-            <ElasticPressable style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')} pressScale={0.92} bounciness={16}>
+            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>✈️</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.travel')}</Text>
             </ElasticPressable>
-            <ElasticPressable style={styles.guideBtn} onPress={() => setGuideVisible(false)} pressScale={0.92} bounciness={16}>
+            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => setGuideVisible(false)} pressScale={0.92} bounciness={16}>
               <Text style={styles.guideBtnEmoji}>😴</Text>
               <Text style={styles.guideBtnLabel}>{t('home.guide.think')}</Text>
             </ElasticPressable>
@@ -735,12 +735,14 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   guideBtn: {
-    flex: 1,
+    width: '100%',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     backgroundColor: '#E8F1FF',
   },
+  // 外层 Pressable 需要用 flex:1 撑开，否则三个按钮会缩在左侧（内层 flex 影响不到外层）
+  guideBtnCell: { flex: 1 },
   guideBtnEmoji: {
     fontSize: 26,
     marginBottom: 4,

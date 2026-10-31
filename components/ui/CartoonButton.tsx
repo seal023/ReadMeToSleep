@@ -23,6 +23,13 @@ interface ElasticPressableProps extends Omit<PressableProps, 'style'> {
   children: React.ReactNode;
   /** 支持数组形式（会与缩放动画合并） */
   style?: StyleProp<ViewStyle>;
+  /**
+   * 作用在「最外层 Pressable 容器」上的样式。
+   * ⚠️ style 是加在内层 Animated.View 上的：放在 flexDirection:'row' 的父容器里时，
+   * 内层 flex:1 无法撑开外层 Pressable，几个按钮会挤在左侧。
+   * 需要横排等分时，必须用 containerStyle={{ flex: 1 }} 撑开外层。
+   */
+  containerStyle?: StyleProp<ViewStyle>;
   /** 按下时缩放到多少，默认 0.94 */
   pressScale?: number;
   /** 松手回弹的弹性强度，越大越 Q，默认 12 */
@@ -32,6 +39,7 @@ interface ElasticPressableProps extends Omit<PressableProps, 'style'> {
 export function ElasticPressable({
   children,
   style,
+  containerStyle,
   pressScale = 0.94,
   bounciness = 12,
   onPress,
@@ -60,6 +68,7 @@ export function ElasticPressable({
 
   return (
     <Pressable
+      style={containerStyle}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}

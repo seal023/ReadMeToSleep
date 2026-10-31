@@ -204,7 +204,12 @@ export function clearClonedCacheForTarget(target: CloneTarget): void {
 }
 
 /** 起播一个已落盘的音频文件，并装上播完检测 */
-async function startPlayback(uri: string, onDone?: () => void): Promise<boolean> {
+async function startPlayback(
+  uri: string,
+  onDone?: () => void,
+  /** 真正开始出声时回调（供界面把文字与语音同步呈现） */
+  onStart?: () => void,
+): Promise<boolean> {
   try {
     // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音
     try {
@@ -221,6 +226,12 @@ async function startPlayback(uri: string, onDone?: () => void): Promise<boolean>
     currentPlayer = player;
     armEndWatch(onDone);
     player.play();
+    // 起播成功即回调，让调用方的文字可以与声音同时出现
+    try {
+      onStart?.();
+    } catch {
+      /* 忽略回调异常 */
+    }
 
     // 事件式兜底（若该版本支持 onEnded）；与轮询共用 endOnce，保证只触发一次
     if (typeof player.onEnded === 'function') {
@@ -254,6 +265,8 @@ export async function playClonedAudio(
   onDone?: () => void,
   /** 合成完成后、真正起播前的「还轮不轮到我」检查；返回 false 则放弃本次播放，避免旧调用慢半拍覆盖新调用 */
   abortCheck?: () => boolean,
+  /** 真正出声时回调（让界面文字与语音同步出现） */
+  onStart?: () => void,
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
@@ -271,7 +284,7 @@ export async function playClonedAudio(
     }
     const file = new File(Paths.cache, fileName);
     if (abortCheck && !abortCheck()) return false;
-    return await startPlayback(file.uri, onDone);
+    return await startPlayback(file.uri, onDone, onStart);
   } catch (err) {
     lastCloneError = String((err as any)?.message || err);
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
