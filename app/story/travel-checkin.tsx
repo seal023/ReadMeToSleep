@@ -220,7 +220,7 @@ export default function TravelCheckinScreen() {
         );
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, staysActiveInBackground: false });
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, shouldPlayInBackground: false });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setVoiceState('listening');

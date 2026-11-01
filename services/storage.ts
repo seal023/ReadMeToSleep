@@ -58,6 +58,7 @@ const KEYS = {
   CHILD_QUIZ: 'rms_child_quiz',
   SLEEP_TIMER_MINUTES: 'rms_sleep_timer_minutes',
   SLEEP_LOCK_ENABLED: 'rms_sleep_lock_enabled',
+  STORY_POSITIONS: 'rms_story_positions',
 };
 
 export interface ParentComment {
@@ -330,4 +331,56 @@ export async function getSleepLockEnabled(): Promise<boolean> {
 
 export async function setSleepLockEnabled(enabled: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.SLEEP_LOCK_ENABLED, enabled ? '1' : '0');
+}
+
+// ---- 故事播放断点（v62 反馈 #2：锁屏/退出后回到播放页可接着听） ----
+type StoryPositionMap = Record<string, { pos: number; at: number }>;
+
+async function readPositions(): Promise<StoryPositionMap> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.STORY_POSITIONS);
+    if (!raw) return {};
+    const obj = JSON.parse(raw) as StoryPositionMap;
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 记录某篇故事听到第几秒；少于 3 秒视为「还没听进去」，直接清掉 */
+export async function saveStoryPosition(storyId: string, posSeconds: number): Promise<void> {
+  try {
+    const map = await readPositions();
+    if (!Number.isFinite(posSeconds) || posSeconds < 3) {
+      delete map[storyId];
+    } else {
+      map[storyId] = { pos: Math.floor(posSeconds), at: Date.now() };
+    }
+    // 只留最近 60 篇，避免这份记录无限膨胀
+    const kept = Object.entries(map)
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, 60);
+    await AsyncStorage.setItem(KEYS.STORY_POSITIONS, JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    /* 断点丢失不影响正常播放 */
+  }
+}
+
+/** 读取某篇故事的断点秒数（没有则返回 0） */
+export async function getStoryPosition(storyId: string): Promise<number> {
+  const map = await readPositions();
+  const v = map[storyId];
+  return v && Number.isFinite(v.pos) && v.pos > 0 ? v.pos : 0;
+}
+
+/** 清除断点（从头播放 / 听完时调用） */
+export async function clearStoryPosition(storyId: string): Promise<void> {
+  try {
+    const map = await readPositions();
+    if (!(storyId in map)) return;
+    delete map[storyId];
+    await AsyncStorage.setItem(KEYS.STORY_POSITIONS, JSON.stringify(map));
+  } catch {
+    /* 忽略 */
+  }
 }

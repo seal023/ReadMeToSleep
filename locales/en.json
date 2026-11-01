@@ -340,9 +340,9 @@
     "agree": "Agree & Continue",
     "policy": "View full privacy policy"
   },
-  "tab.record": "Recordings",
+  "tab.record": "My Creations",
   "record": {
-    "title": "My Recording",
+    "title": "My Creations",
     "intro": "Tell a story here and record it to keep it forever. It is transcribed automatically and you can edit the title; once saved it appears in My Stories · Recordings to play back anytime.",
     "racco": "Want to tell a story? Tap the big button to start, tap again to stop~",
     "start": "Start recording",

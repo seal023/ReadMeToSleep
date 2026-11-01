@@ -1,7 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
-// SDK 57 起顶层 expo-file-system 的 cacheDirectory / writeAsStringAsync / EncodingType
-// 已失效（cacheDirectory 返回 undefined、write 抛错），必须改用 next 的 File + Paths。
-import { File, Paths } from 'expo-file-system/next';
+// SDK 57 起顶层 expo-file-system 的旧 API（cacheDirectory / writeAsStringAsync）已移除，
+// 新 API 的 File / Paths / Directory 直接从包根导入即可（`/next` 子路径已不在 exports 映射里）。
+import { Directory, File, Paths } from 'expo-file-system';
 import {
   synthesizeWithClonedVoice,
   getClonedVoiceId,
@@ -105,12 +105,40 @@ function armEndWatch(onDone?: () => void): void {
 // 既让「再次播放」瞬时开始，也避免预热与播放并发重复调用接口。
 const inflight = new Map<string, Promise<{ ok: boolean; error?: string }>>();
 
+/**
+ * 音频缓存目录（v62 反馈 #1）
+ * ---------------------------------------------------------------------------
+ * 原先存在 Paths.cache（iOS 的 Library/Caches），那是「系统可随时回收」的目录：
+ * 存储紧张时 iOS 会整目录清掉，而我们感知不到 —— 表现就是「昨天听过的故事
+ * 今天又要重新连服务器合成、等半天」。
+ * 改到 Paths.document（Library/Documents），只有用户卸载 App 才会消失。
+ *
+ * 代价：升级到本版本后，之前存在 cache 里的音频不会被沿用，
+ * 每篇故事会重新合成一次，之后一直命中本地、不再联网。
+ */
+const AUDIO_DIR_NAME = 'rms_audio';
+
+function audioDir(): Directory {
+  const dir = new Directory(Paths.document, AUDIO_DIR_NAME);
+  try {
+    if (!dir.exists) dir.create({ intermediates: true });
+  } catch {
+    /* 并发创建 / 已存在，忽略 */
+  }
+  return dir;
+}
+
+/** 取缓存文件（统一走 document 目录，见 audioDir 说明） */
+function cacheFile(fileName: string): File {
+  return new File(audioDir(), fileName);
+}
+
 function cacheFileName(text: string, target: CloneTarget): string {
   return `rms_clone_${encodeURIComponent(target)}_${hashText(text)}.mp3`;
 }
 
 function writeBytesToCache(fileName: string, audio: ArrayBuffer): void {
-  const file = new File(Paths.cache, fileName);
+  const file = cacheFile(fileName);
   if (!file.exists) {
     try {
       file.create();
@@ -127,7 +155,7 @@ async function ensureSynthFile(
   target: CloneTarget,
   fileName: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const cached = new File(Paths.cache, fileName);
+  const cached = cacheFile(fileName);
   if (cached.exists) return { ok: true };
   const running = inflight.get(fileName);
   if (running) return running;
@@ -155,7 +183,7 @@ export async function prewarmClonedAudio(text: string, target: CloneTarget): Pro
   try {
     if (!text || text.trim().length < 2) return;
     const fileName = cacheFileName(text, target);
-    if (new File(Paths.cache, fileName).exists) return;
+    if (cacheFile(fileName).exists) return;
     await ensureSynthFile(text, target, fileName);
   } catch {
     /* 预热失败不影响正常播放 */
@@ -199,7 +227,7 @@ export async function prewarmPhraseBatch(target: CloneTarget, phrases: string[])
 export function clearClonedCacheForTarget(target: CloneTarget): void {
   try {
     const prefix = `rms_clone_${encodeURIComponent(target)}_`;
-    const entries = Paths.cache.list();
+    const entries = audioDir().list();
     for (const entry of entries) {
       if (entry instanceof File && entry.name.startsWith(prefix)) {
         try {
@@ -230,7 +258,7 @@ async function startPlayback(
     const modeTask = setAudioModeAsync({
       playsInSilentMode: true,
       allowsRecording: false,
-      staysActiveInBackground: false,
+      shouldPlayInBackground: false,
     }).catch(() => {
       /* 忽略会话配置异常，继续尝试播放 */
     });
@@ -297,7 +325,7 @@ export async function playClonedAudio(
 
   try {
     const fileName = cacheFileName(text, target);
-    if (opts?.cacheOnly && !new File(Paths.cache, fileName).exists) {
+    if (opts?.cacheOnly && !cacheFile(fileName).exists) {
       // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
       void prewarmClonedAudio(text, target);
       return false;
@@ -310,7 +338,7 @@ export async function playClonedAudio(
       console.warn('[clonedPlayback] synth failed:', lastCloneError);
       return false;
     }
-    const file = new File(Paths.cache, fileName);
+    const file = cacheFile(fileName);
     if (abortCheck && !abortCheck()) return false;
     return await startPlayback(file.uri, onDone, onStart, opts?.fast);
   } catch (err) {
@@ -332,6 +360,24 @@ export function seekClonedAudio(positionSeconds: number): void {
     }
   } catch {
     /* 忽略 seek 异常 */
+  }
+}
+
+/**
+ * 重新激活音频会话（v62 反馈 #2）。
+ * 锁屏 / 切后台回来后，iOS 可能已经停用了本 App 的音频会话：此时再建 player
+ * 并 play() 不会抛错，但也完全不出声 —— 表现出来就是「看着在播，点暂停、点停止都没用」。
+ * 回到前台时先重设一次会话，随后的播放才有声。
+ */
+export async function reassertAudioSession(): Promise<void> {
+  try {
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: false,
+      shouldPlayInBackground: false,
+    });
+  } catch {
+    /* 忽略 */
   }
 }
 

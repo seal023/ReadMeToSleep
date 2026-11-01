@@ -13,9 +13,11 @@ import {
   Alert,
   PanResponder,
   Keyboard,
+  AppState,
   type DimensionValue,
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES } from '../../services/tts';
@@ -23,9 +25,9 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase } from '../../ser
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
@@ -54,6 +56,14 @@ const { width } = Dimensions.get('window');
 /** 把剩余毫秒格式化为 mm:ss，用于睡眠定时倒计时展示 */
 function formatSleep(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** 秒 → m:ss（断点文案用） */
+function formatClock(sec: number): string {
+  const total = Math.max(0, Math.floor(sec));
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -179,6 +189,21 @@ export default function StoryPlayScreen() {
   const playTokenRef = useRef(0);
   const endFiredRef = useRef(false);
 
+  // —— 断点续播 / 后台回前台恢复（v62 反馈 #2）——
+  /** 本次「启动播放」的时刻：给它加超时，避免被后台打断后 startingRef 永久为 true（表现为点播放没反应） */
+  const startingAtRef = useRef(0);
+  /** 断点秒数：点播放时从这里开始（0 表示从头） */
+  const resumeAtRef = useRef(0);
+  /** 断点秒数（用于界面提示，不参与播放逻辑） */
+  const [resumeSec, setResumeSec] = useState(0);
+  /** 是否刚从后台/锁屏回来过（回来时要把界面状态与音频会话对齐） */
+  const interruptedRef = useRef(false);
+  /** story 的 ref 镜像：失焦清理是空依赖的 useCallback，拿不到最新 story */
+  const storyRef = useRef<Story | null>(null);
+  useEffect(() => {
+    storyRef.current = story;
+  }, [story]);
+
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,6 +276,61 @@ export default function StoryPlayScreen() {
     return () => clearInterval(tick);
   }, [phase]);
 
+  // 听故事期间不自动锁屏（v62 反馈 #2）：屏幕一黑，家长得重新解锁才能操作，体验很差
+  useEffect(() => {
+    const TAG = 'rms-story';
+    if (!isPlaying || phase !== 'playing') {
+      deactivateKeepAwake(TAG).catch(() => {});
+      return;
+    }
+    activateKeepAwakeAsync(TAG).catch(() => {});
+    return () => {
+      deactivateKeepAwake(TAG).catch(() => {});
+    };
+  }, [isPlaying, phase]);
+
+  // 播放中每 5 秒记一次断点，锁屏/退出后回来能接着听
+  useEffect(() => {
+    if (!isPlaying || !story) return;
+    const timer = setInterval(() => {
+      const pos = getClonedPosition();
+      if (pos > 3) {
+        resumeAtRef.current = pos;
+        saveStoryPosition(story.id, pos);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isPlaying, story?.id]);
+
+  /**
+   * 锁屏 / 切后台再回来（v62 反馈 #2）。
+   * iOS 在后台会停用音频会话，回到前台后直接 play() 不出声、按钮看着也像失效。
+   * 这里做三件事：回前台重设音频会话、复位「启动中」锁（否则点播放会被拦掉）、
+   * 把界面状态和断点对齐 —— 修完就表现为「回到页面点播放即可接着听」。
+   */
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        const pos = getClonedPosition();
+        if (pos > 3 && story) {
+          resumeAtRef.current = pos;
+          saveStoryPosition(story.id, pos);
+        }
+        interruptedRef.current = true;
+        return;
+      }
+      if (state === 'active' && interruptedRef.current) {
+        interruptedRef.current = false;
+        void reassertAudioSession();
+        startingRef.current = false;
+        setIsPlaying(false);
+        setPreparing(false);
+        if (resumeAtRef.current > 3) setResumeSec(Math.floor(resumeAtRef.current));
+      }
+    });
+    return () => sub.remove();
+  }, [story?.id]);
+
   // 双语解析：英文模式且故事有英文正文时取英文，否则中文。
   // 派生值每次渲染重算，跟随界面语言实时切换。
   const displayLang: 'zh' | 'en' = uiLang === 'en' && story?.contentEn ? 'en' : 'zh';
@@ -274,6 +354,16 @@ export default function StoryPlayScreen() {
         }
         setStory(s);
         setPhase('playing');
+        // 断点：上次没听完，这次点播放直接接着听
+        try {
+          const pos = await getStoryPosition(s.id);
+          if (pos > 3) {
+            resumeAtRef.current = pos;
+            setResumeSec(Math.floor(pos));
+          }
+        } catch {
+          /* 读不到断点就当从头播 */
+        }
       } catch (err) {
         console.error('Load story error:', err);
         setError(t('story.error.loadFailed'));
@@ -354,6 +444,12 @@ export default function StoryPlayScreen() {
       aliveRef.current = true;
       return () => {
         aliveRef.current = false;
+        // 离开前先存断点，回来点播放就能接着听，而不是重头开始
+        const pos = getClonedPosition();
+        if (pos > 3 && storyRef.current) {
+          resumeAtRef.current = pos;
+          saveStoryPosition(storyRef.current.id, pos);
+        }
         playTokenRef.current++;
         startingRef.current = false;
         stopStory();
@@ -508,6 +604,10 @@ export default function StoryPlayScreen() {
     setProgress(100);
     setIsPlaying(false);
     setPhase('completed');
+    // 听完了，断点作废（下次从头开始才是对的）
+    resumeAtRef.current = 0;
+    setResumeSec(0);
+    if (story) clearStoryPosition(story.id);
     // 俏皮收尾：克隆声随机来一句「讲完啦」，与屏显的完成页呼应
     speakPhrase('done', displayLang);
   };
@@ -542,8 +642,9 @@ export default function StoryPlayScreen() {
     if (!story) return;
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
-    if (startingRef.current) return;
+    if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
     startingRef.current = true;
+    startingAtRef.current = Date.now();
     const token = ++playTokenRef.current;
     endFiredRef.current = false;
     // 先彻底停掉任何在播的音频，避免叠加
@@ -577,6 +678,8 @@ export default function StoryPlayScreen() {
         if (token !== playTokenRef.current) return;
         setUsingClonedVoice(true);
         clonedPlayingRef.current = ok; // 同用全局 player，支持真实进度 + 拖动快进
+        // 断点续播：本地录音也能 seek
+        if (ok && resumeAtRef.current > 3) seekClonedAudio(resumeAtRef.current);
         startProgressTicker(true);
         // 兜底：万一播完检测没触发，到点也结束（留 45s 余量，避免把故事掐断）
         if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
@@ -590,6 +693,22 @@ export default function StoryPlayScreen() {
       if (token !== playTokenRef.current) return;
       setUsingClonedVoice(used);
       clonedPlayingRef.current = used;
+
+      // 断点续播：从上次停下的位置接着听（仅克隆声 / 本地录音可 seek，系统音不支持）
+      if (used && resumeAtRef.current > 3) {
+        const target = resumeAtRef.current;
+        seekClonedAudio(target);
+        // 音频刚加载时 seek 可能被忽略，600ms 后若位置仍在开头附近就补一次
+        setTimeout(() => {
+          if (token !== playTokenRef.current) return;
+          if (getClonedPosition() < target - 1.5) seekClonedAudio(target);
+        }, 600);
+        const dur = getClonedDuration();
+        if (dur > 0) {
+          lastTotalDuration.current = dur * 1000;
+          setProgress(Math.min(100, (target / dur) * 100));
+        }
+      }
 
       // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
       // 系统音（TTS）：无法读取真实位置，仍用文字长度估算（仅视觉），提示不支持拖动。
@@ -613,6 +732,13 @@ export default function StoryPlayScreen() {
   };
 
   const handlePause = () => {
+    // 记断点：暂停后（含锁屏/退出）再点播放能接着听
+    const pos = getClonedPosition();
+    if (pos > 3 && story) {
+      resumeAtRef.current = pos;
+      setResumeSec(Math.floor(pos));
+      saveStoryPosition(story.id, pos);
+    }
     // 作废进行中的播放回调，并解除并发锁，避免暂停后点播放被拦
     playTokenRef.current++;
     startingRef.current = false;
@@ -631,8 +757,20 @@ export default function StoryPlayScreen() {
     setIsPlaying(false);
     setPreparing(false);
     setProgress(0);
+    // 停止 = 从头开始，断点清掉
+    resumeAtRef.current = 0;
+    setResumeSec(0);
+    if (story) clearStoryPosition(story.id);
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+  };
+
+  /** 从头播放（清掉断点后走正常播放流程） */
+  const handlePlayFromStart = () => {
+    resumeAtRef.current = 0;
+    setResumeSec(0);
+    if (story) clearStoryPosition(story.id);
+    void handlePlay();
   };
 
   // 快进 / 后退（±delta 秒）：克隆声 / 本地录音用真实播放位置跳转；系统音不支持，给提示
@@ -1016,6 +1154,21 @@ export default function StoryPlayScreen() {
             <Text style={styles.controlIcon}>⏹️</Text>
           </TouchableOpacity>
         </View>
+
+        {resumeSec > 0 && !isPlaying ? (
+          <View style={styles.resumeRow}>
+            <Text style={styles.resumeText}>
+              {uiLang === 'en'
+                ? `Last time stopped at ${formatClock(resumeSec)} — tap ▶ to continue`
+                : `上次听到 ${formatClock(resumeSec)}，点 ▶ 接着听`}
+            </Text>
+            <TouchableOpacity onPress={handlePlayFromStart}>
+              <Text style={styles.resumeReset}>
+                {uiLang === 'en' ? 'Start over' : '从头听'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={styles.seekRow}>
           <TouchableOpacity style={styles.seekBtn} onPress={() => handleSeekBy(-15)}>
@@ -1411,6 +1564,17 @@ const styles = StyleSheet.create({
   },
   controlIcon: { fontSize: 22 },
   seekRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10 },
+  // 断点提示（v62 反馈 #2）：上次听到哪、可一键从头听
+  resumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 12,
+    flexWrap: 'wrap',
+  },
+  resumeText: { fontSize: 13, color: '#8A7B6E' },
+  resumeReset: { fontSize: 13, color: '#FF8A65', fontWeight: '700' },
   seekBtn: {
     paddingHorizontal: 18, paddingVertical: 10, borderRadius: 20, backgroundColor: '#FFF',
     borderWidth: 1, borderColor: '#FFE0B2', elevation: 1,
