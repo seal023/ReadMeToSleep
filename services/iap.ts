@@ -11,8 +11,8 @@
  *   - finishTransaction({ purchase })        完成交易（不完成会在每次启动重放）
  *
  * 商品 ID（需与 App Store Connect 中创建的订阅商品完全一致）：
- *   com.seal023.ReadMeToSleep.mor   （月度，$4.99/月）
- *   com.seal023.ReadMeToSleep.yea   （年度，$24.99/年，预付模式）
+ *   com.seal023.ReadMeToSleep.monthly   （月度，$4.99/月）
+ *   com.seal023.ReadMeToSleep.yearly    （年度，$24.99/年，预付模式）
  * 订阅群组 ID：22351191（仅 ASC 后台使用，代码无需引用）
  */
 
@@ -42,8 +42,8 @@ export type Plan = 'free' | 'monthly' | 'yearly';
 export type PaidPlan = Exclude<Plan, 'free'>;
 
 export const PRODUCT_IDS: Record<PaidPlan, string> = {
-  monthly: 'com.seal023.ReadMeToSleep.mor',
-  yearly: 'com.seal023.ReadMeToSleep.yea',
+  monthly: 'com.seal023.ReadMeToSleep.monthly',
+  yearly: 'com.seal023.ReadMeToSleep.yearly',
 };
 
 /**

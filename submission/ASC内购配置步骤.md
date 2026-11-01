@@ -3,8 +3,8 @@
 > **当前状态：内购商品已在 ASC 后台创建完成。** 本文档从「创建步骤」转为「核对清单」——请逐项确认与代码一致，避免拉不到价格或审核被卡。
 >
 > 代码里写死的三个关键值（**必须一字不差**）：
-> - 月度商品 ID：`com.seal023.ReadMeToSleep.mor`
-> - 年度商品 ID：`com.seal023.ReadMeToSleep.yea`
+> - 月度商品 ID：`com.seal023.ReadMeToSleep.monthly`
+> - 年度商品 ID：`com.seal023.ReadMeToSleep.yearly`
 > - 订阅群组 ID：`22351191`（仅 ASC 后台使用，代码无需引用）
 
 代码位置：`services/iap.ts` 的 `PRODUCT_IDS` 与 `FALLBACK_PRICES`。
@@ -17,8 +17,8 @@
 
 | 项 | ASC 后台实际值 | 代码值 | 状态 |
 |---|---|---|---|
-| 月度产品 ID | `com.seal023.ReadMeToSleep.mor` | 同左 | 待你核对 |
-| 年度产品 ID | `com.seal023.ReadMeToSleep.yea` | 同左 | 待你核对 |
+| 月度产品 ID | `com.seal023.ReadMeToSleep.monthly` | 同左 | 待你核对 |
+| 年度产品 ID | `com.seal023.ReadMeToSleep.yearly` | 同左 | 待你核对 |
 | 订阅群组 ID | `22351191` | 代码不引用 | — |
 
 > ⚠️ 产品 ID 在 ASC 里是**一次性设定，创建后不可修改**。若发现不一致，只能废弃该商品重建（ID 后加后缀），同时改 `services/iap.ts`。
