@@ -304,7 +304,7 @@
   "vc.clonePhrase.3": "Packing years of bedtime chatter into one voice…",
   "vc.clonePhrase.4": "Voice parcel is being wrapped, hold tight 📦",
   "vc.clonePhrase.5": "Your voice is crossing a rainbow, nearly here 🌈",
-  "vc.clonePhrase.6": "Translating \u201cgo to sleep!\u201d into extra-gentle 😴",
+  "vc.clonePhrase.6": "Translating “go to sleep!” into extra-gentle 😴",
   "vc.clonePhrase.7": "The voice elf is adding a spoonful of honey 🍯",
   "vc.clonePhrase.8": "Almost done — tucking your voice in",
   "vc.enabledNow": "Enabled {name}'s voice for you — go listen to a story!",
@@ -364,5 +364,31 @@
     "tooShort": "Too short",
     "tooShortMsg": "Please record at least 2 seconds so we can transcribe it~",
     "noTranscript": "No speech recognized. You can type a title and save anyway."
+  },
+  "theme": {
+    "title": "Colors",
+    "subtitle": "Tap a palette to switch",
+    "mockBtn": "Start story",
+    "inUse": "In use",
+    "pending": "Pending",
+    "pendingTitle": "Saved",
+    "pendingText": "Close the app and open it again — the new colors will apply everywhere.",
+    "restartTitle": "Reopen to see it",
+    "restartText": "Colors are painted once when the app starts. After picking, swipe the app away and open it again.",
+    "speakPicked": "Reopen the app to see your new colors",
+    "saveFailedTitle": "Could not save",
+    "saveFailedMsg": "Please tap once more.",
+    "names": {
+      "candy": "Candy",
+      "forest": "Forest",
+      "starry": "Starry",
+      "sakura": "Sakura"
+    },
+    "tags": {
+      "candy": "Sweet peachy pink",
+      "forest": "Fresh meadow green",
+      "starry": "Night-sky blue",
+      "sakura": "Soft cherry blossom"
+    }
   }
 }

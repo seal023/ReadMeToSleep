@@ -224,6 +224,8 @@ export default function RootLayout() {
           <Stack.Screen name="auth/login" />
           <Stack.Screen name="auth/perks" />
           <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+          {/* 界面配色：放在根级（不属于家长模式），孩子端设置页一级可达 */}
+          <Stack.Screen name="theme" />
         </Stack>
 
         {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}

@@ -8,6 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
 import { getClonedTargets } from '../../services/voiceClone';
+import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version + 原生 build number） */
 const APP_VERSION: string =
@@ -105,6 +106,23 @@ export default function SettingsScreen() {
         <Text style={styles.cardValue}>
           {language === 'zh' ? '中文' : 'English'}
         </Text>
+      </TouchableOpacity>
+
+      {/* 界面配色：孩子自己就能换，不走家长模式（路由在根级 /theme） */}
+      <TouchableOpacity style={styles.card} onPress={() => router.push('/theme')}>
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>🎨</Text>
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>{t('theme.title')}</Text>
+            <Text style={styles.cardSub}>{t('theme.subtitle')}</Text>
+          </View>
+        </View>
+        <View style={styles.themeDots}>
+          {THEME_KEYS.map((k) => (
+            <View key={k} style={[styles.themeDot, { backgroundColor: THEMES[k].primaryDeep }]} />
+          ))}
+        </View>
+        <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
 
       {/* 宝宝名字：合并为一栏并紧跟语言卡片置顶，方便查找 */}
@@ -263,6 +281,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: '#bbb',
     fontWeight: '300',
+  },
+  themeDots: {
+    flexDirection: 'row',
+    gap: 5,
+    marginRight: 6,
+  },
+  themeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   aboutInfo: {
     flex: 1,
