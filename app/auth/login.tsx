@@ -1,5 +1,11 @@
 /**
- * app/auth/login.tsx — 登录页（Sign in with Apple / 邮件验证码）
+ * app/auth/login.tsx — 登录页（当前只暴露 Sign in with Apple）
+ *
+ * ⚠️ 邮件登录开关：见 constants/featureFlags.ts 的 EMAIL_LOGIN_ENABLED
+ *    现在为 false —— 邮箱输入框、发送验证码按钮、验证码输入框、相关提示文案
+ *    全部不渲染，页面只剩「通过 Apple 登录」一个大按钮。
+ *    底层实现（sendCode / verifyCode / 深链回调）完整保留，把开关改成 true
+ *    即可原样恢复，不需要改本文件任何一行 JSX。
  *
  * 交互原则：这是给「家长」看的页面，允许文字为主，但按钮要大、状态要清楚。
  * 不识字的孩子不该被卡在这里 —— 所以本页只在家长主动点击「开通会员」后才出现。
@@ -32,6 +38,9 @@ import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 
 const RESEND_SECONDS = 60;
+/** Apple 原生登录按钮尺寸：全页唯一主操作，做得足够大、足够圆（胶囊） */
+const APPLE_BTN_HEIGHT = 72;
+const APPLE_BTN_RADIUS = APPLE_BTN_HEIGHT / 2;
 const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 
@@ -137,7 +146,7 @@ export default function LoginScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-          {/* 关闭 */}
+          {/* 关闭：绝对定位，避免参与垂直居中、把整块内容顶下去 */}
           <Pressable
             style={styles.closeBtn}
             hitSlop={12}
@@ -148,10 +157,11 @@ export default function LoginScreen() {
           </Pressable>
 
           <View style={styles.hero}>
-            <Racco state="happy" size={76} />
+            {/* 邮箱表单下线后整页只剩一个按钮，插画放大撑住画面重心 */}
+            <Racco state="happy" size={EMAIL_LOGIN_ENABLED ? 76 : 168} />
             <Text style={styles.title}>登录后，会员跟着你走</Text>
             <Text style={styles.subtitle}>
-              换新手机、重装 App，只要用同一个账号登录，{'\n'}会员和故事都还在，不用再次付费。
+              换新手机、重装 App，{'\n'}只要用同一个账号登录，{'\n'}会员和故事都还在，不用再次付费。
             </Text>
           </View>
 
@@ -170,29 +180,31 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {/* Apple 登录 */}
-          {appleAvailable && (
-            <View style={styles.appleWrap}>
+          {/* Apple 登录：全页唯一的主操作，做成大胶囊 */}
+          {appleAvailable ? (
+            <View style={styles.appleShadow}>
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                 buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={RADIUS.md}
+                cornerRadius={APPLE_BTN_RADIUS}
                 style={styles.appleBtn}
                 onPress={handleApple}
               />
             </View>
+          ) : (
+            <View style={styles.warnCard}>
+              <Text style={styles.warnTitle}>当前设备不支持 Apple 登录</Text>
+              <Text style={styles.warnBody}>
+                请在 iPhone / iPad 上使用「通过 Apple 登录」。不登录也能继续使用本 App，
+                只是会员无法跨设备找回。
+              </Text>
+            </View>
           )}
 
-          {/* 邮箱入口按开关显示：关闭时整段不渲染，代码保留在下方 */}
+          {/* 邮箱入口与邮箱表单：受 EMAIL_LOGIN_ENABLED 控制，关闭时整段不渲染，
+              实现代码完整保留在下方（改成 true 即恢复，JSX 无需改动） */}
           {EMAIL_LOGIN_ENABLED && appleAvailable && (
             <Text style={styles.orText}>或使用邮箱</Text>
-          )}
-
-          {!EMAIL_LOGIN_ENABLED && (
-            <Text style={styles.hint}>
-              邮箱登录暂时关闭，请使用上方 Apple 账号登录。{'\n'}
-              不登录也能继续使用本 App，只是会员无法跨设备找回。
-            </Text>
           )}
 
           {/*
@@ -306,7 +318,9 @@ export default function LoginScreen() {
               <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
                 {' '}《隐私政策》{' '}
               </Text>
-              。我们只保存邮箱 / Apple 账号标识与你孩子的昵称、故事偏好，不会用于广告。
+              {'。我们只保存' +
+                (EMAIL_LOGIN_ENABLED ? '邮箱 / Apple 账号标识' : 'Apple 账号标识') +
+                '与你孩子的昵称、故事偏好，不会用于广告。'}
             </Text>
           </View>
 
@@ -322,12 +336,18 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: {
+    flexGrow: 1,
+    // 邮箱表单下线后内容变短，整块垂直居中，别让按钮浮在半空
+    justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xl,
+    paddingTop: SPACING.xl * 2.2,
     paddingBottom: SPACING.xl * 1.6,
   },
   closeBtn: {
-    alignSelf: 'flex-end',
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.lg,
+    zIndex: 10,
     width: 36,
     height: 36,
     borderRadius: 24,
@@ -338,10 +358,9 @@ const styles = StyleSheet.create({
   },
   closeText: { fontSize: 17, color: COLORS.textSub, fontWeight: '700' },
 
-  hero: { alignItems: 'center', marginTop: SPACING.sm, marginBottom: SPACING.lg },
+  hero: { alignItems: 'center', marginBottom: SPACING.xl },
   title: {
     fontSize: FONT_SIZE.title,
-    fontWeight: '800',
     color: COLORS.text,
     fontFamily: FONT.rounded,
     textAlign: 'center',
@@ -351,7 +370,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.body,
     color: COLORS.textSub,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 26,
     marginTop: SPACING.sm,
   },
 
@@ -372,8 +391,16 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: FONT_SIZE.caption, color: '#B03A3A', lineHeight: 20 },
 
-  appleWrap: { marginBottom: SPACING.sm },
-  appleBtn: { width: '100%', height: 52 },
+  // Apple 原生按钮本身不支持投影，用外层 View 兜出一点浮起感
+  appleShadow: {
+    borderRadius: APPLE_BTN_RADIUS,
+    shadowColor: '#3D3229',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  appleBtn: { width: '100%', height: APPLE_BTN_HEIGHT },
   orText: {
     fontSize: FONT_SIZE.caption,
     color: COLORS.textSub,
