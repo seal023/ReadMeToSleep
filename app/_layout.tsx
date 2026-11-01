@@ -194,6 +194,7 @@ export default function RootLayout() {
           <Stack.Screen name="(parent)" />
           <Stack.Screen name="auth/login" />
           <Stack.Screen name="auth/perks" />
+          <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
         </Stack>
 
         {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}

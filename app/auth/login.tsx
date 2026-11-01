@@ -214,18 +214,20 @@ export default function LoginScreen() {
                 disabled={busy || !configured || !isValidEmail(email)}
               />
               <Text style={styles.hint}>
-                点击「发送验证码」后，6 位验证码会发到这个邮箱。{'\n'}
-                下一个页面会有一个 6 位数字输入框，把验证码填进去即可登录。
+                点击「发送验证码」后，我们会向这个邮箱发送登录邮件。{'\n'}
+                邮件里可能是 6 位验证码，也可能是一条「登录链接」——两种方式都支持。
               </Text>
             </View>
           ) : (
             <View style={styles.form}>
               {/* 明确告知「验证码已发送」+ 填写位置（Issue 10） */}
               <View style={styles.successCard}>
-                <Text style={styles.successTitle}>✅ 验证码已发送</Text>
-                <Text style={styles.successText}>我们已把 6 位验证码发到</Text>
+                <Text style={styles.successTitle}>✅ 登录邮件已发送</Text>
+                <Text style={styles.successText}>我们已向</Text>
                 <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
-                <Text style={styles.successText}>请在下面这个输入框里填入 6 位数字：</Text>
+                <Text style={styles.successText}>
+                  发送了登录邮件。如果邮件里是 6 位数字，请填在下方；如果是「登录链接」，直接点它即可自动登录。
+                </Text>
               </View>
 
               <TextInput
