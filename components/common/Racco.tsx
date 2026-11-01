@@ -13,8 +13,8 @@ interface RaccoProps {
   source?: any;
 }
 
-// 卡通小浣熊吉祥物（依据用户参考图生成的无版权 PNG，仿图风格）
-const RACCOON = require('../../assets/raccoon.png');
+// 3D 粘土风吉祥物（用户 AI 生成素材，已抠透明底 + 去水印，见 assets/clay/）
+const RACCOON = require('../../assets/clay/mascot_raccoon.png');
 
 const Racco: React.FC<RaccoProps> = ({
   state = 'idle',
@@ -103,12 +103,15 @@ const Racco: React.FC<RaccoProps> = ({
         </Animated.View>
       )}
 
-      {/* 开心星星 */}
+      {/* 开心星星：换成粘土小星星，和吉祥物同一套材质 */}
       {state === 'happy' && (
         <Animated.View
-          style={{ position: 'absolute', top: size * 0.04, right: -size * 0.02, opacity: starV }}
+          style={{ position: 'absolute', top: size * 0.02, right: -size * 0.04, opacity: starV }}
         >
-          <Text style={{ fontSize: size * 0.11, color: '#FFD700' }}>✦</Text>
+          <Image
+            source={require('../../assets/clay/deco_star_small.png')}
+            style={{ width: size * 0.24, height: size * 0.24, resizeMode: 'contain' }}
+          />
         </Animated.View>
       )}
 

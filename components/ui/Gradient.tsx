@@ -10,7 +10,8 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
+import { ClayIcon, type ClayIconName } from './ClayIcon';
 
 type RGB = [number, number, number];
 
@@ -117,8 +118,21 @@ const DECOR_SPOTS: DecorSpot[] = [
   { top: '93%', left: '12%', size: 36, rot: -11 },
 ];
 
-const DAY_DECOR = ['☁️', '⭐', '✨', '☁️', '🌤️', '🌟', '✨', '☁️', '🌟', '⭐', '✨', '☁️', '⭐', '✨'];
-const NIGHT_DECOR = ['🌙', '⭐', '✨', '🌟', '✨', '⭐', '🌙', '🌟', '✨', '⭐', '🌙', '✨', '⭐', '🌟'];
+const DAY_DECOR: ClayIconName[] = [
+  'starSmall', 'flower1', 'starBig', 'flower3',
+  'starSmall', 'flower2', 'starBig', 'flower4',
+  'starSmall', 'flower1', 'starBig', 'flower3',
+  'starSmall', 'flower2',
+];
+const NIGHT_DECOR: ClayIconName[] = [
+  'moon', 'starSmall', 'starBig', 'starSmall',
+  'moon', 'starBig', 'starSmall', 'starBig',
+  'moon', 'starSmall', 'starBig', 'starSmall',
+  'moon', 'starBig',
+];
+
+/** 装饰图的放大系数：粘土贴图比 emoji 需要更大的占地才好看 */
+const DECOR_IMG_SCALE = 1.9;
 
 export function SkyDecor({ variant = 'day', enabled = true }: SkyDecorProps) {
   if (!enabled) return null;
@@ -131,17 +145,14 @@ export function SkyDecor({ variant = 'day', enabled = true }: SkyDecorProps) {
           key={i}
           style={[
             styles.decorItem,
-            { top: spot.top, left: spot.left, opacity: spot.faint ? 0.14 : 0.6 },
+            { top: spot.top, left: spot.left, opacity: spot.faint ? 0.13 : 0.45 },
           ]}
         >
-          <Text
-            style={[
-              styles.decorEmoji,
-              { fontSize: spot.size, transform: [{ rotate: `${spot.rot}deg` }] },
-            ]}
-          >
-            {icons[i % icons.length]}
-          </Text>
+          <ClayIcon
+            name={icons[i % icons.length]}
+            size={spot.size * DECOR_IMG_SCALE}
+            style={{ transform: [{ rotate: `${spot.rot}deg` }] }}
+          />
         </View>
       ))}
     </View>

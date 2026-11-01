@@ -7,8 +7,7 @@ import { router } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
 
-// 家长模式专属可爱浣熊（与家长中心 hub 同一张图），替换原先写实的 🦝 表情
-const PARENT_RACCOON = require('../../assets/raccoon-parent.png');
+// 家长模式沿用全局 3D 粘土风吉祥物（原 raccoon-parent.png 已并入 assets/clay）
 
 export default function ParentIndex() {
   const { height } = useWindowDimensions();
@@ -123,7 +122,7 @@ export default function ParentIndex() {
       >
       {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
       <View style={styles.racco}>
-        <Racco state="sleeping" size={raccoSize} source={PARENT_RACCOON} />
+        <Racco state="sleeping" size={raccoSize}  />
       </View>
       <Text style={[styles.title, compact && styles.titleCompact]}>家长模式</Text>
 

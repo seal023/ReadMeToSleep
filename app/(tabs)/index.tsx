@@ -15,6 +15,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
@@ -286,7 +287,7 @@ export default function HomeTab() {
           activeOpacity={0.8}
           onPress={() => router.push('/(tabs)/library')}
         >
-          <Text style={styles.actionEmoji}>🎧</Text>
+          <ClayIcon name="book" size={38} style={styles.actionArt} />
           <Text style={styles.actionLabel}>{t('home.quickListen')}</Text>
         </TouchableOpacity>
 
@@ -295,7 +296,7 @@ export default function HomeTab() {
           activeOpacity={0.8}
           onPress={() => router.push('/(tabs)/create')}
         >
-          <Text style={styles.actionEmoji}>✏️</Text>
+          <ClayIcon name="starBig" size={38} style={styles.actionArt} />
           <Text style={styles.actionLabel}>{t('home.quickCreate')}</Text>
         </TouchableOpacity>
 
@@ -304,7 +305,7 @@ export default function HomeTab() {
           activeOpacity={0.8}
           onPress={() => router.push('/story/travel-checkin')}
         >
-          <Text style={styles.actionEmoji}>✈️</Text>
+          <ClayIcon name="tent" size={38} style={styles.actionArt} />
           <Text style={styles.actionLabel}>{t('home.quickTravel')}</Text>
         </TouchableOpacity>
       </View>
@@ -318,7 +319,7 @@ export default function HomeTab() {
         ) : (
           recent.map((r) => (
             <TouchableOpacity key={r.key} style={styles.recentItem} onPress={() => router.push(r.route)}>
-              <Text style={styles.recentItemEmoji}>{r.kind === 'ai' ? '✨' : '✈️'}</Text>
+              <ClayIcon name={r.kind === 'ai' ? 'starBig' : 'globe'} size={30} />
               <View style={styles.recentItemInfo}>
                 <Text style={styles.recentItemTitle} numberOfLines={1}>{r.title}</Text>
                 <Text style={styles.recentItemSub}>{r.sub}</Text>
@@ -554,6 +555,15 @@ const styles = StyleSheet.create({
   actionEmoji: {
     fontSize: 28,
     marginBottom: 6,
+  },
+  /** 粘土贴图：补一点投影 + 底部间距，替代原来的 emoji 字号占位 */
+  actionArt: {
+    marginBottom: 6,
+    shadowColor: '#8A6A55',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    elevation: 3,
   },
   actionLabel: {
     fontSize: 13,

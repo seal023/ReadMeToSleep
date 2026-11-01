@@ -1,7 +1,7 @@
 /**
  * 故事卡片（需求 二：插图——每个故事配一张卡通封面图）
  *
- * 封面策略：渐变底 + 卡通动物 emoji 插画，按故事 id 稳定选取（同一故事每次一致）。
+ * 封面策略：渐变底 + 3D 粘土贴图，按故事 id 稳定选取（同一故事每次一致）。
  * 这样完全离线可用、不依赖网络图床；若后续接入 Unsplash / AI 生成图，
  * 直接传 imageUri 即可替换（组件内已预留分支）。
  */
@@ -10,6 +10,7 @@ import React from 'react';
 import { View, Text, Image, StyleSheet, ViewStyle } from 'react-native';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING, pickCover } from '../../constants/theme';
 import { GradientView } from './Gradient';
+import { ClayIcon } from './ClayIcon';
 import { ElasticPressable } from './CartoonButton';
 
 interface StoryCardProps {
@@ -51,9 +52,7 @@ export function StoryCard({
       ) : (
         <GradientView colors={cover.gradient} style={styles.coverFill}>
           <View style={styles.coverCenter}>
-            <Text style={layout === 'row' ? styles.coverEmoji : styles.coverEmojiGrid}>
-              {cover.emoji}
-            </Text>
+            <ClayIcon name={cover.clay} size={layout === 'row' ? 40 : 58} style={styles.coverArt} />
           </View>
         </GradientView>
       )}
@@ -153,8 +152,10 @@ const styles = StyleSheet.create({
   coverFill: { width: '100%', height: '100%' },
   coverCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverImage: { width: '100%', height: '100%' },
-  coverEmoji: { fontSize: 32 },
-  coverEmojiGrid: { fontSize: 48 },
+  /** 粘土贴图带一点投影，压在渐变底上更像“贴纸” */
+  coverArt: {
+    ...SHADOW.soft,
+  },
 
   // ── 其它 ─────────────────────────────────────
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 },

@@ -13,9 +13,7 @@ interface CardDef {
   action?: () => void;
 }
 
-// 家长页专属小浣熊：挥手 + 抱月亮 + 腮红，比默认图更可爱（透明背景 PNG）
-const PARENT_RACCOON = require('../../assets/raccoon-parent.png');
-
+// 家长页沿用全局 3D 粘土风吉祥物（原 raccoon-parent.png 已并入 assets/clay）
 export default function ParentHub() {
   const w = useWindowDimensions().width;
   const cardWidth = useMemo(() => (w - 64 - 12) / 2, [w]);
@@ -54,7 +52,7 @@ export default function ParentHub() {
         {/* 封面英雄区：柔和光晕 + 星星点缀 + 更大的小浣熊，比原来单张小图更亲切 */}
         <View style={styles.hero}>
           <View style={styles.heroGlow} pointerEvents="none" />
-          <Racco state="idle" size={150} source={PARENT_RACCOON} />
+          <Racco state="idle" size={150} />
         </View>
         <Text style={styles.header}>家长模式</Text>
         <Text style={styles.headerSub}>在这里管理声音、睡眠时长与孩子的收听记录</Text>

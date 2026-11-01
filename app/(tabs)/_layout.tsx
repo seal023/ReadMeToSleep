@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
 import { useLanguage } from '../../hooks/useLanguage';
+import { ClayIcon } from '../../components/ui/ClayIcon';
 
 export default function TabsLayout() {
   const { t } = useLanguage();
@@ -28,35 +29,35 @@ export default function TabsLayout() {
         name="index"
         options={{
           tabBarLabel: t('tab.home'),
-          tabBarIcon: () => <Text style={{ fontSize: 22 }}>🏠</Text>,
+          tabBarIcon: () => <ClayIcon name="raccoon" size={26} />,
         }}
       />
       <Tabs.Screen
         name="create"
         options={{
           tabBarLabel: t('tab.create'),
-          tabBarIcon: () => <Text style={{ fontSize: 22 }}>✏️</Text>,
+          tabBarIcon: () => <ClayIcon name="starBig" size={26} />,
         }}
       />
       <Tabs.Screen
         name="library"
         options={{
           tabBarLabel: t('tab.library'),
-          tabBarIcon: () => <Text style={{ fontSize: 22 }}>📚</Text>,
+          tabBarIcon: () => <ClayIcon name="book" size={26} />,
         }}
       />
       <Tabs.Screen
         name="my-stories"
         options={{
           tabBarLabel: t('tab.myStories'),
-          tabBarIcon: () => <Text style={{ fontSize: 22 }}>📖</Text>,
+          tabBarIcon: () => <ClayIcon name="trophy" size={26} />,
         }}
       />
       <Tabs.Screen
         name="record"
         options={{
           tabBarLabel: t('tab.record'),
-          tabBarIcon: () => <Text style={{ fontSize: 22 }}>🎙️</Text>,
+          tabBarIcon: () => <ClayIcon name="mic" size={26} />,
         }}
       />
       <Tabs.Screen

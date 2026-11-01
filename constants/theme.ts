@@ -13,6 +13,7 @@
 
 import { Platform, ViewStyle } from 'react-native';
 import { COLORS, CANDY, CANDY_GRADIENTS } from './Colors';
+import type { ClayIconName } from './clayIcons';
 
 // 转出去，历史代码里的 `import { COLORS } from '@/constants/theme'` 继续有效
 export { COLORS, CANDY };
@@ -39,21 +40,28 @@ export const GRADIENTS = {
   peach: CANDY_GRADIENTS.peach,
 } satisfies Record<string, GradientStops>;
 
-// ── 故事封面预设（渐变 + 卡通 emoji 插画）─────────────────
+// ── 故事封面预设（渐变 + 3D 粘土图标）───────────────────
 export interface CoverPreset {
   gradient: GradientStops;
+  /** 兜底 emoji（图片加载异常 / 极简场景仍可用） */
   emoji: string;
+  /** 3D 粘土贴图（优先渲染这个） */
+  clay: ClayIconName;
 }
 
 export const COVER_PRESETS: CoverPreset[] = [
-  { gradient: ['#FFD9C2', '#F7A072'], emoji: '🦊' }, // 狐狸 - 蜜桃
-  { gradient: ['#FFD6E4', '#EE7EA4'], emoji: '🐰' }, // 兔子 - 草莓
-  { gradient: ['#E2D8FB', '#9B7EDE'], emoji: '🐻' }, // 小熊 - 葡萄
-  { gradient: ['#D3EAFB', '#7FBEEB'], emoji: '🐳' }, // 鲸鱼 - 天空
-  { gradient: ['#D2F2E6', '#5FC3A4'], emoji: '🐸' }, // 青蛙 - 薄荷
-  { gradient: ['#FFEFC2', '#FFD166'], emoji: '🦁' }, // 狮子 - 柠檬
-  { gradient: ['#FFDCE9', '#C9B6F5'], emoji: '🦄' }, // 独角兽
-  { gradient: ['#E4F1FD', '#A8D8FF'], emoji: '🐧' }, // 企鹅
+  { gradient: ['#FFD9C2', '#F7A072'], emoji: '🦊', clay: 'fox' }, // 狐狸 - 蜜桃
+  { gradient: ['#FFD6E4', '#EE7EA4'], emoji: '🌸', clay: 'flower1' }, // 花朵 - 草莓
+  { gradient: ['#E2D8FB', '#9B7EDE'], emoji: '📖', clay: 'book' }, // 故事书 - 葡萄
+  { gradient: ['#D3EAFB', '#7FBEEB'], emoji: '🌍', clay: 'globe' }, // 地球仪 - 天空
+  { gradient: ['#D2F2E6', '#5FC3A4'], emoji: '⛺', clay: 'tent' }, // 帐篷 - 薄荷
+  { gradient: ['#FFEFC2', '#FFD166'], emoji: '⭐', clay: 'starBig' }, // 星星 - 柠檬
+  { gradient: ['#FFDCE9', '#C9B6F5'], emoji: '🌺', clay: 'flower3' }, // 花 - 紫罗兰
+  { gradient: ['#E4F1FD', '#A8D8FF'], emoji: '🌙', clay: 'moon' }, // 月亮 - 天空
+  { gradient: ['#FFE9D6', '#F2A08C'], emoji: '🏆', clay: 'trophy' }, // 奖杯 - 珊瑚
+  { gradient: ['#E8F3DC', '#A8D08D'], emoji: '🌼', clay: 'flower2' }, // 花 - 草绿
+  { gradient: ['#FDE8F0', '#F0A8C0'], emoji: '🌷', clay: 'flower4' }, // 花 - 桃粉
+  { gradient: ['#EFEAFB', '#B9A8EC'], emoji: '📣', clay: 'megaphone' }, // 喇叭 - 淡紫
 ];
 
 /** 依据 id / 标题稳定地挑选一个封面预设（同一故事每次一致） */
