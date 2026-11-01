@@ -276,7 +276,9 @@ function friendlyAuthError(error: { message?: string; status?: number }): Error 
     return new Error('该邮箱暂时无法注册，请换一个邮箱或联系客服');
   }
   if (msg.includes('network') || msg.includes('fetch')) {
-    return new Error('网络异常，请检查网络后重试');
+    // 把底层真实原因（如 fetch failed / DNS 解析失败 / Invalid API key）一并返回，
+    // 方便定位：是构建机根本没连上 Supabase 项目，还是 key/项目配错。
+    return new Error(`网络异常，请检查网络后重试（底层：${error?.message || 'fetch failed'}）`);
   }
-  return new Error(error?.message || '操作失败，请稍后重试');
+  return new Error(`${error?.message || '操作失败，请稍后重试'}`);
 }

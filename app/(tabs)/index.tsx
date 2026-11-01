@@ -18,11 +18,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
-import { hasClonedVoice } from '../../services/clonedVoicePlayback';
 import type { RaccoState } from '../../types';
-
-/** 首次启动引导是否已展示过 */
-const FIRST_RUN_CLONE_KEY = 'rms_firstrun_clone';
 
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
 
@@ -50,8 +46,8 @@ export default function HomeTab() {
   // 2026-10-29：首启引导——首次启动（尚未设置宝宝昵称）时，第一步就询问"如何称呼宝贝"
   const [onboardVisible, setOnboardVisible] = useState(false);
   const [onboardText, setOnboardText] = useState('');
-  // P1：首次启动引导——尚未克隆任何亲人声线时，强提示录制（核心卖点前置）
-  const [cloneBannerVisible, setCloneBannerVisible] = useState(false);
+  // 声音克隆是产品灵魂（北极星卖点），首页常驻入口，永远突出、不消失。
+  const [cloneCardVisible, setCloneCardVisible] = useState(true);
 
   // #6 同步：首页「最近故事」原本恒显示空态，现从真实数据填充（AI 故事 + 旅行打卡）
   type RecentItem = { key: string; title: string; sub: string; kind: 'ai' | 'travel'; route: string };
@@ -124,23 +120,8 @@ export default function HomeTab() {
     speakPhrase('guide', language);
   };
 
-  // 首次启动：未克隆过且未忽略引导 → 展示录制引导横幅
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const flagged = await AsyncStorage.getItem(FIRST_RUN_CLONE_KEY);
-      if (flagged) return;
-      const anyCloned =
-        (await hasClonedVoice('mom')) ||
-        (await hasClonedVoice('dad')) ||
-        (await hasClonedVoice('grandma'));
-      if (!mounted) return;
-      if (!anyCloned) setCloneBannerVisible(true);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // 声音克隆是产品灵魂，首页常驻入口（不再因「已克隆 / 点过稍后」而消失）。
+  // 仅本次会话内可「稍后再说」临时收起，下次打开首页仍会显示，确保入口永远突出。
 
   // 用 useFocusEffect：每次回到首页（从设置页改完名字返回）都重新读取，
   // 否则 tab 不卸载、首次加载的缓存会让问候语里的名字不更新
@@ -177,9 +158,8 @@ export default function HomeTab() {
       .replace(/, \{name\}!|, \{title\}!/, '!');
   })();
 
-  const dismissCloneBanner = async () => {
-    setCloneBannerVisible(false);
-    await AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
+  const dismissCloneBanner = () => {
+    setCloneCardVisible(false);
   };
 
   // 首启昵称引导：保存昵称并关闭引导（昵称用于首页亲切称呼 + 语音问候）
@@ -226,19 +206,18 @@ export default function HomeTab() {
         <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
       </ElasticPressable>
 
-      {/* P1：首次启动引导横幅（未克隆且未忽略时显示） */}
-      {cloneBannerVisible && (
+      {/* 声音克隆：产品灵魂，首页常驻、永远突出（北极星卖点） */}
+      {cloneCardVisible && (
         <View style={styles.cloneBanner}>
           <View style={styles.cloneBannerTextWrap}>
-            <Text style={styles.cloneBannerTitle}>✨ {t('home.cloneBanner.title')}</Text>
+            <Text style={styles.cloneBannerTitle}>🎙️ {t('home.cloneBanner.title')}</Text>
             <Text style={styles.cloneBannerDesc}>{t('home.cloneBanner.desc')}</Text>
           </View>
           <View style={styles.cloneBannerActions}>
             <TouchableOpacity
               style={styles.cloneBannerCta}
               onPress={() => {
-                setCloneBannerVisible(false);
-                AsyncStorage.setItem(FIRST_RUN_CLONE_KEY, '1');
+                setCloneCardVisible(false);
                 router.push('/(parent)/voice-clone');
               }}
             >
@@ -448,14 +427,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // P1：首次启动引导横幅
+  // 声音克隆：产品灵魂，首页常驻、永远突出
   cloneBanner: {
-    backgroundColor: '#E8F1FF',
+    backgroundColor: '#EFE7FF',
     borderRadius: 16,
     marginHorizontal: 24,
     marginBottom: 16,
     padding: 16,
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+    borderLeftWidth: 5,
+    borderLeftColor: '#7C4DFF',
+    boxShadow: '0 3px 12px rgba(124, 77, 255, 0.20)',
     elevation: 3,
   },
   cloneBannerTextWrap: {
@@ -464,7 +445,7 @@ const styles = StyleSheet.create({
   cloneBannerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#3B6FB0',
+    color: '#5B2E9C',
     marginBottom: 4,
   },
   cloneBannerDesc: {
