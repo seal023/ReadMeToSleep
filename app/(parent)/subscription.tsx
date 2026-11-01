@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -87,6 +87,8 @@ function ReceiptRow({ label, value, mono }: { label: string; value: string; mono
 export default function SubscriptionPage() {
   /** 用户在卡片上选中的方案（尚未购买） */
   const [selected, setSelected] = useState<PaidPlan>('yearly');
+  /** 用户是否手动点过方案卡；没点过就跟随「当前订阅」自动定位 */
+  const pickedRef = useRef(false);
 
   const router = useRouter();
   // 会员权益要绑在账号上：未登录就购买，换手机将无法证明"是本人付的费"
@@ -114,6 +116,25 @@ export default function SubscriptionPage() {
       void refresh();
     }, [refresh])
   );
+
+  /**
+   * 默认选中项跟随「当前订阅」。
+   *
+   * 构建 73 反馈「顶部写月度会员、下面年度卡却高亮」的根源就在这里：
+   * selected 默认写死 'yearly'，而「选中态」与「当前方案」用的是同一套紫色边框，
+   * 一个页面里两处信息互相打架，看起来像显示错了。
+   * 现在：用户没手动点过 → 选中项自动对齐真实订阅；手动点过 → 尊重用户选择，
+   * 并在卡片上加「当前」角标，把「正在生效的方案」和「准备购买的方案」区分开。
+   */
+  useEffect(() => {
+    if (pickedRef.current) return;
+    if (isSubscribed && (activePlan === 'monthly' || activePlan === 'yearly')) {
+      setSelected(activePlan);
+    }
+  }, [isSubscribed, activePlan]);
+
+  /** 已订阅但选中的是另一个方案 = 准备更换方案 */
+  const switching = isSubscribed && activePlan !== 'free' && selected !== activePlan;
 
   const handlePurchase = async () => {
     if (!supported) {
@@ -201,6 +222,11 @@ export default function SubscriptionPage() {
         ) : (
           <Text style={styles.upgradePrompt}>升级享受更多功能 ✨</Text>
         )}
+        {switching && (
+          <Text style={styles.switchHint}>
+            已选「{STATUS_MAP[selected].label}」，确认购买后按 App Store 提示生效
+          </Text>
+        )}
         {initializing && <ActivityIndicator style={{ marginTop: 10 }} color="#6c5ce7" />}
       </View>
 
@@ -251,9 +277,17 @@ export default function SubscriptionPage() {
       <View style={styles.planCards}>
         <TouchableOpacity
           style={[styles.planCard, selected === 'monthly' && styles.planActive]}
-          onPress={() => setSelected('monthly')}
+          onPress={() => {
+            pickedRef.current = true;
+            setSelected('monthly');
+          }}
           disabled={busy}
         >
+          {activePlan === 'monthly' && (
+            <View style={styles.currentBadge}>
+              <Text style={styles.currentText}>当前</Text>
+            </View>
+          )}
           <Text style={styles.planName}>月度会员</Text>
           <Text style={styles.planPrice}>{priceOf('monthly')}</Text>
           <Text style={styles.planUnit}>每月</Text>
@@ -262,9 +296,17 @@ export default function SubscriptionPage() {
 
         <TouchableOpacity
           style={[styles.planCard, styles.yearBest, selected === 'yearly' && styles.planActive]}
-          onPress={() => setSelected('yearly')}
+          onPress={() => {
+            pickedRef.current = true;
+            setSelected('yearly');
+          }}
           disabled={busy}
         >
+          {activePlan === 'yearly' && (
+            <View style={styles.currentBadge}>
+              <Text style={styles.currentText}>当前</Text>
+            </View>
+          )}
           <View style={styles.bestBadge}>
             <Text style={styles.bestText}>{YEARLY_SAVING}</Text>
           </View>
@@ -375,6 +417,17 @@ const styles = StyleSheet.create({
   badgeText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   upgradePrompt: { fontSize: 13, color: '#e67e22', marginTop: 10 },
   expiryText: { fontSize: 12, color: '#888', marginTop: 10 },
+  switchHint: {
+    fontSize: 12,
+    color: '#6c5ce7',
+    marginTop: 8,
+    textAlign: 'center',
+    backgroundColor: '#F0EAFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
   tableOuter: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -398,6 +451,17 @@ const styles = StyleSheet.create({
   },
   planActive: { borderColor: '#6c5ce7', backgroundColor: '#f0edff' },
   yearBest: { position: 'relative' },
+  // 角标：区分「正在生效的方案」与「准备购买的方案」
+  currentBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#00b894',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  currentText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   bestBadge: {
     position: 'absolute',
     top: -8,

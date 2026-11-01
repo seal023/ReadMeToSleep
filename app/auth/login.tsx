@@ -41,7 +41,7 @@ function isValidEmail(s: string): boolean {
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { configured, appleAvailable, signInApple, sendCode, verifyCode, linkLoginSeq } = useAuth();
+  const { configured, appleAvailable, signInApple, sendCode, verifyCode } = useAuth();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
@@ -59,16 +59,15 @@ export default function LoginScreen() {
   }, [countdown]);
 
   /**
-   * 邮件里只有一个链接（模板不可改）时，用户点链接会回到本 App，
-   * useAuth 解析完深链后 linkLoginSeq 自增，这里把登录页关掉。
-   * 用 ref 记住初值，避免进页面就误触发返回。
+   * ⚠️ 这里曾经有一段「linkLoginSeq 变化就 router.back()」的逻辑，已删除。
+   *
+   * 两个原因：
+   *   1) 深链到达时 expo-router 会把导航切到 auth-callback 页面，登录页可能仍挂在栈底；
+   *      此时登录页若执行 back()，弹掉的很可能是栈顶的 auth-callback，
+   *      导致它的「登录成功 → 回首页」来不及执行。这是一个竞态，没必要留着。
+   *   2) 深链登录落地页应该只有一个负责人。现在统一由 app/auth-callback.tsx 处理，
+   *      它会明确显示「登录成功 + 账号」，用户不会再误以为点了链接没反应。
    */
-  const linkSeqRef = useRef(linkLoginSeq);
-  useEffect(() => {
-    if (linkLoginSeq === linkSeqRef.current) return;
-    linkSeqRef.current = linkLoginSeq;
-    router.back();
-  }, [linkLoginSeq, router]);
 
   const handleApple = useCallback(async () => {
     setError(null);
