@@ -42,3 +42,6 @@ yarn-error.*
 # 忽略 prebuild 生成的原生代码，但保留 Xcode Cloud 的 ci_scripts 脚本
 ios/*
 !ios/ci_scripts
+
+# UI 预览截图（设计走查用，不入库）
+.preview/

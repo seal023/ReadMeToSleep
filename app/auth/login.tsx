@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.85)',
     alignItems: 'center',
     justifyContent: 'center',

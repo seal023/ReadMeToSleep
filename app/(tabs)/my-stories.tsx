@@ -234,22 +234,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 4,
   },
   tab: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 18,
   },
   tabActive: {
-    backgroundColor: '#FF6B6B',
+    backgroundColor: '#F2827F',
   },
   tabLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#999',
+    color: '#A8988A',
   },
   tabLabelActive: {
     color: '#FFF',
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 14,
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
     elevation: 2,
@@ -272,12 +272,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: '#3D3229',
     marginBottom: 4,
   },
   cardMeta: {
     fontSize: 12,
-    color: '#999',
+    color: '#A8988A',
     marginBottom: 2,
   },
   cardActions: {
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   iconBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 24,
     backgroundColor: '#FFF0ED',
     alignItems: 'center',
     justifyContent: 'center',
@@ -312,8 +312,8 @@ const styles = StyleSheet.create({
   recordBtn: {
     marginHorizontal: 16,
     marginVertical: 12,
-    backgroundColor: '#FF6B6B',
-    borderRadius: 12,
+    backgroundColor: '#F2827F',
+    borderRadius: 18,
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -326,13 +326,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 14,
   },
   badgeTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: '#3D3229',
     marginBottom: 12,
   },
   badgeRow: {
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   },
   badgeLabel: {
     fontSize: 11,
-    color: '#666',
+    color: '#7A6A5D',
     fontWeight: '500',
   },
   badgeLabelLocked: {

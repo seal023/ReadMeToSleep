@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   badgeChip: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: 22,
     backgroundColor: '#FFF9F2',
     borderWidth: 1,
     borderColor: COLORS.divider,

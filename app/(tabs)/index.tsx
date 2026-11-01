@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#5D4037',
+    color: '#3D3229',
   },
 
   raccoWrap: {
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EDE7FF',
-    borderRadius: 18,
+    borderRadius: 24,
     marginHorizontal: 24,
     marginBottom: 16,
     padding: 16,
@@ -417,8 +417,8 @@ const styles = StyleSheet.create({
   premiumTitle: { fontSize: 16, fontWeight: 'bold', color: '#4A2B8C', marginBottom: 3 },
   premiumDesc: { fontSize: 12, color: '#7A6AA8', lineHeight: 18 },
   premiumCta: {
-    backgroundColor: '#7C4DFF',
-    borderRadius: 18,
+    backgroundColor: '#9B7EDE',
+    borderRadius: 24,
     paddingHorizontal: 14,
     paddingVertical: 8,
     color: '#fff',
@@ -430,12 +430,12 @@ const styles = StyleSheet.create({
   // 声音克隆：产品灵魂，首页常驻、永远突出
   cloneBanner: {
     backgroundColor: '#EFE7FF',
-    borderRadius: 16,
+    borderRadius: 22,
     marginHorizontal: 24,
     marginBottom: 16,
     padding: 16,
     borderLeftWidth: 5,
-    borderLeftColor: '#7C4DFF',
+    borderLeftColor: '#9B7EDE',
     boxShadow: '0 3px 12px rgba(124, 77, 255, 0.20)',
     elevation: 3,
   },
@@ -459,8 +459,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cloneBannerCta: {
-    backgroundColor: '#7C4DFF',
-    borderRadius: 18,
+    backgroundColor: '#9B7EDE',
+    borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 9,
   },
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   recCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 22,
     marginHorizontal: 24,
     marginBottom: 20,
     padding: 14,
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   recCover: {
     width: 80,
     height: 80,
-    borderRadius: 12,
+    borderRadius: 18,
     backgroundColor: '#E0E0E0',
     alignItems: 'center',
     justifyContent: 'center',
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   recTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#3D3229',
     marginBottom: 8,
   },
   recTags: {
@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   },
   recTag: {
     fontSize: 12,
-    color: '#FF6B6B',
+    color: '#F2827F',
     backgroundColor: '#FFF0F0',
     borderRadius: 8,
     paddingHorizontal: 8,
@@ -532,21 +532,21 @@ const styles = StyleSheet.create({
   },
   actionCard1: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
     backgroundColor: '#FFB5A0',
   },
   actionCard2: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
     backgroundColor: '#FFD3B0',
   },
   actionCard3: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
     backgroundColor: '#C8E6C9',
@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#5D4037',
+    color: '#3D3229',
     textAlign: 'center',
   },
 
@@ -568,14 +568,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#5D4037',
+    color: '#3D3229',
     marginBottom: 12,
   },
   emptyState: {
     borderWidth: 1,
     borderColor: '#DDD',
     borderStyle: 'dashed',
-    borderRadius: 16,
+    borderRadius: 22,
     paddingVertical: 36,
     alignItems: 'center',
   },
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 18,
     padding: 12,
     marginBottom: 10,
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
@@ -605,18 +605,18 @@ const styles = StyleSheet.create({
   recentItemTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
+    color: '#3D3229',
     marginBottom: 2,
   },
   recentItemSub: {
     fontSize: 12,
-    color: '#999',
+    color: '#A8988A',
   },
 
   // 需求 3 占位：语音引导卡片
   guideCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 22,
     marginHorizontal: 24,
     marginBottom: 20,
     padding: 16,
@@ -634,19 +634,19 @@ const styles = StyleSheet.create({
   guideText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#5D4037',
+    color: '#3D3229',
   },
   guideReplay: {
     alignSelf: 'flex-start',
     marginTop: 6,
     backgroundColor: '#FFF1DC',
-    borderRadius: 10,
+    borderRadius: 18,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   guideReplayText: {
     fontSize: 12,
-    color: '#8D6E63',
+    color: '#7A6A5D',
     fontWeight: '600',
   },
   guideActions: {
@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
   },
   guideBtn: {
     width: '100%',
-    borderRadius: 14,
+    borderRadius: 22,
     paddingVertical: 14,
     alignItems: 'center',
     backgroundColor: '#E8F1FF',
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: '#FFF8F0',
-    borderRadius: 24,
+    borderRadius: 26,
     padding: 28,
     alignItems: 'center',
     shadowColor: '#000',
@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
   onboardTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#5D4037',
+    color: '#3D3229',
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 28,
@@ -713,18 +713,18 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1,
     borderColor: '#FFE0B2',
-    borderRadius: 16,
+    borderRadius: 22,
     backgroundColor: '#FFF',
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#5D4037',
+    color: '#3D3229',
     textAlign: 'center',
     marginBottom: 20,
   },
   onboardBtn: {
-    backgroundColor: '#FF8A65',
-    borderRadius: 24,
+    backgroundColor: '#F7A072',
+    borderRadius: 26,
     paddingVertical: 14,
     paddingHorizontal: 48,
   },

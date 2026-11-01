@@ -219,14 +219,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: 24,
-    color: '#5D4037',
+    color: '#3D3229',
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 22,
     padding: 16,
     marginBottom: 12,
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   },
   cardText: {
     fontSize: 16,
-    color: '#333',
+    color: '#3D3229',
     fontWeight: '600',
   },
   cardTextWrap: {
@@ -251,12 +251,12 @@ const styles = StyleSheet.create({
   },
   cardSub: {
     fontSize: 12,
-    color: '#999',
+    color: '#A8988A',
     marginTop: 3,
   },
   cardValue: {
     fontSize: 15,
-    color: '#999',
+    color: '#A8988A',
     fontWeight: '400',
   },
   arrow: {
@@ -269,12 +269,12 @@ const styles = StyleSheet.create({
   },
   aboutSub: {
     fontSize: 13,
-    color: '#999',
+    color: '#A8988A',
     marginTop: 4,
   },
   babyCard: {
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 22,
     padding: 16,
     marginBottom: 12,
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
@@ -282,13 +282,13 @@ const styles = StyleSheet.create({
   },
   nameInputInline: {
     backgroundColor: '#F7F1E8',
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#F0D9B5',
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: '#333',
+    color: '#3D3229',
     marginTop: 12,
   },
   versionBadge: {
@@ -296,11 +296,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     fontSize: 13,
     fontWeight: '700',
-    color: '#8D6E63',
+    color: '#7A6A5D',
     backgroundColor: '#FFF1DC',
     paddingHorizontal: 10,
     paddingVertical: 3,
-    borderRadius: 10,
+    borderRadius: 18,
     overflow: 'hidden',
   },
 });

@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     borderRadius: 89,
     backgroundColor: 'rgba(255, 203, 92, 0.34)',
   },
-  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: COLORS.text, marginBottom: 6, fontFamily: FONT.rounded },
+  header: { fontSize: 22, textAlign: 'center', color: COLORS.text, marginBottom: 6, fontFamily: FONT.rounded },
   headerSub: {
     fontSize: 13,
     textAlign: 'center',
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 18,
+    borderRadius: 24,
     padding: 20,
     marginVertical: 6,
     boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',

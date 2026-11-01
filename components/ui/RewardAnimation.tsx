@@ -62,7 +62,7 @@ export function RewardAnimation({
   const sparkProgress = useRef(new Animated.Value(0)).current;
 
   // 撒花：彩色纸屑从顶部随机飘落（对应设计稿 s-reward 的 confetti）
-  const CONFETTI_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#DDA0DD', '#FF9A56', '#7FC8F8'];
+  const CONFETTI_COLORS = ['#F2827F', '#4ECDC4', '#FFE66D', '#A8E6CF', '#DDA0DD', '#FF9A56', '#7FC8F8'];
   const confettiItems = useRef(
     Array.from({ length: 24 }, (_, i) => ({
       left: (i * 53) % 100,

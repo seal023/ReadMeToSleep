@@ -93,11 +93,11 @@ const Racco: React.FC<RaccoProps> = ({
             ],
           }}
         >
-          <Text style={{ fontSize: size * 0.09, color: '#7B68EE', fontWeight: 'bold' }}>Z</Text>
-          <Text style={{ fontSize: size * 0.07, color: '#7B68EE', fontWeight: 'bold', marginLeft: size * 0.04 }}>
+          <Text style={{ fontSize: size * 0.09, color: '#9B7EDE', fontWeight: 'bold' }}>Z</Text>
+          <Text style={{ fontSize: size * 0.07, color: '#9B7EDE', fontWeight: 'bold', marginLeft: size * 0.04 }}>
             z
           </Text>
-          <Text style={{ fontSize: size * 0.05, color: '#7B68EE', fontWeight: 'bold', marginLeft: size * 0.07 }}>
+          <Text style={{ fontSize: size * 0.05, color: '#9B7EDE', fontWeight: 'bold', marginLeft: size * 0.07 }}>
             z
           </Text>
         </Animated.View>
@@ -137,7 +137,7 @@ const Racco: React.FC<RaccoProps> = ({
 const styles = StyleSheet.create({
   bubble: {
     backgroundColor: '#fff',
-    borderRadius: 14,
+    borderRadius: 22,
     paddingHorizontal: 12,
     paddingVertical: 8,
     shadowColor: '#000',

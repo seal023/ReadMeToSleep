@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     ...SHADOW.card,
   },
   avatar: { fontSize: 40, marginRight: SPACING.md },
-  name: { fontSize: FONT_SIZE.section, fontWeight: '800', color: COLORS.text, fontFamily: FONT.rounded },
+  name: { fontSize: FONT_SIZE.section, color: COLORS.text, fontFamily: FONT.rounded },
   meta: { fontSize: FONT_SIZE.caption, color: COLORS.textSub, marginTop: 4 },
 
   tipCard: {

@@ -2,65 +2,41 @@
  * 卡通主题系统（需求 二、UI 设计风格）
  *
  * 设计目标：可爱、卡通、温暖，像儿童绘本
- *  - 配色：暖色调为主（橙 / 粉 / 淡紫 / 天蓝），柔和渐变背景
- *  - 字体：圆体 / 手写风格，大字号，方便孩子阅读
- *  - 按钮：大圆角 + 弹性按压动画（见 components/ui/CartoonButton）
- *  - 元素：星星 / 月亮 / 云朵等卡通装饰（见 components/ui/SkyDecor）
+ *  - 配色：马卡龙糖果色 + 暖白背景（色盘定义在 constants/Colors.ts）
+ *  - 字体：站酷快乐体（中文字形圆润），大字号，留白充足
+ *  - 按钮：胶囊大圆角 + 弹簧回弹 + 震动反馈（components/ui/CartoonButton）
+ *  - 元素：星星 / 月亮 / 云朵等卡通装饰（components/ui/SkyDecor）
  *  - 插图：每个故事配卡通封面（渐变 + emoji，见 COVER_PRESETS）
  *
- * 统一从这里取值，避免各页面颜色/圆角不一致。
+ * ⚠️ 色值不要在这里重定义：统一从 ./Colors 取，改色只改一个文件。
  */
 
 import { Platform, ViewStyle } from 'react-native';
+import { COLORS, CANDY, CANDY_GRADIENTS } from './Colors';
 
-// ── 配色（暖色调、柔和不刺眼）────────────────────────────
-export const COLORS = {
-  // 主色系
-  orange: '#FF9A56',
-  orangeLight: '#FFC79A',
-  pink: '#FF8FA8',
-  pinkLight: '#FFC2CE',
-  purple: '#B794F4',
-  purpleLight: '#DDCBFF',
-  skyBlue: '#7FC8F8',
-  skyBlueLight: '#BFEBFF',
-  mint: '#7BD8BE',
-  mintLight: '#C2F1E4',
-  yellow: '#FFCB5C',
-  yellowLight: '#FFE7AC',
-
-  // 背景 / 卡片
-  cream: '#FFF6EC',
-  card: '#FFFFFF',
-  cardSoft: '#FFF9F2',
-
-  // 文字
-  text: '#6B4F3F', // 暖棕，比纯黑柔和
-  textSub: '#9C8579',
-  textLight: '#B9A79C',
-  white: '#FFFFFF',
-
-  // 功能色
-  divider: '#F0E4D8',
-  shadow: '#8A6A55',
-} as const;
+// 转出去，历史代码里的 `import { COLORS } from '@/constants/theme'` 继续有效
+export { COLORS, CANDY };
 
 // ── 柔和渐变预设（背景 / 封面通用）────────────────────────
 export type GradientStops = readonly string[];
 
 export const GRADIENTS = {
-  /** 白天：奶油 → 粉 → 天蓝（默认主背景） */
-  day: ['#FFF6EC', '#FFE8EE', '#DDEEFF'],
-  /** 黄昏：暖橙 → 粉 → 淡紫 */
-  sunset: ['#FFE9C7', '#FFD3E0', '#DCC6FF'],
-  /** 糖果：粉 → 淡紫 */
-  candy: ['#FFD9E8', '#E8D5FF', '#D6E4FF'],
-  /** 夜空：深紫蓝 → 紫（睡前氛围） */
-  night: ['#3B3163', '#574A87', '#7A6AA8'],
-  /** 晴空：浅蓝 → 白 */
-  sky: ['#DCEEFF', '#EFF7FF', '#FFF6EC'],
-  /** 草地：薄荷 → 奶油 */
-  meadow: ['#DFF5EC', '#F2FBFF', '#FFF6EC'],
+  /** 白天：奶油 → 淡粉 → 蜜桃（默认主背景，替代死白） */
+  day: CANDY_GRADIENTS.cream,
+  /** 黄昏：蜜桃 → 草莓 → 葡萄 */
+  sunset: ['#FFF0E2', '#FFE0EC', '#E8DCFB'],
+  /** 糖果：草莓 → 葡萄 */
+  candy: CANDY_GRADIENTS.berry,
+  /** 夜空：柔化后的紫蓝（睡前氛围，仍需暗底以保护夜视） */
+  night: ['#4A4166', '#5E548A', '#7C6EA8'],
+  /** 晴空：淡蓝 → 暖白 */
+  sky: CANDY_GRADIENTS.sky,
+  /** 草地：薄荷 → 暖白 */
+  meadow: CANDY_GRADIENTS.mint,
+  /** 葡萄糖果 */
+  grape: CANDY_GRADIENTS.grape,
+  /** 蜜桃气泡 */
+  peach: CANDY_GRADIENTS.peach,
 } satisfies Record<string, GradientStops>;
 
 // ── 故事封面预设（渐变 + 卡通 emoji 插画）─────────────────
@@ -70,14 +46,14 @@ export interface CoverPreset {
 }
 
 export const COVER_PRESETS: CoverPreset[] = [
-  { gradient: ['#FFD9A0', '#FFB877'], emoji: '🦊' }, // 狐狸 - 橙
-  { gradient: ['#FFC2CE', '#FF9FB2'], emoji: '🐰' }, // 兔子 - 粉
-  { gradient: ['#DDCBFF', '#B794F4'], emoji: '🐻' }, // 小熊 - 紫
-  { gradient: ['#BFEBFF', '#7FC8F8'], emoji: '🐳' }, // 鲸鱼 - 蓝
-  { gradient: ['#C2F1E4', '#7BD8BE'], emoji: '🐸' }, // 青蛙 - 薄荷
-  { gradient: ['#FFE7AC', '#FFCB5C'], emoji: '🦁' }, // 狮子 - 黄
-  { gradient: ['#FFD8E4', '#C9B6FF'], emoji: '🦄' }, // 独角兽
-  { gradient: ['#D7F0FF', '#A8D8FF'], emoji: '🐧' }, // 企鹅
+  { gradient: ['#FFD9C2', '#F7A072'], emoji: '🦊' }, // 狐狸 - 蜜桃
+  { gradient: ['#FFD6E4', '#EE7EA4'], emoji: '🐰' }, // 兔子 - 草莓
+  { gradient: ['#E2D8FB', '#9B7EDE'], emoji: '🐻' }, // 小熊 - 葡萄
+  { gradient: ['#D3EAFB', '#7FBEEB'], emoji: '🐳' }, // 鲸鱼 - 天空
+  { gradient: ['#D2F2E6', '#5FC3A4'], emoji: '🐸' }, // 青蛙 - 薄荷
+  { gradient: ['#FFEFC2', '#FFD166'], emoji: '🦁' }, // 狮子 - 柠檬
+  { gradient: ['#FFDCE9', '#C9B6F5'], emoji: '🦄' }, // 独角兽
+  { gradient: ['#E4F1FD', '#A8D8FF'], emoji: '🐧' }, // 企鹅
 ];
 
 /** 依据 id / 标题稳定地挑选一个封面预设（同一故事每次一致） */
@@ -90,42 +66,49 @@ export function pickCover(seed: string): CoverPreset {
   return COVER_PRESETS[h % COVER_PRESETS.length];
 }
 
-// ── 圆角（圆润、柔和）───────────────────────────────────
+// ── 圆角（全部放大，拒绝直角）─────────────────────────────
 export const RADIUS = {
-  sm: 12,
-  md: 18,
-  lg: 26,
-  xl: 34,
+  /** 小标签 / 角标 */
+  xs: 14,
+  sm: 18,
+  /** 输入框、小卡片 */
+  md: 24,
+  /** 主卡片 */
+  lg: 28,
+  /** 大面板 */
+  xl: 36,
+  /** 胶囊 */
   pill: 999,
 } as const;
 
-// ── 字体（圆体 / 手写风格 + 大字号）───────────────────────
-// 注：中文字形会回退到系统字体（PingFang），圆体主要作用于拉丁字符与数字；
-//     若后续要中文也变圆体，需内嵌一份圆体字体文件（体积较大），此处先留位。
+// ── 字体 ───────────────────────────────────────────────
+// rounded = 站酷快乐体，由 app/_layout.tsx 用 useFonts 动态加载。
+// 若字体尚未加载完成，React Native 会自动回落到系统字体，不会白屏。
 export const FONT = {
-  rounded: Platform.OS === 'ios' ? 'Chalkboard SE' : 'sans-serif-rounded',
-  hand: Platform.OS === 'ios' ? 'American Typewriter' : 'casual',
+  rounded: 'ZCOOLKuaiLe_400Regular',
+  /** 系统圆体，用于需要更中性的正文（站酷快乐体偏展示体，长段落用系统更易读） */
+  body: Platform.OS === 'ios' ? 'PingFang SC' : 'sans-serif',
   system: Platform.OS === 'ios' ? 'System' : 'sans-serif',
 } as const;
 
-/** 大字号，方便孩子阅读 */
+/** 字号整体上调，方便孩子看清 */
 export const FONT_SIZE = {
-  hero: 30,
-  title: 24,
-  section: 20,
-  body: 17,
-  button: 18,
-  caption: 14,
-  tiny: 12,
+  hero: 32,
+  title: 26,
+  section: 22,
+  body: 18,
+  button: 19,
+  caption: 15,
+  tiny: 13,
 } as const;
 
-// ── 间距 ───────────────────────────────────────────────
+// ── 间距（留白更足）─────────────────────────────────────
 export const SPACING = {
-  xs: 6,
-  sm: 10,
-  md: 16,
-  lg: 22,
-  xl: 30,
+  xs: 8,
+  sm: 12,
+  md: 18,
+  lg: 24,
+  xl: 32,
 } as const;
 
 // ── 柔和阴影（暖色投影，不用死黑）─────────────────────────
@@ -140,16 +123,16 @@ export const SHADOW: Record<'soft' | 'card' | 'button', ViewStyle> = {
   },
   card: {
     shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
     elevation: 6,
   },
   button: {
     shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
     elevation: 5,
   },
 };

@@ -7,6 +7,8 @@ import { trySilentRestore } from '../services/iap';
 import { useAppStore } from '../store/appStore';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { ZCOOLKuaiLe_400Regular } from '@expo-google-fonts/zcool-kuaile';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import { getChildName, getVoiceSetting } from '../services/storage';
@@ -148,6 +150,21 @@ const PRIVACY_POLICY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html
 export default function RootLayout() {
   const [showPrivacy, setShowPrivacy] = useState(false);
 
+  /**
+   * 站酷快乐体（中文字形圆润，用于全部标题与按钮）。
+   * ttf 随包内置（约 1.5MB），本地读取通常几十毫秒即可完成。
+   * 三重保险，绝不因为字体卡住启动：
+   *   - 加载完成        → 正常渲染
+   *   - 加载报错        → 立即渲染（FONT.rounded 会自动回落到系统字体）
+   *   - 超过 3 秒未见结果 → 强制渲染，避免极端情况下白屏
+   */
+  const [fontsLoaded, fontError] = useFonts({ ZCOOLKuaiLe_400Regular });
+  const [fontTimeout, setFontTimeout] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setFontTimeout(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
   // 需求 五：启动 App 时弹出隐私声明，未同意不可继续使用
   useEffect(() => {
     AsyncStorage.getItem(PRIVACY_CONSENT_KEY).then((val) => {
@@ -181,6 +198,9 @@ export default function RootLayout() {
   const handleOpenPrivacyPolicy = () => {
     Linking.openURL(PRIVACY_POLICY_URL).catch(() => {});
   };
+
+  // 字体加载的极短暂空窗（正常 <100ms）；超时或报错都会放行，见上方说明
+  if (!fontsLoaded && !fontError && !fontTimeout) return null;
 
   return (
     <LanguageProvider>

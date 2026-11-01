@@ -325,7 +325,7 @@ export default function TravelCheckinScreen() {
     if (step === 'success') {
       const items = Array.from({ length: 20 }, () => ({
         x: Math.random() * width,
-        color: ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A8E6CF', '#DDA0DD'][Math.floor(Math.random() * 5)],
+        color: ['#F2827F', '#4ECDC4', '#FFE66D', '#A8E6CF', '#DDA0DD'][Math.floor(Math.random() * 5)],
         delay: Math.random() * 1000,
       }));
       setConfetti(items);
@@ -835,136 +835,136 @@ export default function TravelCheckinScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40 },
-  header: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 28 },
-  quota: { fontSize: 12, color: '#8D6E63', textAlign: 'center', marginBottom: 12 },
+  header: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', textAlign: 'center', marginBottom: 28 },
+  quota: { fontSize: 12, color: '#7A6A5D', textAlign: 'center', marginBottom: 12 },
 
   // 故事长度选择（#3）
   lengthWrap: { width: '100%', marginBottom: 16, alignItems: 'center' },
-  lengthTitle: { fontSize: 14, color: '#8D6E63', fontWeight: '600', marginBottom: 10 },
+  lengthTitle: { fontSize: 14, color: '#7A6A5D', fontWeight: '600', marginBottom: 10 },
   lengthRow: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
   lengthChip: {
-    backgroundColor: '#FFF8F0', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16,
+    backgroundColor: '#FFF8F0', borderRadius: 22, paddingVertical: 10, paddingHorizontal: 16,
     borderWidth: 1, borderColor: '#F0D9B5', alignItems: 'center', minWidth: 84,
   },
-  lengthChipActive: { backgroundColor: '#FFE0D6', borderColor: '#FF8A65', borderWidth: 2 },
-  lengthChipText: { fontSize: 15, fontWeight: '700', color: '#5D4037' },
-  lengthChipTextActive: { color: '#FF5722' },
-  lengthChipSub: { fontSize: 11, color: '#A0937D', marginTop: 2 },
-  lengthChipSubActive: { color: '#FF8A65' },
+  lengthChipActive: { backgroundColor: '#FFE0D6', borderColor: '#F7A072', borderWidth: 2 },
+  lengthChipText: { fontSize: 15, fontWeight: '700', color: '#3D3229' },
+  lengthChipTextActive: { color: '#F2827F' },
+  lengthChipSub: { fontSize: 11, color: '#A8988A', marginTop: 2 },
+  lengthChipSubActive: { color: '#F7A072' },
 
   // 搜索框
   searchBox: {
     flexDirection: 'row', alignItems: 'center', width: '100%',
-    backgroundColor: '#FFF8F0', borderRadius: 24, paddingHorizontal: 14,
+    backgroundColor: '#FFF8F0', borderRadius: 26, paddingHorizontal: 14,
     borderWidth: 1, borderColor: '#F0D9B5', height: 42, marginBottom: 12,
   },
   searchIcon: { fontSize: 16, marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: '#333', height: '100%' },
+  searchInput: { flex: 1, fontSize: 14, color: '#3D3229', height: '100%' },
   micBtn: {
     marginLeft: 6, paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 16, backgroundColor: '#FFF0ED',
+    borderRadius: 22, backgroundColor: '#FFF0ED',
   },
-  micBtnActive: { backgroundColor: '#FF8A65' },
+  micBtnActive: { backgroundColor: '#F7A072' },
   micIcon: { fontSize: 18 },
-  clearBtn: { fontSize: 14, color: '#999', marginLeft: 4 },
+  clearBtn: { fontSize: 14, color: '#A8988A', marginLeft: 4 },
   voiceHint: { alignItems: 'center', marginBottom: 8 },
-  voiceHintText: { fontSize: 12, color: '#FF8A65' },
+  voiceHintText: { fontSize: 12, color: '#F7A072' },
 
   // 地点列表（地图图钉选不到时的可靠替代）
-  listTitle: { fontSize: 14, color: '#8D6E63', marginTop: 16, marginBottom: 8, fontWeight: '600' },
+  listTitle: { fontSize: 14, color: '#7A6A5D', marginTop: 16, marginBottom: 8, fontWeight: '600' },
   locList: { maxHeight: 300, width: '100%' },
   locItem: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8F0',
-    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
+    borderRadius: 18, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
     borderWidth: 1, borderColor: '#F0D9B5',
   },
-  locItemActive: { backgroundColor: '#FFE0D6', borderColor: '#FF8A65', borderWidth: 2 },
+  locItemActive: { backgroundColor: '#FFE0D6', borderColor: '#F7A072', borderWidth: 2 },
   locEmoji: { fontSize: 22, marginRight: 12 },
   locTextWrap: { flex: 1 },
-  locName: { fontSize: 15, fontWeight: '600', color: '#5D4037' },
-  locEn: { fontSize: 11, color: '#A0937D', marginTop: 2 },
-  locCheck: { fontSize: 18, color: '#FF5722', fontWeight: 'bold', marginLeft: 8 },
+  locName: { fontSize: 15, fontWeight: '600', color: '#3D3229' },
+  locEn: { fontSize: 11, color: '#A8988A', marginTop: 2 },
+  locCheck: { fontSize: 18, color: '#F2827F', fontWeight: 'bold', marginLeft: 8 },
 
   // Step indicator
   stepRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 32 },
   stepCircle: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#E8DCCF',
+    width: 40, height: 40, borderRadius: 24, backgroundColor: '#E8DCCF',
     justifyContent: 'center', alignItems: 'center',
   },
   stepDone: { backgroundColor: '#81C784' },
-  stepActive: { backgroundColor: '#FF8A65', borderWidth: 2, borderColor: '#FF5722' },
+  stepActive: { backgroundColor: '#F7A072', borderWidth: 2, borderColor: '#F2827F' },
   stepIcon: { fontSize: 18 },
   stepIconActive: { fontSize: 20 },
   stepDoneIcon: { fontSize: 18, color: '#FFF', fontWeight: 'bold' },
-  stepLabel: { fontSize: 11, color: '#A0937D', textAlign: 'center', marginTop: 4 },
-  stepLabelActive: { color: '#FF5722', fontWeight: 'bold' },
+  stepLabel: { fontSize: 11, color: '#A8988A', textAlign: 'center', marginTop: 4 },
+  stepLabelActive: { color: '#F2827F', fontWeight: 'bold' },
   stepLine: { width: 30, height: 2, backgroundColor: '#E0D5C7', marginHorizontal: 4 },
 
   // Card
   card: {
-    backgroundColor: '#FFF', borderRadius: 24, padding: 24, alignItems: 'center',
+    backgroundColor: '#FFF', borderRadius: 26, padding: 24, alignItems: 'center',
     elevation: 2, boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
   },
   cardEmoji: { fontSize: 56, marginBottom: 16 },
-  cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#5D4037', textAlign: 'center', marginBottom: 8 },
-  cardDesc: { fontSize: 14, color: '#8D6E63', textAlign: 'center', marginBottom: 24 },
+  cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#3D3229', textAlign: 'center', marginBottom: 8 },
+  cardDesc: { fontSize: 14, color: '#7A6A5D', textAlign: 'center', marginBottom: 24 },
 
   // Generate
-  generatingText: { fontSize: 16, color: '#8D6E63', textAlign: 'center', marginTop: 16 },
+  generatingText: { fontSize: 16, color: '#7A6A5D', textAlign: 'center', marginTop: 16 },
 
   // Story
-  storyTitle: { fontSize: 22, fontWeight: 'bold', color: '#5D4037', marginBottom: 12, textAlign: 'center' },
+  storyTitle: { fontSize: 22, fontWeight: 'bold', color: '#3D3229', marginBottom: 12, textAlign: 'center' },
   storyBox: {
-    backgroundColor: '#FFFDF7', borderRadius: 16, padding: 16, marginBottom: 20,
+    backgroundColor: '#FFFDF7', borderRadius: 22, padding: 16, marginBottom: 20,
     borderWidth: 1, borderColor: '#FFE0B2',
   },
-  storyContent: { fontSize: 15, lineHeight: 26, color: '#4E342E' },
+  storyContent: { fontSize: 15, lineHeight: 26, color: '#3D3229' },
 
   // Buttons
   primaryBtn: {
-    backgroundColor: '#FF8A65', borderRadius: 28, paddingVertical: 14, paddingHorizontal: 40,
+    backgroundColor: '#F7A072', borderRadius: 30, paddingVertical: 14, paddingHorizontal: 40,
     elevation: 2, marginTop: 8,
   },
   primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
   primaryBtnDisabled: { backgroundColor: '#D8CFC5', elevation: 0 },
   playBtn: {
-    backgroundColor: '#7C4DFF', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 32,
+    backgroundColor: '#9B7EDE', borderRadius: 26, paddingVertical: 12, paddingHorizontal: 32,
     elevation: 2,
   },
   playingBtn: { backgroundColor: '#651FFF', opacity: 0.8 },
   playBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
   backBtn: { marginTop: 12, paddingVertical: 8 },
-  backBtnText: { fontSize: 14, color: '#8D6E63' },
+  backBtnText: { fontSize: 14, color: '#7A6A5D' },
 
   // Success
   celebrateEmoji: { fontSize: 64, marginBottom: 12 },
-  successTitle: { fontSize: 24, fontWeight: 'bold', color: '#5D4037', marginBottom: 8 },
-  successLocation: { fontSize: 16, color: '#8D6E63', marginBottom: 24 },
+  successTitle: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginBottom: 8 },
+  successLocation: { fontSize: 16, color: '#7A6A5D', marginBottom: 24 },
   badgeWrap: {
-    backgroundColor: '#FFF8E1', borderRadius: 20, paddingVertical: 20, paddingHorizontal: 28,
+    backgroundColor: '#FFF8E1', borderRadius: 24, paddingVertical: 20, paddingHorizontal: 28,
     alignItems: 'center', borderWidth: 2, borderColor: '#FFD54F', marginBottom: 24,
   },
   badgeEmoji: { fontSize: 48, marginBottom: 8 },
   badgeLabel: { fontSize: 14, color: '#FF8F00', marginBottom: 4 },
-  badgeName: { fontSize: 18, fontWeight: 'bold', color: '#5D4037' },
+  badgeName: { fontSize: 18, fontWeight: 'bold', color: '#3D3229' },
 
   // 奖励增强：累计 / 勋章墙 / 星星墙
   rewardStats: { alignItems: 'center', marginBottom: 16 },
-  rewardCount: { fontSize: 16, fontWeight: '700', color: '#FF8A65' },
+  rewardCount: { fontSize: 16, fontWeight: '700', color: '#F7A072' },
   badgeWall: { alignItems: 'center', marginBottom: 20, width: '100%' },
-  badgeWallTitle: { fontSize: 14, color: '#8D6E63', marginBottom: 10 },
+  badgeWallTitle: { fontSize: 14, color: '#7A6A5D', marginBottom: 10 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 },
   badgeChip: {
-    backgroundColor: '#FFF8E1', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14,
+    backgroundColor: '#FFF8E1', borderRadius: 22, paddingVertical: 10, paddingHorizontal: 14,
     alignItems: 'center', borderWidth: 2, borderColor: '#FFD54F', minWidth: 72,
   },
   badgeChipEmoji: { fontSize: 32, marginBottom: 4 },
-  badgeChipName: { fontSize: 11, color: '#5D4037', textAlign: 'center' },
+  badgeChipName: { fontSize: 11, color: '#3D3229', textAlign: 'center' },
   starWall: { alignItems: 'center', marginBottom: 20, width: '100%' },
-  starWallTitle: { fontSize: 14, color: '#8D6E63', marginBottom: 10 },
+  starWallTitle: { fontSize: 14, color: '#7A6A5D', marginBottom: 10 },
   starRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
   starChip: {
-    fontSize: 13, color: '#5D4037', backgroundColor: '#FFF3E0',
-    borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: '#FFE0B2',
+    fontSize: 13, color: '#3D3229', backgroundColor: '#FFF3E0',
+    borderRadius: 22, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: '#FFE0B2',
   },
 });

@@ -211,13 +211,13 @@ const styles = StyleSheet.create({
   backBtn: { alignSelf: 'flex-start', marginBottom: 8 },
   backText: { fontSize: 16, color: COLORS.orange, fontWeight: '600' },
   raccoWrap: { alignItems: 'center', marginVertical: 8 },
-  header: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: COLORS.text, fontFamily: FONT.rounded },
+  header: { fontSize: 22, textAlign: 'center', color: COLORS.text, fontFamily: FONT.rounded },
   sub: { fontSize: 13, color: COLORS.textSub, textAlign: 'center', marginTop: 6, marginBottom: 16, lineHeight: 20 },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 22,
     paddingHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1,
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.card,
-    borderRadius: 14,
+    borderRadius: 22,
     paddingVertical: 8,
     paddingHorizontal: 12,
     maxWidth: '100%',
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
   // 已写悄悄话：绿色高亮，和「听过」的橙色明显区分，避免混淆
   commentedBadge: {
     backgroundColor: '#C8E6C9',
-    borderRadius: 10,
+    borderRadius: 18,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginRight: 6,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   commentedText: { color: '#2E7D32', fontWeight: 'bold', fontSize: 12 },
   listenedBadge: {
     backgroundColor: COLORS.orangeLight,
-    borderRadius: 10,
+    borderRadius: 18,
     paddingHorizontal: 8,
     paddingVertical: 3,
     marginRight: 6,
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, color: COLORS.textLight, paddingVertical: 12 },
   input: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 22,
     padding: 16,
     fontSize: 15,
     color: COLORS.text,
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   savedHint: { fontSize: 12, color: COLORS.mint, marginTop: 8, textAlign: 'center' },
   saveBtn: {
     backgroundColor: COLORS.orange,
-    borderRadius: 28,
+    borderRadius: 30,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 16,

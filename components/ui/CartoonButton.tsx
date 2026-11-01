@@ -8,6 +8,7 @@
 import React, { useRef } from 'react';
 import {
   Animated,
+  Platform,
   Pressable,
   Text,
   StyleSheet,
@@ -16,7 +17,25 @@ import {
   TextStyle,
   PressableProps,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW } from '../../constants/theme';
+
+/**
+ * 触发一次轻震动。
+ * 包一层 try/catch：Web / 无马达设备 / 系统关闭触感反馈时不应影响点击本身。
+ */
+function tapHaptic(style: 'light' | 'medium' = 'light') {
+  if (Platform.OS === 'web') return;
+  try {
+    void Haptics.impactAsync(
+      style === 'medium'
+        ? Haptics.ImpactFeedbackStyle.Medium
+        : Haptics.ImpactFeedbackStyle.Light
+    ).catch(() => {});
+  } catch {
+    /* 无触感能力时静默跳过 */
+  }
+}
 
 // ── 弹性按压容器 ────────────────────────────────────────
 interface ElasticPressableProps extends Omit<PressableProps, 'style'> {
@@ -30,40 +49,50 @@ interface ElasticPressableProps extends Omit<PressableProps, 'style'> {
    * 需要横排等分时，必须用 containerStyle={{ flex: 1 }} 撑开外层。
    */
   containerStyle?: StyleProp<ViewStyle>;
-  /** 按下时缩放到多少，默认 0.94 */
+  /** 按下时缩放到多少，默认 0.92 */
   pressScale?: number;
   /** 松手回弹的弹性强度，越大越 Q，默认 12 */
   bounciness?: number;
+  /** 按下时的震动强度；'none' 关闭 */
+  haptic?: 'light' | 'medium' | 'none';
 }
 
 export function ElasticPressable({
   children,
   style,
   containerStyle,
-  pressScale = 0.94,
+  pressScale = 0.92,
   bounciness = 12,
+  haptic = 'light',
   onPress,
+  onPressIn,
+  onPressOut,
   disabled,
   ...rest
 }: ElasticPressableProps) {
   const scale = useRef(new Animated.Value(1)).current;
 
-  const handlePressIn = () => {
+  const handlePressIn = (e: Parameters<NonNullable<PressableProps['onPressIn']>>[0]) => {
+    // 按下：快速收紧（无回弹），让手感"实"
     Animated.spring(scale, {
       toValue: pressScale,
-      tension: 300,
-      friction: 12,
+      tension: 420,
+      friction: 22,
       useNativeDriver: true,
     }).start();
+    if (!disabled && haptic !== 'none') tapHaptic(haptic);
+    onPressIn?.(e);
   };
 
-  const handlePressOut = () => {
+  const handlePressOut = (e: Parameters<NonNullable<PressableProps['onPressOut']>>[0]) => {
+    // 松手：低摩擦 → 明显的过冲回弹，就是"Q 弹"
     Animated.spring(scale, {
       toValue: 1,
-      tension: 200,
-      friction: Math.max(3, 14 - bounciness), // 摩擦越小越弹
+      tension: 240,
+      friction: Math.max(3, 14 - bounciness),
       useNativeDriver: true,
     }).start();
+    onPressOut?.(e);
   };
 
   return (
@@ -152,22 +181,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: RADIUS.pill,
-    paddingVertical: 16,
-    paddingHorizontal: 26,
-    minHeight: 60, // 适合小手点击
+    paddingVertical: 18,
+    paddingHorizontal: 30,
+    minHeight: 64, // 适合小手点击
     ...SHADOW.button,
   },
   full: {
     alignSelf: 'stretch',
   },
   emoji: {
-    fontSize: 24,
-    marginRight: 10,
+    fontSize: 26,
+    marginRight: 12,
   },
   text: {
     fontSize: FONT_SIZE.button,
-    fontWeight: '700',
+    // ⚠️ 不要写 fontWeight：站酷快乐体只有一个字重，
+    // iOS 上自定义字体叠加 fontWeight 会找不到字体而静默回落系统字体。
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   disabled: {
     opacity: 0.5,

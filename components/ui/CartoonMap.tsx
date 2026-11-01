@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   pin: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: COLORS.card,
     borderWidth: 2.5,
     borderColor: COLORS.orange,
