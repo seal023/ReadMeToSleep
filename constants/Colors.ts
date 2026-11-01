@@ -13,13 +13,24 @@
  *  - CANDY 是「裸色板」，用于需要强调的局部（勋章、标签、插画底色）。
  *  - 不要再在页面里硬编码 #xxxxxx 颜色（历史遗留的会逐步清掉）。
  *
- * ── 主题切换（2026-11 新增）──────────────────────────────
+ * ── 主题切换（2026-11 新增，2026-11-01 接入设置界面）──────────────
  *  下方 THEMES 里预置 4 套完整色盘：candy（糖果系，默认）/ forest（森林系）
  *  / starry（星空系）/ sakura（樱花系）。
- *  换肤只需改一行：把 ACTIVE_THEME 改成想要的 key，全 App 立刻换色
- *  （所有页面都是通过 COLORS / CANDY 取色的，没有二次定义）。
- *  暂不做进用户 UI —— 留作以后节日换肤用。
+ *
+ *  用户在「家长模式 → 🎨 界面配色」里选择，选择结果同步写入
+ *  Documents/ui-theme.txt；**App 下次启动时**在模块加载阶段读出来，
+ *  于是所有页面的 StyleSheet 一创建就是新配色。
+ *
+ *  ⚠️ 为什么必须重启才生效（不是偷懒）：
+ *     RN 的 StyleSheet.create 在**模块加载时**就把颜色字符串固化成样式对象了，
+ *    30 多个页面的样式都是模块级常量。运行中改 COLORS 里的值，
+ *    已经创建好的样式对象不会跟着变 —— 想做到「点一下立刻换肤」，
+ *    必须把每个页面的 styles 改成随主题重建的动态样式（useStyles 化），
+ *    那是 30+ 文件的机械改造，风险远大于收益。所以这里选择
+ *    「保存 → 下次启动生效」，并在设置页把这件事明确写给用户。
  */
+
+import { File, Paths } from 'expo-file-system';
 
 // ══════════════════════════════════════════════════════════
 // 主题类型
@@ -217,9 +228,56 @@ export const THEMES: Record<ThemeKey, ThemePalette> = {
 export const THEME_KEYS = Object.keys(THEMES) as ThemeKey[];
 
 // ══════════════════════════════════════════════════════════
-// 一键换肤开关（改这一行即可切换全局主题）
+// 主题持久化（同步读写，必须在模块加载阶段就能拿到值）
 // ══════════════════════════════════════════════════════════
-export const ACTIVE_THEME: ThemeKey = 'candy';
+/**
+ * 为什么用文件而不是 AsyncStorage：
+ *   AsyncStorage 只有异步 API，而 ACTIVE_THEME 必须在**本模块加载时**就确定，
+ *   否则各页面的 StyleSheet.create 会先按默认色跑完，再读到偏好也来不及了。
+ *   expo-file-system 的 File.textSync()/write() 是同步的，正好满足。
+ */
+const THEME_PREF_FILE = 'ui-theme.txt';
+
+function isThemeKey(v: string): v is ThemeKey {
+  return v === 'candy' || v === 'forest' || v === 'starry' || v === 'sakura';
+}
+
+/** 读取用户上次选择的主题（读不到 / 异常一律回退糖果系） */
+function readSavedThemeKey(): ThemeKey {
+  try {
+    const f = new File(Paths.document, THEME_PREF_FILE);
+    if (!f.exists) return 'candy';
+    const raw = (f.textSync() || '').trim();
+    return isThemeKey(raw) ? raw : 'candy';
+  } catch {
+    // 冷启动极早期原生模块不可用、或 Web 环境：静默回退，绝不让 App 起不来
+    return 'candy';
+  }
+}
+
+/**
+ * 保存主题选择（同步落盘）。返回是否写成功。
+ * ⚠️ 只影响**下次启动**，本次运行中已经创建好的样式不会变（见文件头说明）。
+ */
+export function saveThemeKey(key: ThemeKey): boolean {
+  try {
+    const f = new File(Paths.document, THEME_PREF_FILE);
+    if (!f.exists) f.create({ intermediates: true, overwrite: true });
+    f.write(key);
+    return true;
+  } catch (err) {
+    console.warn('[Colors] 保存主题失败:', err);
+    return false;
+  }
+}
+
+/** 当前**正在运行**的主题：启动时从磁盘读取，运行期不会变 */
+export const ACTIVE_THEME: ThemeKey = readSavedThemeKey();
+
+/** 磁盘上已保存的主题（可能与 ACTIVE_THEME 不同 —— 表示"下次启动会切成它"） */
+export function getSavedThemeKey(): ThemeKey {
+  return readSavedThemeKey();
+}
 
 const T: ThemePalette = THEMES[ACTIVE_THEME];
 

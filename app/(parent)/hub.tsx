@@ -28,6 +28,7 @@ export default function ParentHub() {
     { icon: '💳', title: '订阅管理', desc: '查看和续费会员订阅', href: '/(parent)/subscription' },
     { icon: '👤', title: '账号与凭证', desc: '登录账号、查看缴费凭证、换机找回', href: '/(parent)/account' },
     { icon: '📊', title: '使用统计', desc: '查看使用情况与数据统计', href: '/(parent)/statistics' },
+    { icon: '🎨', title: '界面配色', desc: '4 套主题：糖果 / 森林 / 星空 / 樱花', href: '/(parent)/theme' },
     { icon: '💌', title: '给孩子写悄悄话', desc: '给某篇故事写下专属鼓励', href: '/(parent)/parent-comments' },
     { icon: '🧪', title: '奖励测试', desc: '测试用：直接推进等级/勋章，不必逐条听完', href: '/(parent)/reward-test' },
     { icon: '🚪', title: '退出家长模式', desc: '返回孩子界面（不是退出账号）', action: () => {

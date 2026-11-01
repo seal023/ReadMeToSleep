@@ -44,6 +44,13 @@ type QAItem =
 const VOICE_QUESTION_ZH = '你最喜欢故事的哪个部分？';
 const VOICE_QUESTION_EN = 'Which part of the story did you like best?';
 
+/**
+ * 语音题的尾巴提示语。⚠️ 必须与下面 prewarmClonedAudio 用的字符串**逐字一致**，
+ * 否则预热出来的缓存和实际朗读的文本对不上 → 缓存永不命中 → 每题都要现场合成、等好几秒才出声。
+ */
+const QA_VOICE_TAIL_ZH = '，点一下小话筒说给我听，说完再点下面的大按钮。';
+const QA_VOICE_TAIL_EN = ' Tap the microphone, say it, then tap the big button when you are done.';
+
 /** 兜底：AI 出题失败时使用的通用题（与故事无关，但至少通顺） */
 const FALLBACK_QA: QAItem[] = [
   { type: 'choice', question: '故事里谁最让你喜欢？', options: ['可爱的小动物', '聪明的孩子'], correctIndex: 0 },
@@ -145,6 +152,15 @@ export default function StoryPlayScreen() {
   // 轻点一下松手时 prepare 还没完成 → 每次都被判「太短录不上」。
   // 改为「点一下开始说、再点一下结束」，界面实时显示秒数，20 秒自动结束。
   const [qaRecSec, setQaRecSec] = useState(0);
+  /**
+   * 语音题「已录好、等孩子确认」的音频句柄（2026-11-01 新增）
+   * 之前录完就直接跳到下一题：孩子既听不到自己说了什么，也没机会重录，
+   * 大人看到的反馈就是「语音始终听不到、一下子就过去了」。
+   * 现在录完先停住，界面上给「听我录的 / 重录 / 说完了下一题」三个选择。
+   */
+  const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
+  /** 语音题录音回放中（按钮显示「⏸」） */
+  const [voicePlaying, setVoicePlaying] = useState(false);
   const qaRecTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const qaAutoStop = useRef<(() => void) | null>(null);
   // 提问环节语音转文字中
@@ -389,18 +405,28 @@ export default function StoryPlayScreen() {
 
   // 每出现一道题（含语音题），把题目念出来，让不识字的孩子也能参与。
   // 进入问答的第一题先等「引导语」播完（约 1 秒），避免题目把引导语打断。
+  const qaQuestionSpeech = (q: QAItem): string => {
+    const tail = q.type === 'voice' ? (displayLang === 'en' ? QA_VOICE_TAIL_EN : QA_VOICE_TAIL_ZH) : '';
+    return q.question + tail;
+  };
+
+  /** 没听清题目时，点按钮再听一遍（不用等下一题） */
+  const replayQuestion = () => {
+    const q = qaQuestions[qaIndex];
+    if (!q) return;
+    speakWithBestVoice(qaQuestionSpeech(q), displayLang);
+  };
+
   useEffect(() => {
     if (phase === 'qa_round1' && !qaLoading && qaQuestions[qaIndex]) {
       const q = qaQuestions[qaIndex];
-      const tail = q.type === 'voice'
-        ? (displayLang === 'en'
-            ? ' Tap the microphone to speak, then tap again when you are done.'
-            : '，点一下小话筒说出来，说完再点一下。')
-        : '';
+      // 换题：清掉上一题的录音句柄与回放状态
+      setVoiceClipUri(null);
+      setVoicePlaying(false);
       const sinceEnter = Date.now() - qaPhaseEnterRef.current;
       const wait = qaIndex === 0 && sinceEnter < 1000 ? 1000 - sinceEnter : 0;
       const t = setTimeout(() => {
-        speakWithBestVoice(q.question + tail, displayLang);
+        speakWithBestVoice(qaQuestionSpeech(q), displayLang);
       }, wait);
       return () => clearTimeout(t);
     }
@@ -416,8 +442,9 @@ export default function StoryPlayScreen() {
       if (!(await hasClonedVoice(selectedVoice))) return;
       for (const q of qaQuestions) {
         if (cancelled) break;
-        const tailZh = q.type === 'voice' ? '，点一下小话筒说出来，说完再点一下。' : '';
-        const tailEn = q.type === 'voice' ? ' Tap the microphone to speak, then tap again when you are done.' : '';
+        // ⚠️ 这两句必须与 qaQuestionSpeech() 用的尾巴逐字一致，否则缓存永不命中
+        const tailZh = q.type === 'voice' ? QA_VOICE_TAIL_ZH : '';
+        const tailEn = q.type === 'voice' ? QA_VOICE_TAIL_EN : '';
         await prewarmClonedAudio(q.question + tailZh, selectedVoice);
         await prewarmClonedAudio(q.question + tailEn, selectedVoice);
       }
@@ -702,6 +729,15 @@ export default function StoryPlayScreen() {
       if (story.audioUri) {
         const ok = await playLocalFile(story.audioUri, onEnded);
         if (token !== playTokenRef.current) return;
+        // 文件真的没了（重装 / 换机 / 用户清过数据）：明确告诉家长，别让孩子对着无声页面干等
+        if (!ok) {
+          setIsPlaying(false);
+          Alert.alert(
+            '这段录音打不开了',
+            '录音文件已经不在这台设备上（通常是重装 App 之前录的）。可以让家长重新录一段，故事文字还在。',
+          );
+          return;
+        }
         setUsingClonedVoice(true);
         clonedPlayingRef.current = ok; // 同用全局 player，支持真实进度 + 拖动快进
         // 断点续播：本地录音也能 seek
@@ -868,13 +904,19 @@ export default function StoryPlayScreen() {
     }
   };
 
-  // 第 1 轮 voice 题：松开麦克风后停止录音并推进到下一题 / 第 2 轮
+  /**
+   * 第 1 轮 voice 题：再点一下麦克风 → 停止录音，**停在本题等孩子确认**。
+   *
+   * 2026-11-01 改（用户反馈「语音始终听不到，要点击上传/确认才进下一步」）：
+   * 原逻辑录完 900ms 就自动跳到下一题，孩子没听到自己说了什么、也没机会重录，
+   * 大人看起来就是「一录完就过去了，什么也没发生」。现在：
+   *   录完 → 停在本题，给「▶ 听我录的 / 🎤 重录 / ✅ 说完了，下一题」三个按钮。
+   */
   const handleVoiceRecord = async () => {
     setIsRecording(false);
     // 等录音真正停止（含等待开始流程完成，避免快速松手漏录）后再判断
     await stopQaRecording();
     const durSec = (recEndTs.current - recStartTs.current) / 1000;
-    const q = qaQuestions[qaIndex];
     // 录音过短（<0.6s）视为误触/没说话：提示重录，不推进
     if (durSec < 0.6) {
       const tooShort = pickPhrase('voiceTooShort', displayLang);
@@ -883,18 +925,55 @@ export default function StoryPlayScreen() {
       setTimeout(() => setQaFeedback(''), 1600);
       return;
     }
-    if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
+    // 录好了：保留音频句柄，交给孩子决定「听一遍 / 重录 / 继续」
+    setVoiceClipUri(audioRecorder.uri ?? null);
     const heard = pickPhrase('voiceHeard', displayLang);
     setQaFeedback(heard);
     speakWithBestVoice(heard, displayLang);
-    setTimeout(() => {
-      setQaFeedback('');
-      if (qaIndex < qaQuestions.length - 1) {
-        setQaIndex(qaIndex + 1);
-      } else {
-        setPhase('qa_round2');
-      }
-    }, 900);
+  };
+
+  /** 回放刚录的这一段（孩子确认自己说了什么） */
+  const playVoiceClip = async () => {
+    if (!voiceClipUri) return;
+    if (voicePlaying) {
+      stopStory();
+      setVoicePlaying(false);
+      return;
+    }
+    setVoicePlaying(true);
+    // 录音句柄同样可能是「刚停止还没落盘」的状态，等一下再播
+    await new Promise((r) => setTimeout(r, 120));
+    const ok = await playLocalFile(voiceClipUri, () => setVoicePlaying(false));
+    if (!ok) {
+      setVoicePlaying(false);
+      setQaFeedback('没能播放这段录音，可以点「重录」再说一次～');
+      setTimeout(() => setQaFeedback(''), 2200);
+    }
+  };
+
+  /** 重录：清掉这段，回到话筒界面 */
+  const retakeVoice = () => {
+    stopStory();
+    setVoicePlaying(false);
+    setVoiceClipUri(null);
+    setQaFeedback('');
+    qaAutoStop.current = handleVoiceRecord;
+    startQaRecording();
+  };
+
+  /** 确认这一题答完了 → 记日志并进入下一题（原自动推进逻辑搬到这里） */
+  const confirmVoiceAnswer = () => {
+    const q = qaQuestions[qaIndex];
+    if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
+    stopStory();
+    setVoicePlaying(false);
+    setVoiceClipUri(null);
+    setQaFeedback('');
+    if (qaIndex < qaQuestions.length - 1) {
+      setQaIndex(qaIndex + 1);
+    } else {
+      setPhase('qa_round2');
+    }
   };
 
   // 第 1 轮语音题：点一下开始录、再点一下结束。
@@ -1368,18 +1447,44 @@ export default function StoryPlayScreen() {
             )}
 
             {q.type === 'voice' && (
-              <>
-                <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
-                <TouchableOpacity
-                  style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
-                  onPress={toggleQaRecordRound1}
-                >
-                  <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
-                  <Text style={styles.micLabel}>
-                    {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
-                  </Text>
-                </TouchableOpacity>
-              </>
+              voiceClipUri ? (
+                /* 录完了：听一遍 / 重录 / 确认进入下一题 */
+                <View style={styles.voiceConfirmWrap}>
+                  <Text style={styles.voiceConfirmHint}>{t('story.qa.confirmHint')}</Text>
+                  <View style={styles.voiceMiniRow}>
+                    <TouchableOpacity style={styles.voiceMiniBtn} onPress={playVoiceClip}>
+                      <Text style={styles.voiceMiniText}>
+                        {voicePlaying ? `⏸ ${t('story.qa.stopPlay')}` : `▶ ${t('story.qa.listenMine')}`}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.voiceMiniBtn} onPress={retakeVoice}>
+                      <Text style={styles.voiceMiniText}>🎤 {t('story.qa.retake')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity style={styles.voiceConfirmBtn} onPress={confirmVoiceAnswer}>
+                    <Text style={styles.voiceConfirmText}>✅ {t('story.qa.confirmNext')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Animated.View style={[styles.micRing, { transform: [{ scale: micPulse }] }]} pointerEvents="none" />
+                  <TouchableOpacity
+                    style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
+                    onPress={toggleQaRecordRound1}
+                  >
+                    <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
+                    <Text style={styles.micLabel}>
+                      {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
+                    </Text>
+                  </TouchableOpacity>
+                  {/* 没听清题目：随时再听一遍，不用等下一题 */}
+                  {!isRecording && (
+                    <TouchableOpacity style={styles.replayQBtn} onPress={replayQuestion}>
+                      <Text style={styles.replayQText}>🔊 {t('story.qa.replayQuestion')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )
             )}
 
             {qaFeedback ? (
@@ -1720,6 +1825,28 @@ const styles = StyleSheet.create({
   },
   micIcon: { fontSize: 32 },
   micLabel: { fontSize: 12, color: '#FFF', marginTop: 4 },
+
+  // ── 录音完成后的「确认」区（2026-11-01）──────────────────────────
+  // 孩子录完先停在这里：能听回自己的声音、能重录，点大按钮才进下一题。
+  voiceConfirmWrap: { alignItems: 'center', marginTop: 24, paddingHorizontal: 12 },
+  voiceConfirmHint: {
+    fontSize: 17, color: '#3D3229', textAlign: 'center', lineHeight: 26, marginBottom: 18,
+  },
+  voiceMiniRow: { flexDirection: 'row', gap: 12, marginBottom: 18 },
+  voiceMiniBtn: {
+    backgroundColor: '#FFFFFF', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 20,
+    borderWidth: 2, borderColor: '#E7DCCF', elevation: 1,
+  },
+  voiceMiniText: { fontSize: 15, color: '#3D3229', fontWeight: '700' },
+  voiceConfirmBtn: {
+    backgroundColor: '#EE8B5E', borderRadius: 30, paddingVertical: 16, paddingHorizontal: 40,
+    elevation: 3, shadowColor: '#C97B4E', shadowOpacity: 0.3, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  voiceConfirmText: { fontSize: 19, color: '#3D3229', fontWeight: '800' },
+  // 再听一遍题目
+  replayQBtn: { marginTop: 18, paddingVertical: 10, paddingHorizontal: 18 },
+  replayQText: { fontSize: 14, color: '#9B7EDE', fontWeight: '700' },
   feedbackText: { fontSize: 20, color: '#F7A072', fontWeight: 'bold', textAlign: 'center', marginTop: 24 },
   qaLoadingWrap: { alignItems: 'center', marginTop: 40 },
   qaLoadingText: { fontSize: 15, color: '#A8988A', marginTop: 16 },

@@ -14,6 +14,7 @@ export default function ParentLayout() {
       <Stack.Screen name="parent-comments" />
       <Stack.Screen name="statistics" />
       <Stack.Screen name="reward-test" />
+      <Stack.Screen name="theme" />
     </Stack>
   );
 }

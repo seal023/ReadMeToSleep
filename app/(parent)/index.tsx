@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, Alert, TouchableOpacity,
-  Keyboard, KeyboardAvoidingView, ScrollView, Platform,
+  Keyboard, KeyboardAvoidingView, ScrollView, Platform, useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import Racco from '@/components/common/Racco';
@@ -11,6 +11,16 @@ import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
 const PARENT_RACCOON = require('../../assets/raccoon-parent.png');
 
 export default function ParentIndex() {
+  const { height } = useWindowDimensions();
+  /**
+   * 横屏（尤其 iPhone 横过来只有 ~390pt 高）时：
+   *  · 170pt 的浣熊会直接把两个密码框顶出屏幕；
+   *  · 键盘弹出后可用高度更小。
+   * 这里按高度自动降级，并让 ScrollView 真正可滚动（见 styles.scroll）。
+   */
+  const compact = height < 560;
+  const raccoSize = compact ? 84 : 170;
+
   const [mode, setMode] = useState<'setup' | 'unlock'>('setup');
   const [digits1, setDigits1] = useState('');
   const [digits2, setDigits2] = useState('');
@@ -93,13 +103,29 @@ export default function ParentIndex() {
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {/*
+        ⚠️ 这个 ScrollView 必须带 flex:1（见 styles.scroll）。
+        之前只有 contentContainerStyle，没有 style，ScrollView 会按内容高度撑开、
+        溢出父容器却又滚不动 —— 竖屏刚好装得下所以没人发现，
+        一横屏（高度只剩 ~390pt）第二个密码框就永远在屏幕外，也上划不出来。
+      */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, compact && styles.scrollContentCompact]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+        alwaysBounceVertical={false}
+      >
       {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
       <View style={styles.racco}>
-        <Racco state="sleeping" size={170} source={PARENT_RACCOON} />
+        <Racco state="sleeping" size={raccoSize} source={PARENT_RACCOON} />
       </View>
-      <Text style={styles.title}>家长模式</Text>
+      <Text style={[styles.title, compact && styles.titleCompact]}>家长模式</Text>
 
       {locked ? (
         <Text style={styles.lockedText}>⏳ 已锁定，请稍后再试</Text>
@@ -169,13 +195,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
+  /** 必须 flex:1：否则横屏内容溢出父容器却无法滚动 */
+  scroll: { flex: 1, width: '100%' },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingVertical: 24,
   },
+  /** 横屏：可用高度小，压缩上下留白 */
+  scrollContentCompact: { paddingVertical: 10, justifyContent: 'flex-start' },
   racco: { alignItems: 'center', marginBottom: 4 },
   title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32, color: '#3D3229' },
+  titleCompact: { fontSize: 20, marginBottom: 12 },
   label: { fontSize: 16, color: '#555', marginBottom: 12 },
   input: {
     width: '100%',

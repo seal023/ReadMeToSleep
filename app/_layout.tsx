@@ -13,6 +13,8 @@ import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import { getChildName, getVoiceSetting } from '../services/storage';
 import { speakWithBestVoice, stopStory } from '../services/playback';
+import { invalidateAudioMode } from '../services/tts';
+import { reassertAudioSession } from '../services/clonedVoicePlayback';
 import { ensurePhraseWarmup } from '../services/phraseCache';
 
 /** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
@@ -107,8 +109,15 @@ function GreetingOnOpen() {
     // （克隆较早 / 缓存被系统清理也能补上；同进程只跑一次）
     ensurePhraseWarmup();
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') speak('hello');
-      else if (s === 'background') {
+      if (s === 'active') {
+        // 回前台先重建音频会话（2026-11-01 修复 #2）：
+        // iOS 锁屏时会收回 AVAudioSession，回到前台若不经 setAudioModeAsync 重新激活，
+        // 之后所有 expo-speech 都是「静默失败」——用户听到的就是
+        //「故事听到一半锁屏，回来以后很多提示音都没有了」。
+        invalidateAudioMode();
+        void reassertAudioSession();
+        speak('hello');
+      } else if (s === 'background') {
         // 修复 #2：切后台/锁屏时立即停掉所有朗读（故事 / 克隆声 / 系统音），
         // 否则故事会一直念到自然结束。speak('bye') 内部也会 stopStory，
         // 但这里先无条件停一次，确保即使用户快速重复锁屏被节流、bye 没播，故事也停。

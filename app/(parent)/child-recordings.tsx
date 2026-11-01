@@ -8,7 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import {
   getStories, saveStory, deleteStory, getChildName, saveParentComment, getParentComment,
 } from '../../services/storage';
-import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayback';
+import { playLocalFile, stopClonedAudio, getLastCloneError } from '../../services/clonedVoicePlayback';
 import { COLORS, FONT } from '../../constants/theme';
 import type { Story } from '../../types';
 
@@ -69,20 +69,24 @@ export default function ChildRecordingsScreen() {
     setPlayingId(null);
 
     try {
-      const onEnded = () => {
-        if (playingId === story.id) setPlayingId(null);
-      };
-      // 用统一的播放入口：自动配置正确的音频会话（静音模式也能出声），
-      // 之前的裸 AudioPlayer + staysActiveInBackground 字段导致 iOS 上根本放不出声（Issue 2）。
+      // ⚠️ 不要用外层的 playingId 判断：它是本次渲染时的快照（此刻通常还是 null），
+      //    闭包里拿到的一直是旧值，播完就永远回不到「▶ 播放」。改成函数式更新。
+      const onEnded = () => setPlayingId((cur) => (cur === story.id ? null : cur));
+      // 用统一的播放入口：会自动解析沙盒路径（升级后容器 UUID 变了也能找到文件），
+      // 并配置正确的音频会话（静音模式也能出声）。
       const ok = await playLocalFile(story.audioUri, onEnded);
       if (!ok) {
-        Alert.alert('播放失败', '无法加载音频');
+        Alert.alert(
+          '播放失败',
+          getLastCloneError() ||
+            '这段录音的文件找不到了。若是重装 App 之前录的，旧录音可能已随沙盒一起被清除，请让孩子重新录一段。',
+        );
         return;
       }
       setPlayingId(story.id);
     } catch (e) {
       console.error('播放失败:', e);
-      Alert.alert('播放失败', '无法加载音频');
+      Alert.alert('播放失败', String((e as Error)?.message || e));
     }
   }
 

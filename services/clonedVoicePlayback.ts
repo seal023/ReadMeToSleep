@@ -457,11 +457,57 @@ export async function fadeOutAndStop(fadeSeconds = 8): Promise<void> {
 }
 
 /**
+ * 解析「本地录音文件」的真实路径（2026-11-01 修复：家长端录音放不出声）
+ * ---------------------------------------------------------------------------
+ * 孩子/家长录完的故事，保存的是**绝对路径**：
+ *   file:///var/mobile/Containers/Data/Application/<UUID>/Documents/recordings/rec_x.m4a
+ *
+ * 问题在于 <UUID> 这个沙盒容器目录名，iOS 每次「覆盖安装 / TestFlight 升级」都会换一个。
+ * 于是升级一次之后，AsyncStorage 里那条老路径就指向一个不存在的目录，
+ * createAudioPlayer 不报错、但永远不出声 —— 表现正是「故事文字还在，录音就是播不了」。
+ *
+ * 这里做两级解析：
+ *   1) 原路径直接存在 → 用它（同一版本内录的）。
+ *   2) 不存在 → 取出文件名，去**当前**沙盒的 Documents/recordings 里找同名文件。
+ *
+ * 返回 null 表示文件真的没了（用户删过 / 换过手机），调用方应给出明确提示。
+ */
+const RECORDINGS_DIR = 'recordings';
+
+export function resolveLocalAudioUri(uri: string): string | null {
+  if (!uri) return null;
+  // 1) 原样可用
+  try {
+    if (new File(uri).exists) return uri;
+  } catch {
+    /* 继续走第 2 步 */
+  }
+  // 2) 容器 UUID 变了：按文件名在当前沙盒里重新定位
+  try {
+    const name = uri.split('/').pop()?.split('?')[0];
+    if (name) {
+      const f = new File(new Directory(Paths.document, RECORDINGS_DIR), name);
+      if (f.exists) return f.uri;
+    }
+  } catch {
+    /* 忽略 */
+  }
+  return null;
+}
+
+/**
  * 播放本地音频文件（如孩子/家长录制的故事），直接 createAudioPlayer 播放，
  * 不走 TTS / 克隆合成。用于「我的录音」中保留录音的回放。
  * 复用全局 currentPlayer 槽位，故 stopClonedAudio() / 进度拖动 seekClonedAudio() 同样适用。
+ *
+ * ⚠️ 先过 resolveLocalAudioUri：iOS 升级后沙盒路径会变，直接用存下来的绝对路径会静默失败。
  */
 export async function playLocalFile(uri: string, onDone?: () => void): Promise<boolean> {
+  const resolved = resolveLocalAudioUri(uri);
+  if (!resolved) {
+    lastCloneError = '录音文件已不存在（可能因重装 App 丢失）';
+    return false;
+  }
   stopClonedAudio();
-  return startPlayback(uri, onDone);
+  return startPlayback(resolved, onDone);
 }

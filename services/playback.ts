@@ -120,6 +120,8 @@ export async function speakWithBestVoice(
         /* 继续降级系统音 */
       }
     }
+    // 同样要校验：这期间可能已经有更新的请求（比如锁屏告别）抢走了播报权
+    if (mySeq !== speakSeq) return false;
     textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
     return false;
   }
@@ -148,6 +150,15 @@ export async function speakWithBestVoice(
       /* 克隆声失败，继续降级系统音 */
     }
   }
+  // ★ 只有「最新一次」请求才有资格落回系统音。
+  //
+  // 这里原先没有这道校验，是「锁屏时听到『晚上好』和『再见』同时响」的根因：
+  //   speak('hello') 进来时 mySeq=1，随后 await getVoiceSetting / hasClonedVoice
+  //   （甚至还要等一次网络合成）；用户此时锁屏，speak('bye') 把 speakSeq 推到 2
+  //   并把「再见了」播了出来；等 hello 那条 async 链路继续跑到这里，
+  //   它并不知道自己已经被取代，于是又用系统音补喊了一句「晚上好」——两句话叠在一起。
+  // 加这道守卫后，被取代的请求到此为止，静默退出。
+  if (mySeq !== speakSeq) return false;
   textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
   return false;
 }
