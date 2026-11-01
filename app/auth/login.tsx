@@ -34,6 +34,11 @@ const RESEND_SECONDS = 60;
 const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 
+/** 简易邮箱格式校验：决定「发送验证码」按键是否可点（Issue 10 按键变灰） */
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const { configured, appleAvailable, signInApple, sendCode, verifyCode, linkLoginSeq } = useAuth();
@@ -206,16 +211,22 @@ export default function LoginScreen() {
                 emoji="✉️"
                 full
                 onPress={handleSendCode}
-                disabled={busy || !configured}
+                disabled={busy || !configured || !isValidEmail(email)}
               />
               <Text style={styles.hint}>
-                没有账号会自动为你创建。验证码 10 分钟内有效。
+                点击「发送验证码」后，6 位验证码会发到这个邮箱。{'\n'}
+                下一个页面会有一个 6 位数字输入框，把验证码填进去即可登录。
               </Text>
             </View>
           ) : (
             <View style={styles.form}>
-              <Text style={styles.label}>我们已把验证码发到</Text>
-              <Text style={styles.emailEcho}>{email.trim().toLowerCase()}</Text>
+              {/* 明确告知「验证码已发送」+ 填写位置（Issue 10） */}
+              <View style={styles.successCard}>
+                <Text style={styles.successTitle}>✅ 验证码已发送</Text>
+                <Text style={styles.successText}>我们已把 6 位验证码发到</Text>
+                <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
+                <Text style={styles.successText}>请在下面这个输入框里填入 6 位数字：</Text>
+              </View>
 
               <TextInput
                 ref={codeInputRef}
@@ -243,8 +254,9 @@ export default function LoginScreen() {
               />
 
               <Text style={styles.hint}>
-                邮件里如果有 6 位数字，填在上面对话框；如果只有一条蓝色链接，
-                直接点它，回到本 App 会自动登录。
+                把邮件里的 6 位数字填到上面的大框里即可登录。{'\n'}
+                如果邮件里只有一条蓝色链接，直接点它，回到本 App 会自动登录。{'\n'}
+                没收到？请先检查「垃圾邮件」文件夹，或等 {RESEND_SECONDS}s 后点下方「重新发送」。
               </Text>
 
               <View style={styles.codeActions}>
@@ -354,6 +366,19 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
     ...SHADOW.card,
   },
+  // 验证码已发送的明确提示卡（Issue 10）
+  successCard: {
+    backgroundColor: '#E7F7EC',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#B7E4C7',
+  },
+  successTitle: { fontSize: FONT_SIZE.body, fontWeight: '800', color: '#1E7A3C', marginBottom: SPACING.xs },
+  successText: { fontSize: FONT_SIZE.caption, color: '#2E7D4F', lineHeight: 20, textAlign: 'center' },
+  successEmail: { fontSize: FONT_SIZE.body, fontWeight: '800', color: '#1E7A3C', marginVertical: SPACING.xs },
   label: { fontSize: FONT_SIZE.caption, color: COLORS.textSub, marginBottom: SPACING.sm },
   emailEcho: {
     fontSize: FONT_SIZE.body,

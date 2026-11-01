@@ -32,7 +32,7 @@ import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
-import { getLevel, getNewBadges, type BadgeRule, type LevelRule } from '../../constants/rewards';
+import { getLevel, getNewBadges, computeRewardExtras, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
 
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished' | 'sleep';
@@ -149,6 +149,10 @@ export default function StoryPlayScreen() {
   const qaAutoStop = useRef<(() => void) | null>(null);
   // 提问环节语音转文字中
   const [transcribing, setTranscribing] = useState(false);
+  /** 进入问答环节的起始时刻：用于让「引导语」先播完，避免题目把它打断 */
+  const qaPhaseEnterRef = useRef(0);
+  /** 答对后「等反馈语音播完再进入下一题」的兜底计时器句柄 */
+  const qaAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -178,6 +182,7 @@ export default function StoryPlayScreen() {
   // 家长悄悄话（需求 2：家长评语以动画展现）
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
   const commentOpacity = useRef(new Animated.Value(0)).current;
+  const commentScale = useRef(new Animated.Value(0.6)).current;
   // 睡眠定时：倒计时剩余（ms，>0 表示会话进行中）与「到点是否锁定」标记
   const [sleepRemaining, setSleepRemaining] = useState(0);
   const [sleepLocked, setSleepLocked] = useState(false);
@@ -375,13 +380,15 @@ export default function StoryPlayScreen() {
   // 进入问答环节时，用语音把「该做什么」说出来，而不是只靠文字
   useEffect(() => {
     if (phase === 'qa_round1') {
+      qaPhaseEnterRef.current = Date.now();
       speakPhrase('round1', displayLang);
     } else if (phase === 'qa_round2') {
       speakPhrase('round2', displayLang);
     }
   }, [phase]);
 
-  // 每出现一道题（含语音题），把题目念出来，让不识字的孩子也能参与
+  // 每出现一道题（含语音题），把题目念出来，让不识字的孩子也能参与。
+  // 进入问答的第一题先等「引导语」播完（约 1 秒），避免题目把引导语打断。
   useEffect(() => {
     if (phase === 'qa_round1' && !qaLoading && qaQuestions[qaIndex]) {
       const q = qaQuestions[qaIndex];
@@ -390,7 +397,12 @@ export default function StoryPlayScreen() {
             ? ' Tap the microphone to speak, then tap again when you are done.'
             : '，点一下小话筒说出来，说完再点一下。')
         : '';
-      speakWithBestVoice(q.question + tail, displayLang);
+      const sinceEnter = Date.now() - qaPhaseEnterRef.current;
+      const wait = qaIndex === 0 && sinceEnter < 1000 ? 1000 - sinceEnter : 0;
+      const t = setTimeout(() => {
+        speakWithBestVoice(q.question + tail, displayLang);
+      }, wait);
+      return () => clearTimeout(t);
     }
   }, [phase, qaIndex, qaLoading]);
 
@@ -547,12 +559,15 @@ export default function StoryPlayScreen() {
           p.lastListenDate = today;
         }
 
-        // 结算勋章
+        // 结算勋章（含当月 / 整年等新增激励项）
+        const extras = computeRewardExtras(p.listenLog);
         const fresh = getNewBadges(
           {
             listenedCount: p.listenedStories.length,
             streakDays: p.streakDays,
             checkInCount: p.checkIns.length,
+            monthCount: extras.monthCount,
+            listenSpanDays: extras.listenSpanDays,
           },
           p.badges,
         );
@@ -586,11 +601,22 @@ export default function StoryPlayScreen() {
       if (cancelled) return;
       if (c?.text) {
         setParentComment(c);
-        Animated.timing(commentOpacity, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }).start();
+        // 让「爸爸妈妈的悄悄话」像卡通对话框一样弹跳着跳出来（Issue 5）
+        commentOpacity.setValue(0);
+        commentScale.setValue(0.6);
+        Animated.parallel([
+          Animated.timing(commentOpacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+          }),
+          Animated.spring(commentScale, {
+            toValue: 1,
+            friction: 4,
+            tension: 120,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
     })();
     return () => { cancelled = true; };
@@ -812,15 +838,28 @@ export default function StoryPlayScreen() {
       saveChildQuiz(quiz).catch(() => {});
       const fb = pickPhrase('correct', displayLang);
       setQaFeedback(fb);
-      speakWithBestVoice(fb, displayLang);
-      setTimeout(() => {
+      // 等反馈语音完整播完（最多 3.5s 兜底）再进入下一题/第2轮，
+      // 避免「答对」被下一题的提示音打断、或两题语音重叠（Issue 3）。
+      let advanced = false;
+      const advance = () => {
+        if (advanced) return;
+        advanced = true;
+        if (!aliveRef.current) return;
         setQaFeedback('');
         if (qaIndex < qaQuestions.length - 1) {
           setQaIndex(qaIndex + 1);
         } else {
           setPhase('qa_round2');
         }
-      }, 1500);
+      };
+      // 清理上一题可能残留的兜底计时器，避免重复推进
+      if (qaAdvanceTimer.current) {
+        clearTimeout(qaAdvanceTimer.current);
+        qaAdvanceTimer.current = null;
+      }
+      speakWithBestVoice(fb, displayLang, { onDone: advance }).catch(() => {});
+      // 兜底：万一音频未触发 onDone（合成失败等），也按时推进，不卡住流程
+      qaAdvanceTimer.current = setTimeout(advance, 3500);
     } else {
       // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
       const fb = pickPhrase('wrong', displayLang);
@@ -865,6 +904,8 @@ export default function StoryPlayScreen() {
     if (isRecording) {
       handleVoiceRecord();
     } else {
+      // 手指按到录音键：立刻停掉正在播放的提示音，否则无法录音（Issue 4）
+      stopStory();
       qaAutoStop.current = handleVoiceRecord;
       startQaRecording();
     }
@@ -897,6 +938,8 @@ export default function StoryPlayScreen() {
     if (isRecording) {
       finishChildRecording();
     } else {
+      // 手指按到录音键：立刻停掉正在播放的提示音（Issue 4）
+      stopStory();
       qaAutoStop.current = finishChildRecording;
       startQaRecording();
     }
@@ -1459,7 +1502,8 @@ export default function StoryPlayScreen() {
       <Text style={styles.finishedText}>{t('story.finished.text')} 🌙</Text>
 
       {parentComment?.text ? (
-        <Animated.View style={[styles.parentCommentCard, { opacity: commentOpacity }]}>
+        <Animated.View style={[styles.parentCommentCard, { opacity: commentOpacity, transform: [{ scale: commentScale }] }]}>
+          <View style={styles.parentCommentTail} />
           <Text style={styles.parentCommentTitle}>💌 {t('story.parentComment.title')}</Text>
           <Text style={styles.parentCommentText}>{parentComment.text}</Text>
         </Animated.View>
@@ -1678,11 +1722,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF8E1',
     borderRadius: 24,
     padding: 18,
+    paddingTop: 22,
     marginBottom: 20,
     maxWidth: 320,
     borderWidth: 2,
-    borderColor: '#FFE0B2',
+    borderColor: '#FFCC80',
     alignItems: 'center',
+    // 卡通对话框：暖黄底色 + 橙色描边 + 柔光投影
+    boxShadow: '0 6px 18px rgba(245, 124, 0, 0.22)',
+    elevation: 6,
+  },
+  // 对话气泡小尾巴（指向小浣熊，强化「悄悄话」的对话感）
+  parentCommentTail: {
+    position: 'absolute',
+    top: -10,
+    left: 40,
+    width: 22,
+    height: 22,
+    backgroundColor: '#FFF8E1',
+    borderLeftWidth: 2,
+    borderTopWidth: 2,
+    borderColor: '#FFCC80',
+    transform: [{ rotate: '45deg' }],
   },
   parentCommentTitle: { fontSize: 16, fontWeight: 'bold', color: '#F57C00', marginBottom: 8 },
   parentCommentText: { fontSize: 15, color: '#5D4037', lineHeight: 24, textAlign: 'center' },

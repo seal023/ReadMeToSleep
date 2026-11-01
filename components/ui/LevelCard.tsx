@@ -9,7 +9,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, DimensionValue } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getProgress } from '../../services/storage';
-import { getLevel, getNextLevel, getLevelProgress, BADGES } from '../../constants/rewards';
+import { getLevel, getNextLevel, getLevelProgress, BADGES, computeRewardExtras } from '../../constants/rewards';
 import type { Progress } from '../../types';
 import { useLanguage } from '@/hooks/useLanguage';
 import { COLORS, RADIUS, SPACING, FONT_SIZE, SHADOW } from '@/constants/theme';
@@ -46,6 +46,7 @@ export function LevelCard({ onPress }: LevelCardProps) {
   const ratio = getLevelProgress(listened);
   const streak = progress?.streakDays ?? 0;
   const ownedBadges = BADGES.filter((b) => progress?.badges.includes(b.id));
+  const monthCount = computeRewardExtras(progress?.listenLog ?? []).monthCount;
 
   // 百分比字符串需显式标注为 DimensionValue，否则 TS 会推断成普通 string 而报错
   const fillWidth: DimensionValue = `${Math.round(ratio * 100)}%`;
@@ -53,8 +54,8 @@ export function LevelCard({ onPress }: LevelCardProps) {
   // 等级名与进度文案随界面语言切换（rewards.ts 已备 nameEn）
   const levelName = isEn ? level.nameEn : level.name;
   const statText = isEn
-    ? `Heard ${listened} stories${streak > 0 ? ` · ${streak}-day streak 🔥` : ''}`
-    : `已听 ${listened} 个故事${streak > 0 ? ` · 连续 ${streak} 天 🔥` : ''}`;
+    ? `Heard ${listened} · ${streak}-day streak 🔥 · ${monthCount} this month`
+    : `已听 ${listened} 个 · 连续 ${streak} 天 🔥 · 本月 ${monthCount} 个`;
   const progressHint = next
     ? isEn
       ? `Listen to ${Math.max(0, next.need - listened)} more to level up to ${next.nameEn} ${next.emoji}`

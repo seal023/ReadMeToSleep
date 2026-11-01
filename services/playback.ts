@@ -72,6 +72,8 @@ export interface SpeakOptions {
   voiceId?: string;
   /** 真正开始出声时回调（用于让界面文字与语音同时出现，避免"字先出、声后到"的时差） */
   onStart?: () => void;
+  /** 本句播放结束时回调（克隆声 onEnded / 系统音 onDone 触发），用于"播完再进入下一环节" */
+  onDone?: () => void;
   /**
    * 只用「已落盘的」克隆音频：缓存没命中就立刻用系统音说，不在现场发起网络合成。
    * 用于锁屏/切后台的告别语等「必须马上出声」的场景（后台网络会被 iOS 降速，等它就会慢十几秒）。
@@ -108,7 +110,7 @@ export async function speakWithBestVoice(
         const ok = await playClonedAudio(
           content,
           voice as CloneTarget,
-          undefined,
+          () => opts.onDone?.(),
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
           { cacheOnly: true, fast: opts.fast !== false },
@@ -118,7 +120,7 @@ export async function speakWithBestVoice(
         /* 继续降级系统音 */
       }
     }
-    textToSpeech(content, voice || 'system', language, undefined, () => opts.onStart?.());
+    textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
     return false;
   }
 
@@ -130,7 +132,7 @@ export async function speakWithBestVoice(
         const ok = await playClonedAudio(
           content,
           voice as CloneTarget,
-          undefined,
+          () => opts.onDone?.(),
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
           { fast: opts.fast },
@@ -146,7 +148,7 @@ export async function speakWithBestVoice(
       /* 克隆声失败，继续降级系统音 */
     }
   }
-  textToSpeech(content, voice || 'system', language, undefined, () => opts.onStart?.());
+  textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
   return false;
 }
 

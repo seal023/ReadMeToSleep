@@ -44,6 +44,10 @@ export interface RewardInput {
   listenedCount: number;
   streakDays: number;
   checkInCount: number;
+  /** 当月（自然月）已听完的故事数 —— 用于「月度小达人」等激励 */
+  monthCount: number;
+  /** 从第一次听到现在累计跨越的天数 —— ≥365 即「收听整年」陪伴 */
+  listenSpanDays: number;
 }
 
 /** 勋章。id 会存进 Progress.badges，勿随意改名，否则老用户已获得的会失效 */
@@ -102,6 +106,33 @@ export const BADGES: BadgeRule[] = [
     descEn: 'Check in at 3 places',
     test: (s) => s.checkInCount >= 3,
   },
+  {
+    id: 'streak_30',
+    emoji: '🌈',
+    name: '坚持一个月',
+    nameEn: '30-Day Star',
+    desc: '连续 30 天听故事',
+    descEn: 'Listen 30 days in a row',
+    test: (s) => s.streakDays >= 30,
+  },
+  {
+    id: 'month_20',
+    emoji: '🔥',
+    name: '月度小达人',
+    nameEn: 'Monthly Star',
+    desc: '一个月内听了 20 个故事',
+    descEn: 'Listen 20 stories in one month',
+    test: (s) => s.monthCount >= 20,
+  },
+  {
+    id: 'year_1',
+    emoji: '💛',
+    name: '年度陪伴',
+    nameEn: 'Year of Love',
+    desc: '陪你听满一整年',
+    descEn: 'A full year of bedtime stories',
+    test: (s) => s.listenSpanDays >= 365,
+  },
 ];
 
 /** 根据已听完故事数算出当前等级 */
@@ -135,4 +166,28 @@ export function getLevelProgress(listenedCount: number): number {
  */
 export function getNewBadges(input: RewardInput, owned: string[]): BadgeRule[] {
   return BADGES.filter((b) => !owned.includes(b.id) && b.test(input));
+}
+
+/**
+ * 从收听历史推导出「当月听了几个」和「陪伴了多少天」，供 monthly / yearly 类勋章判定。
+ * listenLog 每一项形如 { id, title, at }，`at` 为 ISO 时间字符串。
+ */
+export function computeRewardExtras(
+  listenLog: { at?: string }[] = [],
+): { monthCount: number; listenSpanDays: number } {
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+  let monthCount = 0;
+  let earliest: number | null = null;
+  for (const l of listenLog) {
+    if (!l.at) continue;
+    const d = new Date(l.at);
+    if (Number.isNaN(d.getTime())) continue;
+    if (`${d.getFullYear()}-${d.getMonth()}` === monthKey) monthCount += 1;
+    const t = d.getTime();
+    if (earliest === null || t < earliest) earliest = t;
+  }
+  const listenSpanDays =
+    earliest === null ? 0 : Math.floor((now.getTime() - earliest) / 86400000);
+  return { monthCount, listenSpanDays };
 }

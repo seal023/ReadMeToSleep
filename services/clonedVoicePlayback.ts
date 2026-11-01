@@ -64,6 +64,9 @@ function hashText(text: string): string {
 let endWatchTimer: ReturnType<typeof setInterval> | null = null;
 let endFired = false;
 let endOnce: (() => void) | null = null;
+// 出现过的最大时长：长音频起播/缓冲抖动时 duration 可能瞬间回退，
+// 用它识别「duration 异常回退」从而避免误判结束（Issue 8）。
+let maxDur = 0;
 
 function resetEndWatch(): void {
   if (endWatchTimer) {
@@ -72,6 +75,7 @@ function resetEndWatch(): void {
   }
   endFired = false;
   endOnce = null;
+  maxDur = 0;
 }
 
 /** 为当前 player 装上「播完只回调一次」的检测，onDone 为空则不做任何事 */
@@ -96,7 +100,12 @@ function armEndWatch(onDone?: () => void): void {
     const dur = getClonedDuration();
     const pos = getClonedPosition();
     // duration 未加载完成（0）时不做判断，避免刚起播就误判结束
-    if (dur > 0.4 && pos >= dur - 0.35) endOnce?.();
+    if (dur <= 0.4) return;
+    // 长音频（尤其 AI 创作故事）起播/缓冲抖动时 duration 会瞬间回退，
+    // 若直接拿「当前很小的 dur」去比 pos 就会误判「已播完」→ 故事没讲完就跳结束。
+    // 故跟踪出现过的最大时长，仅当「当前 dur 没有异常回退」且「位置接近真实时长」才判结束。
+    if (dur > maxDur) maxDur = dur;
+    if (dur >= maxDur - 0.6 && pos >= dur - 0.6) endOnce?.();
   }, 250);
 }
 

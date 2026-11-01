@@ -12,6 +12,7 @@ import {
 } from 'expo-audio';
 import { getProgress, saveProgress, getVoiceSetting } from '../../services/storage';
 import { checkCheckInGate } from '../../services/entitlement';
+import { getNewBadges, computeRewardExtras, BADGES } from '../../constants/rewards';
 import { playStory } from '../../services/playback';
 import { transcribeAudio } from '../../services/voiceClone';
 import Racco from '../../components/common/Racco';
@@ -77,9 +78,80 @@ const TRAVEL_HOOKS: Record<string, { title: string; hook: string }> = {
 /** 故事长度档位（与创作页一致）：short≈5分钟 / medium≈8分钟 / long≈12分钟 */
 type TravelLength = 'short' | 'medium' | 'long';
 
-/** 通用舒缓中段（地名嵌入其中）。按长度返回不同段落数：
- *  short≈4段 / medium≈5段（默认）/ long≈7段，朗读时长随之变化 */
-function travelMiddle(name: string, length: TravelLength = 'medium'): string {
+/**
+ * 各地「专属中段」——让旅行故事真正和地名绑定，而不只是把通用段里的「地名」替换掉。
+ * 每个地标 2 段，融入当地特有的景物 / 小动物 / 氛围，AI 离线生成阶段（不联网、零 token）
+ * 也能保证 15 个故事各有各的味道。缺少专属中段的地点回落到通用舒缓中段。
+ */
+const TRAVEL_FLAVOR: Record<string, string[]> = {
+  '故宫': [
+    '小浣熊牵着小朋友的手，悄悄走过乾清宫的门槛，指着屋檐上排成一队的小兽说：你瞧，它们一到夜里就会偷偷下来散步呢。',
+    '太和殿前的铜龟和铜鹤都闭上了眼睛，唯有月光把金色的琉璃瓦照得发亮，好像给整座宫殿盖了一层软软的被子。',
+  ],
+  '外滩': [
+    '小浣熊坐在江边的长椅上，看对岸的钟楼一下一下数着星星，黄浦江的水波把霓虹揉成了会流动的彩带。',
+    '一艘轮渡嘟嘟地靠了岸，载着刚下班的大人和困得打哈欠的小狗，小浣熊轻轻说：我们也在回家的路上啦。',
+  ],
+  '兵马俑': [
+    '新来的陶俑编号734学着将军俑的样子挺直腰板，悄悄跟小朋友比了个安静的手势：嘘，今晚由我来守护这片土地。',
+    '成千上万的陶俑在月光下泛着淡淡的陶土色，小浣熊数着数着，就趴在小朋友的肩头睡着了。',
+  ],
+  '大熊猫基地': [
+    '小熊猫竹宝抱着一根竹子滚到小朋友脚边，奶爸在远处打着哈欠说：它今天已经追了三圈秋千啦。',
+    '竹林里飘着淡淡的竹叶香，小浣熊和竹宝并排躺着，数着从叶子缝里漏下来的月光。',
+  ],
+  '西湖': [
+    '小浣熊带着小朋友坐上小纸船，从断桥慢慢摇到苏堤，荷叶底下躲着一只打着瞌睡的小青蛙。',
+    '远处的雷峰塔亮起暖黄的灯，倒映在湖面上像一颗慢慢沉下去的星星。',
+  ],
+  '漓江': [
+    '一只鸬鹚站在渔夫的竹筏头，把头埋进翅膀里打盹，渔火在水面拉出一条长长的金色尾巴。',
+    '小浣熊学着鸬鹚的样子单脚站在船头，晃了晃，逗得小朋友咯咯地笑出了声。',
+  ],
+  '布达拉宫': [
+    '小浣熊跟着转经筒一圈一圈地走，看酥油灯一盏盏亮起来，把白色的墙映成了温柔的橘黄。',
+    '几只不怕人的鸽子落在小朋友肩头，布达拉宫的风铃在风里轻轻唱起古老的歌。',
+  ],
+  '洱海': [
+    '小浣熊和小白族娃娃划着小木船，看海菜花在水底一闪一闪，像撒了一把会发光的小银币。',
+    '远处的小普陀岛静悄悄的，只有水波一下一下拍着岸，像在给洱海唱摇篮曲。',
+  ],
+  '埃菲尔铁塔': [
+    '小浣熊爬到铁塔的台阶上，看塞纳河上的游船一艘艘滑过，灯影在河水里碎成了金色的星星。',
+    '远处的摩天轮慢慢转着，小浣熊靠在铁艺栏杆上，听巴黎的夜风讲着温柔的悄悄话。',
+  ],
+  '大本钟': [
+    '小浣熊撑着小红伞，跟着一群鸽子走过桥，大本钟当当敲了两下，像在跟小朋友说晚安。',
+    '红色的双层巴士一辆辆开过，车窗里映出暖黄的灯，小浣熊说：每家每户都准备睡啦。',
+  ],
+  '自由女神': [
+    '小浣熊坐上渡轮，看自由女神举着的火炬把港湾照出一条金色的水路，海鸥贴着浪花飞。',
+    '布鲁克林桥的灯一串串亮起来，小朋友靠在妈妈怀里，听海风把远处的汽笛声吹得好长好长。',
+  ],
+  '东京塔': [
+    '小浣熊在塔下的小公园里，看粉色的灯笼一盏盏亮起，隅田川上漂着几只小小的赏灯船。',
+    '远处传来叮叮的电车声，小浣熊学着站台上的小猫，眯起眼睛打了个小小的哈欠。',
+  ],
+  '歌剧院': [
+    '小浣熊趴在白色的船帆下，看海港大桥的钢索在月光里像一把巨大的竖琴，海鸥停在桅杆上打盹。',
+    '一艘渡轮拉响低低的汽笛，小浣熊说：连大海都准备合上眼睛啦。',
+  ],
+  '金字塔': [
+    '小骆驼驮着小浣熊慢慢走在沙丘上，星河像一条银色的河从头顶一直流到沙漠尽头。',
+    '狮身人面像静静卧在月光里，小浣熊把耳朵贴在地上，听见沙子被夜风轻轻翻了翻身。',
+  ],
+  '基督像': [
+    '小浣熊坐在雨林边的长椅上，看山下的城市一盏盏熄灯，只剩基督像胸前的光还温柔地亮着。',
+    '远处传来轻轻的海浪和隐约的吉他声，小浣熊说：这座城市也要睡个好觉啦。',
+  ],
+};
+
+/** 通用舒缓中段（地名嵌入其中，作为「专属中段」之外的兜底）。
+ *  按长度返回不同段落数：short≈4段 / medium≈5段（默认）/ long≈7段，朗读时长随之变化 */
+function travelMiddle(name: string, length: TravelLength = 'medium', flavorKey?: string): string {
+  const flavor = flavorKey ? TRAVEL_FLAVOR[flavorKey] : undefined;
+  const f1 = flavor?.[0] ?? '';
+  const f2 = flavor?.[1] ?? '';
   const p1 = `夜色里的${name}渐渐安静下来。月光轻轻铺在${name}的每一处角落，远处的灯光一盏盏变得温柔，连风都放慢了脚步。星星在天上眨着眼睛，好像在悄悄守护着这座城市，也守护着这里每一个准备睡觉的小朋友。`;
   const p2 = `一只毛茸茸的小浣熊悄悄来到小朋友的窗前。它不想吵醒谁，只是轻轻坐下，用最慢、最软的声音，把${name}白天里那些好玩的事情又讲了一遍——白天热闹的街道、笑闹的声音、被阳光晒得暖暖的石头，到了晚上都变成了一个安静又温柔的梦乡。`;
   const p3 = `小浣熊带着小朋友，在故事里又慢慢地逛了一遍${name}。他们看见安静的树影在轻轻摇晃，听见远处传来的声音越来越轻，像有人在很远处哼着歌。${name}的一切都慢慢睡熟了，只剩下月亮还醒着，把银色的光轻轻盖在屋顶上。`;
@@ -90,10 +162,10 @@ function travelMiddle(name: string, length: TravelLength = 'medium'): string {
   const p7 = `${name}的夜色越来越深，一朵云慢慢飘过月亮的脸，洒下斑驳的光影。小朋友的手指松开了小浣熊的尾巴，整个人都舒舒服服地陷进了软软的被窝里。`;
 
   let paras: string[];
-  if (length === 'short') paras = [p1, p2, p4, p5];
-  else if (length === 'long') paras = [p1, p2, p3, p6, p7, p4, p5];
-  else paras = [p1, p2, p3, p4, p5];
-  return paras.join('\n\n');
+  if (length === 'short') paras = flavor ? [f1, f2, p4, p5] : [p1, p2, p4, p5];
+  else if (length === 'long') paras = flavor ? [f1, f2, p3, p6, p7, p4, p5] : [p1, p2, p3, p6, p7, p4, p5];
+  else paras = flavor ? [f1, f2, p3, p4, p5] : [p1, p2, p3, p4, p5];
+  return paras.filter(Boolean).join('\n\n');
 }
 
 /** 晚安收尾（含地名），让故事安宁助眠地结束。
@@ -103,20 +175,21 @@ function travelEnding(name: string): string {
   return `小浣熊把软软的毯子轻轻盖在小朋友身上，哼起了一首谁也听不懂、却让人心里很安稳的摇篮曲。它小声说：“晚安，${name}。晚安，小朋友。今晚的月亮会一直陪着你，做个关于星星和云的好梦吧。”说完，小浣熊也蜷起尾巴，在${name}温柔的夜色里，悄悄地睡着了。`;
 }
 
-/** 由「地标特色钩子 + 通用长中段 + 晚安收尾」拼成离线睡前故事（长度可选） */
-function buildLongTravelStory(name: string, hook?: string, length: TravelLength = 'medium'): { title: string; content: string } {
+/** 由「地标特色钩子 + 专属/通用中段 + 晚安收尾」拼成离线睡前故事（长度可选）。
+ *  flavorKey 用于挑选该地标的「专属中段」，让故事真正和地名绑定而非仅替换地名。 */
+function buildLongTravelStory(name: string, hook?: string, length: TravelLength = 'medium', flavorKey?: string): { title: string; content: string } {
   const head = hook
     ? `${hook}\n\n小浣熊没有打扰这份安静，它轻轻坐在旁边，想把这个地方的夜晚，讲成一个长长的、暖暖的睡前故事。`
     : `夜深了，${name}慢慢安静下来。窗外的风轻轻吹过，星星在天上眨着眼睛。一只温柔的小动物悄悄来到${name}，想给这里的小朋友讲一个甜甜的睡前故事。`;
   return {
     title: `${name}的睡前奇遇`,
-    content: `${head}\n\n${travelMiddle(name, length)}\n\n${travelEnding(name)}`,
+    content: `${head}\n\n${travelMiddle(name, length, flavorKey)}\n\n${travelEnding(name)}`,
   };
 }
 
 const STORIES: Record<string, { title: string; content: string }> = {};
 for (const [place, info] of Object.entries(TRAVEL_HOOKS)) {
-  const s = buildLongTravelStory(place, info.hook);
+  const s = buildLongTravelStory(place, info.hook, 'medium', place);
   STORIES[place] = { title: info.title, content: s.content };
 }
 
@@ -286,7 +359,7 @@ export default function TravelCheckinScreen() {
     // Simulate story generation (2s)
     setTimeout(() => {
       const s = STORIES[loc.place]
-        ? buildLongTravelStory(loc.place, TRAVEL_HOOKS[loc.place]?.hook, storyLength)
+        ? buildLongTravelStory(loc.place, TRAVEL_HOOKS[loc.place]?.hook, storyLength, loc.place)
         : genericTravelStory(loc.cn, storyLength);
       setStory(s);
       setStep('play');
@@ -331,7 +404,7 @@ export default function TravelCheckinScreen() {
     const newCheckIns = [...progress.checkIns, checkIn];
     const total = newCheckIns.length;
 
-    // Determine new badge
+    // Determine new badge（本地打卡里程碑 + 全局收听激励，如月度小达人 / 年度陪伴）
     let newBadge: { emoji: string; label: string } | null = null;
     for (const rule of BADGE_RULES) {
       if (total >= rule.count && !progress.badges.includes(rule.emoji)) {
@@ -339,7 +412,32 @@ export default function TravelCheckinScreen() {
       }
     }
 
-    const newBadges = newBadge ? [...progress.badges, newBadge.emoji] : progress.badges;
+    const extras = computeRewardExtras(progress.listenLog);
+    const freshGlobal = getNewBadges(
+      {
+        listenedCount: progress.listenedStories.length,
+        streakDays: progress.streakDays,
+        checkInCount: progress.checkIns.length,
+        monthCount: extras.monthCount,
+        listenSpanDays: extras.listenSpanDays,
+      },
+      progress.badges,
+    );
+    // 把全局新勋章也并入「已得徽章」墙；若没有本地打卡徽章，则用第一个全局新勋章做弹窗提示
+    const freshGlobalEmoji = freshGlobal.map((b) => b.id);
+    const merged = [...progress.badges];
+    for (const id of freshGlobalEmoji) if (!merged.includes(id)) merged.push(id);
+    if (!newBadge && freshGlobal.length) {
+      const fb = freshGlobal[0];
+      newBadge = {
+        emoji: fb.emoji,
+        label: language === 'en' ? fb.nameEn : fb.name,
+      };
+    }
+
+    const newBadges = newBadge && !progress.badges.includes(newBadge.emoji)
+      ? [...merged, newBadge.emoji]
+      : merged;
     await saveProgress({ ...progress, checkIns: newCheckIns, badges: newBadges });
     await refresh();
 
@@ -663,19 +761,26 @@ export default function TravelCheckinScreen() {
               </Text>
             </View>
 
-            {/* 勋章墙：陈列所有已得徽章 */}
+            {/* 勋章墙：陈列所有已得徽章（含本地打卡里程碑与全局收听激励） */}
             {earnedBadges.length > 0 && (
               <View style={styles.badgeWall}>
                 <Text style={styles.badgeWallTitle}>
                   {language === 'en' ? 'Your Badges' : '我的勋章墙'}
                 </Text>
                 <View style={styles.badgeRow}>
-                  {earnedBadges.map((emoji) => {
-                    const rule = BADGE_RULES.find((r) => r.emoji === emoji);
+                  {earnedBadges.map((key) => {
+                    const local = BADGE_RULES.find((r) => r.emoji === key);
+                    const global = BADGES.find((b) => b.id === key);
+                    const emoji = local ? local.emoji : global ? global.emoji : key;
+                    const label = local
+                      ? local.label[language]
+                      : global
+                      ? (language === 'en' ? global.nameEn : global.name)
+                      : '';
                     return (
-                      <View key={emoji} style={styles.badgeChip}>
+                      <View key={key} style={styles.badgeChip}>
                         <Text style={styles.badgeChipEmoji}>{emoji}</Text>
-                        <Text style={styles.badgeChipName}>{rule ? rule.label[language] : ''}</Text>
+                        <Text style={styles.badgeChipName}>{label}</Text>
                       </View>
                     );
                   })}

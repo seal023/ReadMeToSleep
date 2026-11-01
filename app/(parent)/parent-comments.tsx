@@ -20,6 +20,7 @@ interface PickItem {
   id: string;
   title: string;
   listened: boolean;
+  commented: boolean;
   lastAt: string;
 }
 
@@ -65,6 +66,7 @@ export default function ParentComments() {
         id: m.id,
         title: m.title,
         listened: listenedSet.has(m.id),
+        commented: false,
         lastAt: lastAtMap.get(m.id) || '',
       }));
       withFlags.sort((a, b) => {
@@ -72,6 +74,12 @@ export default function ParentComments() {
         if (a.listened && b.listened) return (b.lastAt || '').localeCompare(a.lastAt || '');
         return 0;
       });
+
+      // 标记「是否已写悄悄话」——用于和「是否听过」区分，避免都打勾造成混淆
+      for (const it of withFlags) {
+        const c = await getParentComment(it.id);
+        if (c?.text) it.commented = true;
+      }
 
       setItems(withFlags);
     })();
@@ -146,7 +154,15 @@ export default function ParentComments() {
               ]}
               onPress={() => selectStory(it.id)}
             >
-              {it.listened ? <Text style={styles.listenedBadge}>✓</Text> : null}
+              {it.commented ? (
+                <View style={styles.commentedBadge}>
+                  <Text style={styles.commentedText}>已留言</Text>
+                </View>
+              ) : it.listened ? (
+                <View style={styles.listenedBadge}>
+                  <Text style={styles.listenedText}>听过</Text>
+                </View>
+              ) : null}
               <Text
                 style={[
                   styles.pickText,
@@ -225,7 +241,23 @@ const styles = StyleSheet.create({
   },
   pickItemListened: { backgroundColor: COLORS.orangeLight },
   pickItemActive: { backgroundColor: COLORS.orangeLight, borderColor: COLORS.orange },
-  listenedBadge: { color: COLORS.orange, fontWeight: 'bold', marginRight: 6, fontSize: 14 },
+  // 已写悄悄话：绿色高亮，和「听过」的橙色明显区分，避免混淆
+  commentedBadge: {
+    backgroundColor: '#C8E6C9',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+  },
+  commentedText: { color: '#2E7D32', fontWeight: 'bold', fontSize: 12 },
+  listenedBadge: {
+    backgroundColor: COLORS.orangeLight,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+  },
+  listenedText: { color: COLORS.orange, fontWeight: 'bold', fontSize: 12 },
   pickText: { fontSize: 13, color: COLORS.text, maxWidth: 220 },
   pickTextActive: { color: COLORS.orange, fontWeight: '600' },
   emptyText: { fontSize: 13, color: COLORS.textLight, paddingVertical: 12 },

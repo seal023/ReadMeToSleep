@@ -211,23 +211,6 @@ export default function HomeTab() {
         </ElasticPressable>
       </View>
 
-      {/* P1：核心卖点前置——亲人声音陪伴英雄区（常驻，放大声音克隆） */}
-      <ElasticPressable
-        style={styles.cloneHero}
-        onPress={() => router.push('/(parent)/voice-clone')}
-        pressScale={0.94}
-        bounciness={14}
-      >
-        <View style={styles.cloneHeroTextWrap}>
-          <Text style={styles.cloneHeroTitle}>{t('home.cloneHero.title')}</Text>
-          <Text style={styles.cloneHeroDesc}>{t('home.cloneHero.desc')}</Text>
-          <View style={styles.cloneHeroCta}>
-            <Text style={styles.cloneHeroCtaText}>{t('home.cloneHero.cta')}</Text>
-          </View>
-        </View>
-        <Text style={styles.cloneHeroEmoji}>🎙️</Text>
-      </ElasticPressable>
-
       {/* 会员入口：直达订阅/会员中心，避免"找不到收费板块" */}
       <ElasticPressable
         style={styles.premiumCard}
@@ -436,50 +419,6 @@ const styles = StyleSheet.create({
   raccoWrap: {
     alignItems: 'center',
     marginVertical: 16,
-  },
-
-  // P1：亲人声音英雄区（核心卖点前置）
-  cloneHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFE0D6',
-    borderRadius: 18,
-    marginHorizontal: 24,
-    marginBottom: 16,
-    padding: 18,
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.10)',
-    elevation: 3,
-  },
-  cloneHeroTextWrap: {
-    flex: 1,
-    marginRight: 12,
-  },
-  cloneHeroTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#5D4037',
-    marginBottom: 6,
-  },
-  cloneHeroDesc: {
-    fontSize: 13,
-    color: '#8D6E63',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  cloneHeroCta: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FF8A65',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  cloneHeroCtaText: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  cloneHeroEmoji: {
-    fontSize: 40,
   },
 
   // 会员入口卡片

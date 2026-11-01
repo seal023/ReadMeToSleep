@@ -56,6 +56,8 @@ export function RewardAnimation({
   onDone,
 }: RewardAnimationProps) {
   const badgeScale = useRef(new Animated.Value(0)).current;
+  const haloScale = useRef(new Animated.Value(0.4)).current;
+  const haloOpacity = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const sparkProgress = useRef(new Animated.Value(0)).current;
 
@@ -77,6 +79,8 @@ export function RewardAnimation({
     if (!visible) return;
 
     badgeScale.setValue(0);
+    haloScale.setValue(0.4);
+    haloOpacity.setValue(0);
     cardOpacity.setValue(0);
     sparkProgress.setValue(0);
     titleOpacity.setValue(0);
@@ -93,12 +97,26 @@ export function RewardAnimation({
         useNativeDriver: true,
       }),
       // 勋章弹出来
-      Animated.spring(badgeScale, {
-        toValue: 1,
-        speed: 14,
-        bounciness: 16,
-        useNativeDriver: true,
-      }),
+      Animated.parallel([
+        Animated.spring(badgeScale, {
+          toValue: 1,
+          speed: 14,
+          bounciness: 16,
+          useNativeDriver: true,
+        }),
+        // 光晕放大 + 淡入，给勋章更强的「高光时刻」仪式感
+        Animated.timing(haloScale, {
+          toValue: 1.5,
+          duration: 520,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(haloOpacity, {
+          toValue: 0.55,
+          duration: 420,
+          useNativeDriver: true,
+        }),
+      ]),
       // 星星向四周飞散 + 文字浮现
       Animated.parallel([
         Animated.timing(sparkProgress, {
@@ -193,13 +211,20 @@ export function RewardAnimation({
             </Animated.Text>
           ))}
 
-          {/* 勋章主体 */}
+          {/* 勋章主体（带光晕） */}
           <Animated.View
             style={[
               styles.badgeRing,
               { transform: [{ scale: badgeScale }] },
             ]}
           >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.halo,
+                { transform: [{ scale: haloScale }], opacity: haloOpacity },
+              ]}
+            />
             <Text style={styles.badgeEmoji}>{emoji}</Text>
           </Animated.View>
 
@@ -250,6 +275,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
+    overflow: 'visible',
+  },
+  halo: {
+    position: 'absolute',
+    top: -34,
+    left: -34,
+    width: 178,
+    height: 178,
+    borderRadius: 89,
+    backgroundColor: '#FFD66B',
   },
   badgeEmoji: {
     fontSize: 54,
