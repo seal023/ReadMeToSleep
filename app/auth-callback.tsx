@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
+import { EMAIL_LOGIN_ENABLED } from '../constants/featureFlags';
 
 /**
  * 邮件「魔法链接」深链承接页。
@@ -83,7 +84,7 @@ export default function AuthCallbackScreen() {
         <Text style={styles.failTitle}>登录未完成</Text>
         <Text style={styles.tip}>
           这条登录链接可能已过期，或已在别的设备上使用过。{'\n'}
-          回到登录页重新获取一次即可。
+          {EMAIL_LOGIN_ENABLED ? '回到登录页重新获取一次即可。' : '请在登录页改用 Apple 账号登录。'}
         </Text>
         <Pressable
           style={styles.primaryBtn}
@@ -93,7 +94,9 @@ export default function AuthCallbackScreen() {
             router.replace('/auth/login');
           }}
         >
-          <Text style={styles.primaryText}>重新获取登录邮件</Text>
+          <Text style={styles.primaryText}>
+            {EMAIL_LOGIN_ENABLED ? '重新获取登录邮件' : '返回登录页'}
+          </Text>
         </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={goHome}>
           <Text style={styles.secondaryText}>先回首页</Text>

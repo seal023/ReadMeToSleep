@@ -16,6 +16,7 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
+import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 
 interface Perk {
@@ -100,7 +101,9 @@ export default function PerksScreen() {
           <Text style={styles.whyTitle}>💡 为什么要先登录？</Text>
           <Text style={styles.whyBody}>
             你的会员是记在账号上的，不是记在这台手机上。{'\n'}
-            登录后，换新手机、重装 App，用同一个账号（Apple 或邮箱）登录，会员会自动回来，不用再付一次钱。
+            {`登录后，换新手机、重装 App，用同一个账号${
+              EMAIL_LOGIN_ENABLED ? '（Apple 或邮箱）' : '（Apple 账号）'
+            }登录，会员会自动回来，不用再付一次钱。`}
           </Text>
         </View>
 

@@ -13,6 +13,7 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
+import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AccountScreen() {
@@ -110,8 +111,10 @@ export default function AccountScreen() {
             <View style={styles.tipCard}>
               <Text style={styles.tipTitle}>💡 换手机怎么办？</Text>
               <Text style={styles.tipBody}>
-                在新手机上装好 App，用同一个账号登录（Apple 或邮箱），再进「订阅管理」点一下「恢复购买」，
-                会员就会回来。{'\n\n'}
+                {`在新手机上装好 App，${
+                  EMAIL_LOGIN_ENABLED ? '用同一个账号登录（Apple 或邮箱）' : '用同一个 Apple 账号登录'
+                }，再进「订阅管理」点一下「恢复购买」，会员就会回来。`}
+                {'\n\n'}
                 注意：订阅本身记在 Apple ID 上，所以新手机上的 App Store 也要登录同一个 Apple ID，
                 否则 Apple 不会把订阅交还给 App。
               </Text>

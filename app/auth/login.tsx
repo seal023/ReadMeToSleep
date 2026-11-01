@@ -28,6 +28,7 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
+import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 
 const RESEND_SECONDS = 60;
@@ -182,10 +183,29 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {appleAvailable && <Text style={styles.orText}>或使用邮箱</Text>}
+          {/* 邮箱入口按开关显示：关闭时整段不渲染，代码保留在下方 */}
+          {EMAIL_LOGIN_ENABLED && appleAvailable && (
+            <Text style={styles.orText}>或使用邮箱</Text>
+          )}
 
-          {/* 邮箱流程 */}
-          {step === 'email' ? (
+          {!EMAIL_LOGIN_ENABLED && (
+            <Text style={styles.hint}>
+              邮箱登录暂时关闭，请使用上方 Apple 账号登录。{'\n'}
+              不登录也能继续使用本 App，只是会员无法跨设备找回。
+            </Text>
+          )}
+
+          {/*
+            邮箱流程（2026-11-01 起暂时关闭，开关见 constants/featureFlags.ts）
+
+            ⚠️ 关闭的是「入口」，不是「功能」：
+            services/auth.ts 的 sendCode / verifyCode、hooks/useAuth 的深链监听、
+            app/auth-callback.tsx 的落地页全部原样保留。已发出的旧登录邮件点进来
+            依然能登录成功。
+            原因：Supabase 免费版邮件限流 2 封/小时且仅组织成员可收，
+            免费版模板又锁死无法发 6 位码。等 SMTP2GO 接好后把开关改回 true 即恢复。
+          */}
+          {EMAIL_LOGIN_ENABLED && (step === 'email' ? (
             <View style={styles.form}>
               <Text style={styles.label}>你的邮箱</Text>
               <TextInput
@@ -271,7 +291,7 @@ export default function LoginScreen() {
                 </ElasticPressable>
               </View>
             </View>
-          )}
+          ))}
 
           {busy && <ActivityIndicator style={{ marginTop: SPACING.md }} color={COLORS.purple} />}
 
