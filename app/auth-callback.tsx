@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { useAuth } from '../../hooks/useAuth';
+import { useAuth } from '../hooks/useAuth';
 
 /**
  * 邮件「魔法链接」深链承接页。
