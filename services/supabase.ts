@@ -38,7 +38,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
  *
  * ⚠️ 将来若要更换 Supabase 项目，改这里 + Xcode Cloud 环境变量两处即可。
  */
-const FALLBACK_SUPABASE_URL = 'https://mgdtkvkhtdusdnfkdrgd.supabase.co';
+const FALLBACK_SUPABASE_URL = 'https://mgdtkvkhtdusdnfkdrdg.supabase.co';
 const FALLBACK_SUPABASE_ANON_KEY = 'sb_publishable_yYa6v-Bw7IEHqTNRhuyZlQ_zFh4H6j2';
 
 // —— 必须是字面量，不要抽成动态取值（见文件头说明）——
