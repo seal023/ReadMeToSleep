@@ -14,6 +14,7 @@ import {
   type ParentComment,
 } from '../../services/storage';
 import type { Story } from '../../types';
+import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 
 interface PickItem {
@@ -25,6 +26,7 @@ interface PickItem {
 }
 
 export default function ParentComments() {
+  const { t, language } = useLanguage();
   const [items, setItems] = useState<PickItem[]>([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export default function ParentComments() {
     (async () => {
       const normalizeTitle = (raw: any): string => {
         if (typeof raw === 'string') return raw;
-        if (raw && typeof raw === 'object') return raw.zh ?? raw.en ?? '';
+        if (raw && typeof raw === 'object') return raw[language] ?? raw.zh ?? raw.en ?? '';
         return '';
       };
       const created: Story[] = await getStories();
@@ -100,37 +102,37 @@ export default function ParentComments() {
 
   const onSave = async () => {
     if (!selectedId) {
-      Alert.alert('请先选择一篇故事');
+      Alert.alert(t('pcom.needStory'));
       return;
     }
     if (!draft.trim()) {
-      Alert.alert('悄悄话不能为空');
+      Alert.alert(t('pcom.needText'));
       return;
     }
     await saveParentComment(selectedId, draft.trim());
     setSavedAt(new Date().toISOString());
-    Alert.alert('已保存 💌', '孩子听完这篇故事时就能看到你的悄悄话啦');
+    Alert.alert(t('pcom.savedTitle'), t('pcom.savedMsg'));
   };
 
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backText}>← 返回</Text>
+          <Text style={styles.backText}>{t('pcom.back')}</Text>
         </TouchableOpacity>
 
         <View style={styles.raccoWrap}>
           <Racco state="happy" size={100} />
         </View>
-        <Text style={styles.header}>给孩子写悄悄话</Text>
-        <Text style={styles.sub}>选择一篇故事，写下你的专属鼓励。孩子听完故事时，会以动画形式看到这条悄悄话。</Text>
+        <Text style={styles.header}>{t('pcom.title')}</Text>
+        <Text style={styles.sub}>{t('pcom.sub')}</Text>
 
         {/* 搜索框 */}
         <View style={styles.searchWrap}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索故事名称…"
+            placeholder={t('pcom.searchPh')}
             placeholderTextColor={COLORS.textLight}
             value={search}
             onChangeText={setSearch}
@@ -142,7 +144,10 @@ export default function ParentComments() {
           ) : null}
         </View>
 
-        <Text style={styles.sectionTitle}>① 选择故事{search ? `（${displayItems.length}）` : ''}</Text>
+        <Text style={styles.sectionTitle}>
+          {t('pcom.pickSection')}
+          {search ? ` (${displayItems.length})` : ''}
+        </Text>
         <View style={styles.pickWrap}>
           {displayItems.map((it) => (
             <TouchableOpacity
@@ -156,11 +161,11 @@ export default function ParentComments() {
             >
               {it.commented ? (
                 <View style={styles.commentedBadge}>
-                  <Text style={styles.commentedText}>已留言</Text>
+                  <Text style={styles.commentedText}>{t('pcom.commented')}</Text>
                 </View>
               ) : it.listened ? (
                 <View style={styles.listenedBadge}>
-                  <Text style={styles.listenedText}>听过</Text>
+                  <Text style={styles.listenedText}>{t('pcom.listened')}</Text>
                 </View>
               ) : null}
               <Text
@@ -175,22 +180,27 @@ export default function ParentComments() {
             </TouchableOpacity>
           ))}
           {displayItems.length === 0 ? (
-            <Text style={styles.emptyText}>没有找到匹配的故事</Text>
+            <Text style={styles.emptyText}>{t('pcom.empty')}</Text>
           ) : null}
         </View>
 
-        <Text style={styles.sectionTitle}>② 写下悄悄话</Text>
+        <Text style={styles.sectionTitle}>{t('pcom.noteSection')}</Text>
         <TextInput
           style={styles.input}
           multiline
-          placeholder="例如：宝贝今天听得真认真，爸爸/妈妈爱你～"
+          placeholder={t('pcom.notePh')}
           placeholderTextColor={COLORS.textLight}
           value={draft}
           onChangeText={setDraft}
           editable={!!selectedId}
         />
         {savedAt ? (
-          <Text style={styles.savedHint}>✅ 已于 {new Date(savedAt).toLocaleString('zh-CN')} 保存</Text>
+          <Text style={styles.savedHint}>
+            {t('pcom.savedHint').replace(
+              '{time}',
+              new Date(savedAt).toLocaleString(language === 'en' ? 'en-US' : 'zh-CN')
+            )}
+          </Text>
         ) : null}
 
         <TouchableOpacity
@@ -198,7 +208,7 @@ export default function ParentComments() {
           onPress={onSave}
           disabled={!selectedId}
         >
-          <Text style={styles.saveBtnText}>💾 保存悄悄话</Text>
+          <Text style={styles.saveBtnText}>{t('pcom.saveBtn')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </CartoonScreen>

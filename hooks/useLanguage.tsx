@@ -4,6 +4,7 @@ import * as Localization from 'expo-localization'
 import en from '../locales/en.json'
 import zh from '../locales/zh.json'
 import { Language, LocaleDict, LanguageContextType } from '../types'
+import { setRuntimeLanguage } from '../services/i18n'
 
 const STORAGE_KEY = 'rms_language'
 
@@ -43,6 +44,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLang] = useState<Language>(detectSystemLanguage)
   const [hydrated, setHydrated] = useState(false)
 
+  // 服务层（IAP / 登录 / 额度门禁）不是组件，拿不到 context，
+  // 这里把当前语言同步给它，保证弹窗里的错误文案也跟着界面语言走。
+  useEffect(() => {
+    setRuntimeLanguage(language)
+  }, [language])
+
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((saved) => {
       if (saved === 'en' || saved === 'zh') {
@@ -62,6 +69,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const setLanguage = async (lang: Language) => {
+    setRuntimeLanguage(lang)
     setLang(lang)
     await AsyncStorage.setItem(STORAGE_KEY, lang)
   }

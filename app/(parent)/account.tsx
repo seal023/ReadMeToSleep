@@ -15,9 +15,11 @@ import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
 import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
+import { useLanguage } from '@/hooks/useLanguage';
 
 export default function AccountScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const {
     configured,
     loading,
@@ -30,10 +32,10 @@ export default function AccountScreen() {
   const [busy, setBusy] = useState(false);
 
   const handleSignOut = useCallback(() => {
-    Alert.alert('退出登录？', '退出后这台手机上仍可继续使用，但会员状态需要重新登录才能确认。', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('account.signOutAsk'), t('account.signOutMsg'), [
+      { text: t('account.cancel'), style: 'cancel' },
       {
-        text: '退出登录',
+        text: t('account.signOut'),
         style: 'destructive',
         onPress: async () => {
           setBusy(true);
@@ -41,32 +43,32 @@ export default function AccountScreen() {
             await signOut();
             router.back();
           } catch (err) {
-            Alert.alert('退出失败', (err as Error)?.message || '请稍后重试');
+            Alert.alert(t('account.signOutFail'), (err as Error)?.message || t('sub.alert.retry'));
           } finally {
             setBusy(false);
           }
         },
       },
     ]);
-  }, [signOut, router]);
+  }, [signOut, router, t]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
-      '注销账号？',
-      '账号会被永久删除，已购买的会员不会退款（退款需在 Apple 侧申请）。此操作不可撤销，确定继续吗？',
+      t('account.deleteAsk'),
+      t('account.deleteMsg'),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('account.cancel'), style: 'cancel' },
         {
-          text: '确认注销',
+          text: t('account.deleteConfirm'),
           style: 'destructive',
           onPress: async () => {
             setBusy(true);
             try {
               await deleteAccount();
-              Alert.alert('已注销', '账号已删除。');
+              Alert.alert(t('account.deleted'), t('account.deletedMsg'));
               router.back();
             } catch (err) {
-              Alert.alert('注销失败', (err as Error)?.message || '请稍后重试');
+              Alert.alert(t('account.deleteFail'), (err as Error)?.message || t('sub.alert.retry'));
             } finally {
               setBusy(false);
             }
@@ -74,25 +76,24 @@ export default function AccountScreen() {
         },
       ]
     );
-  }, [deleteAccount, router]);
+  }, [deleteAccount, router, t]);
 
   return (
     <CartoonScreen gradient="sky" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.page}>
         <ElasticPressable onPress={() => router.back()} containerStyle={styles.backWrap}>
-          <Text style={styles.backText}>‹ 返回</Text>
+          <Text style={styles.backText}>{t('account.back')}</Text>
         </ElasticPressable>
 
         <View style={styles.hero}>
           <Racco state="idle" size={72} />
-          <Text style={styles.title}>我的账号</Text>
+          <Text style={styles.title}>{t('account.title')}</Text>
         </View>
 
         {!configured && (
           <View style={styles.warnCard}>
-            <Text style={styles.warnText}>
-              ⚠️ 当前构建未注入 Supabase 环境变量，账号功能不可用。请补齐配置后重新构建。
-            </Text>
+            <Text style={styles.warnText}>{t('account.notConfigured')}</Text>
           </View>
         )}
 
@@ -104,32 +105,27 @@ export default function AccountScreen() {
               <Text style={styles.avatar}>👤</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{displayName}</Text>
-                <Text style={styles.meta}>{email || '使用 Apple 账号登录（邮箱未授权共享）'}</Text>
+                <Text style={styles.meta}>{email || t('account.appleNoEmail')}</Text>
               </View>
             </View>
 
             <View style={styles.tipCard}>
-              <Text style={styles.tipTitle}>💡 换手机怎么办？</Text>
+              <Text style={styles.tipTitle}>{t('account.tipTitle')}</Text>
               <Text style={styles.tipBody}>
-                {`在新手机上装好 App，${
-                  EMAIL_LOGIN_ENABLED ? '用同一个账号登录（Apple 或邮箱）' : '用同一个 Apple 账号登录'
-                }，再进「订阅管理」点一下「恢复购买」，会员就会回来。`}
-                {'\n\n'}
-                注意：订阅本身记在 Apple ID 上，所以新手机上的 App Store 也要登录同一个 Apple ID，
-                否则 Apple 不会把订阅交还给 App。
+                {EMAIL_LOGIN_ENABLED ? t('account.tipBodyAccount') : t('account.tipBodyApple')}
               </Text>
             </View>
 
             <View style={styles.actions}>
               <CartoonButton
-                title="查看订阅与凭证"
+                title={t('account.viewSub')}
                 emoji="🧾"
                 full
                 onPress={() => router.push('/(parent)/subscription')}
               />
               <View style={{ height: SPACING.sm }} />
               <CartoonButton
-                title={busy ? '处理中…' : '退出登录'}
+                title={busy ? t('account.busy') : t('account.signOut')}
                 emoji="🚪"
                 variant="secondary"
                 full
@@ -139,21 +135,18 @@ export default function AccountScreen() {
             </View>
 
             <Text style={styles.dangerLink} onPress={handleDelete}>
-              注销账号（永久删除）
+              {t('account.deleteLink')}
             </Text>
           </>
         ) : (
           <>
             <View style={styles.tipCard}>
-              <Text style={styles.tipTitle}>还没有登录</Text>
-              <Text style={styles.tipBody}>
-                不登录也能继续使用本 App。但登录后，会员会绑在账号上，
-                换手机或重装时才能证明「这个会员是你买的」。
-              </Text>
+              <Text style={styles.tipTitle}>{t('account.notSignedTitle')}</Text>
+              <Text style={styles.tipBody}>{t('account.notSignedBody')}</Text>
             </View>
             <View style={styles.actions}>
               <CartoonButton
-                title="登录 / 注册"
+                title={t('account.signIn')}
                 emoji="🔑"
                 full
                 onPress={() => router.push('/auth/login')}
@@ -161,6 +154,7 @@ export default function AccountScreen() {
             </View>
           </>
         )}
+        </View>
       </ScrollView>
     </CartoonScreen>
   );
@@ -173,6 +167,8 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl * 1.5,
   },
+  /** iPad 横屏：内容居中一列，不贴着屏幕左边 */
+  page: { width: '100%', maxWidth: 760, alignSelf: 'center' },
   backWrap: { alignSelf: 'flex-start', paddingVertical: SPACING.sm },
   backText: { fontSize: FONT_SIZE.body, color: COLORS.textSub, fontWeight: '700' },
 

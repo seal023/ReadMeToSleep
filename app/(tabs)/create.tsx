@@ -232,7 +232,13 @@ export default function CreateScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
   // 生成页旋转光环 + 魔法闪烁（环绕在 120 的小浣熊外，仅略大一圈，避免过大压迫感）
   genRing: {

@@ -36,6 +36,7 @@ import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
 import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
+import { useLanguage } from '@/hooks/useLanguage';
 
 const RESEND_SECONDS = 60;
 /** Apple 原生登录按钮尺寸：全页唯一主操作，做得足够大、足够圆（胶囊） */
@@ -51,6 +52,7 @@ function isValidEmail(s: string): boolean {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const { configured, appleAvailable, signInApple, sendCode, verifyCode } = useAuth();
 
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -87,11 +89,11 @@ export default function LoginScreen() {
       router.back();
     } catch (err) {
       const e = err as Error & { userCancelled?: boolean };
-      if (!e.userCancelled) setError(e.message || 'Apple 登录失败，请重试');
+      if (!e.userCancelled) setError(e.message || t('login.appleFail'));
     } finally {
       setBusy(false);
     }
-  }, [signInApple, router]);
+  }, [signInApple, router, t]);
 
   const handleSendCode = useCallback(async () => {
     setError(null);
@@ -102,11 +104,11 @@ export default function LoginScreen() {
       setCountdown(RESEND_SECONDS);
       setTimeout(() => codeInputRef.current?.focus(), 350);
     } catch (err) {
-      setError((err as Error).message || '发送失败，请重试');
+      setError((err as Error).message || t('login.sendFail'));
     } finally {
       setBusy(false);
     }
-  }, [sendCode, email]);
+  }, [sendCode, email, t]);
 
   const handleVerify = useCallback(async () => {
     setError(null);
@@ -115,11 +117,11 @@ export default function LoginScreen() {
       await verifyCode(email, code);
       router.back();
     } catch (err) {
-      setError((err as Error).message || '登录失败，请重试');
+      setError((err as Error).message || t('login.loginFail'));
     } finally {
       setBusy(false);
     }
-  }, [verifyCode, email, code, router]);
+  }, [verifyCode, email, code, router, t]);
 
   const handleResend = useCallback(async () => {
     if (countdown > 0 || busy) return;
@@ -129,11 +131,11 @@ export default function LoginScreen() {
       await sendCode(email);
       setCountdown(RESEND_SECONDS);
     } catch (err) {
-      setError((err as Error).message || '发送失败，请重试');
+      setError((err as Error).message || t('login.sendFail'));
     } finally {
       setBusy(false);
     }
-  }, [countdown, busy, sendCode, email]);
+  }, [countdown, busy, sendCode, email, t]);
 
   return (
     <CartoonScreen gradient="candy" decor>
@@ -151,7 +153,7 @@ export default function LoginScreen() {
             style={styles.closeBtn}
             hitSlop={12}
             onPress={() => router.back()}
-            accessibilityLabel="关闭"
+            accessibilityLabel={t('login.close')}
           >
             <Text style={styles.closeText}>✕</Text>
           </Pressable>
@@ -159,18 +161,14 @@ export default function LoginScreen() {
           <View style={styles.hero}>
             {/* 邮箱表单下线后整页只剩一个按钮，插画放大撑住画面重心 */}
             <Racco state="happy" size={EMAIL_LOGIN_ENABLED ? 76 : 168} />
-            <Text style={styles.title}>登录后，会员跟着你走</Text>
-            <Text style={styles.subtitle}>
-              换新手机、重装 App，{'\n'}只要用同一个账号登录，{'\n'}会员和故事都还在，不用再次付费。
-            </Text>
+            <Text style={styles.title}>{t('login.title')}</Text>
+            <Text style={styles.subtitle}>{t('login.sub')}</Text>
           </View>
 
           {!configured && (
             <View style={styles.warnCard}>
-              <Text style={styles.warnTitle}>⚠️ 账号服务尚未配置</Text>
-              <Text style={styles.warnBody}>
-                当前构建没有注入 Supabase 环境变量，登录暂时不可用。请联系开发者补齐配置后再试。
-              </Text>
+              <Text style={styles.warnTitle}>{t('login.notConfiguredTitle')}</Text>
+              <Text style={styles.warnBody}>{t('login.notConfiguredBody')}</Text>
             </View>
           )}
 
@@ -193,18 +191,15 @@ export default function LoginScreen() {
             </View>
           ) : (
             <View style={styles.warnCard}>
-              <Text style={styles.warnTitle}>当前设备不支持 Apple 登录</Text>
-              <Text style={styles.warnBody}>
-                请在 iPhone / iPad 上使用「通过 Apple 登录」。不登录也能继续使用本 App，
-                只是会员无法跨设备找回。
-              </Text>
+              <Text style={styles.warnTitle}>{t('login.noAppleTitle')}</Text>
+              <Text style={styles.warnBody}>{t('login.noAppleBody')}</Text>
             </View>
           )}
 
           {/* 邮箱入口与邮箱表单：受 EMAIL_LOGIN_ENABLED 控制，关闭时整段不渲染，
               实现代码完整保留在下方（改成 true 即恢复，JSX 无需改动） */}
           {EMAIL_LOGIN_ENABLED && appleAvailable && (
-            <Text style={styles.orText}>或使用邮箱</Text>
+            <Text style={styles.orText}>{t('login.orEmail')}</Text>
           )}
 
           {/*
@@ -219,7 +214,7 @@ export default function LoginScreen() {
           */}
           {EMAIL_LOGIN_ENABLED && (step === 'email' ? (
             <View style={styles.form}>
-              <Text style={styles.label}>你的邮箱</Text>
+              <Text style={styles.label}>{t('login.emailLabel')}</Text>
               <TextInput
                 style={styles.input}
                 placeholder="name@example.com"
@@ -238,27 +233,22 @@ export default function LoginScreen() {
                 onSubmitEditing={handleSendCode}
               />
               <CartoonButton
-                title={busy ? '发送中…' : '发送验证码'}
+                title={busy ? t('login.sending') : t('login.sendCode')}
                 emoji="✉️"
                 full
                 onPress={handleSendCode}
                 disabled={busy || !configured || !isValidEmail(email)}
               />
-              <Text style={styles.hint}>
-                点击「发送验证码」后，我们会向这个邮箱发送登录邮件。{'\n'}
-                邮件里可能是 6 位验证码，也可能是一条「登录链接」——两种方式都支持。
-              </Text>
+              <Text style={styles.hint}>{t('login.emailHint')}</Text>
             </View>
           ) : (
             <View style={styles.form}>
               {/* 明确告知「验证码已发送」+ 填写位置（Issue 10） */}
               <View style={styles.successCard}>
-                <Text style={styles.successTitle}>✅ 登录邮件已发送</Text>
-                <Text style={styles.successText}>我们已向</Text>
+                <Text style={styles.successTitle}>{t('login.sentTitle')}</Text>
+                <Text style={styles.successText}>{t('login.sentTo')}</Text>
                 <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
-                <Text style={styles.successText}>
-                  发送了登录邮件。如果邮件里是 6 位数字，请填在下方；如果是「登录链接」，直接点它即可自动登录。
-                </Text>
+                <Text style={styles.successText}>{t('login.sentBody')}</Text>
               </View>
 
               <TextInput
@@ -279,7 +269,7 @@ export default function LoginScreen() {
               />
 
               <CartoonButton
-                title={busy ? '登录中…' : '登录'}
+                title={busy ? t('login.loggingIn') : t('login.doLogin')}
                 emoji="🔓"
                 full
                 onPress={handleVerify}
@@ -287,18 +277,18 @@ export default function LoginScreen() {
               />
 
               <Text style={styles.hint}>
-                把邮件里的 6 位数字填到上面的大框里即可登录。{'\n'}
-                如果邮件里只有一条蓝色链接，直接点它，回到本 App 会自动登录。{'\n'}
-                没收到？请先检查「垃圾邮件」文件夹，或等 {RESEND_SECONDS}s 后点下方「重新发送」。
+                {t('login.codeHint').replace('{s}', String(RESEND_SECONDS))}
               </Text>
 
               <View style={styles.codeActions}>
                 <ElasticPressable onPress={() => setStep('email')} disabled={busy}>
-                  <Text style={styles.linkText}>← 换个邮箱</Text>
+                  <Text style={styles.linkText}>{t('login.changeEmail')}</Text>
                 </ElasticPressable>
                 <ElasticPressable onPress={handleResend} disabled={countdown > 0 || busy}>
                   <Text style={[styles.linkText, countdown > 0 && styles.linkDisabled]}>
-                    {countdown > 0 ? `${countdown}s 后可重发` : '重新发送'}
+                    {countdown > 0
+                      ? t('login.resendIn').replace('{s}', String(countdown))
+                      : t('login.resend')}
                   </Text>
                 </ElasticPressable>
               </View>
@@ -310,22 +300,20 @@ export default function LoginScreen() {
           {/* 条款 */}
           <View style={styles.legal}>
             <Text style={styles.legalText}>
-              登录即表示你同意
+              {t('login.legalPrefix')}
               <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL)}>
-                {' '}《用户协议》{' '}
+                {' '}{t('login.legalTerms')}{' '}
               </Text>
-              与
+              {t('login.legalAnd')}
               <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
-                {' '}《隐私政策》{' '}
+                {' '}{t('login.legalPrivacy')}{' '}
               </Text>
-              {'。我们只保存' +
-                (EMAIL_LOGIN_ENABLED ? '邮箱 / Apple 账号标识' : 'Apple 账号标识') +
-                '与你孩子的昵称、故事偏好，不会用于广告。'}
+              {EMAIL_LOGIN_ENABLED ? t('login.legalTailEmail') : t('login.legalTailApple')}
             </Text>
           </View>
 
           <Pressable style={styles.skipBtn} hitSlop={8} onPress={() => router.back()}>
-            <Text style={styles.skipText}>先不登录，继续试用</Text>
+            <Text style={styles.skipText}>{t('login.skip')}</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

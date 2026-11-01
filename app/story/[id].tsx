@@ -732,10 +732,7 @@ export default function StoryPlayScreen() {
         // 文件真的没了（重装 / 换机 / 用户清过数据）：明确告诉家长，别让孩子对着无声页面干等
         if (!ok) {
           setIsPlaying(false);
-          Alert.alert(
-            '这段录音打不开了',
-            '录音文件已经不在这台设备上（通常是重装 App 之前录的）。可以让家长重新录一段，故事文字还在。',
-          );
+          Alert.alert(t('story.clipFailTitle'), t('story.clipFailMsg'));
           return;
         }
         setUsingClonedVoice(true);
@@ -946,7 +943,7 @@ export default function StoryPlayScreen() {
     const ok = await playLocalFile(voiceClipUri, () => setVoicePlaying(false));
     if (!ok) {
       setVoicePlaying(false);
-      setQaFeedback('没能播放这段录音，可以点「重录」再说一次～');
+      setQaFeedback(t('story.qa.clipFail'));
       setTimeout(() => setQaFeedback(''), 2200);
     }
   };
@@ -1097,7 +1094,7 @@ export default function StoryPlayScreen() {
       try {
         const perm = await requestRecordingPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert('需要麦克风权限', '请在系统设置中允许麦克风权限后重试');
+          Alert.alert(t('story.micPermTitle'), t('story.micPermMsg'));
           return;
         }
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
@@ -1122,7 +1119,7 @@ export default function StoryPlayScreen() {
         }, 500);
       } catch (err: any) {
         console.error('[story] 提问录音开始失败:', err);
-        Alert.alert('录音失败', err?.message ?? '未知错误');
+        Alert.alert(t('story.recFailTitle'), err?.message ?? t('story.unknownErr'));
         recReady.current = false;
       } finally {
         qaStarting.current = false;
@@ -1430,7 +1427,7 @@ export default function StoryPlayScreen() {
         {qaLoading ? (
           <View style={styles.qaLoadingWrap}>
             <ActivityIndicator size="large" color="#FF8A65" />
-            <Text style={styles.qaLoadingText}>正在为你准备问题…</Text>
+            <Text style={styles.qaLoadingText}>{t('story.qa.preparing')}</Text>
           </View>
         ) : (
           <>
@@ -1531,13 +1528,13 @@ export default function StoryPlayScreen() {
         {isAsking ? (
           <View style={styles.qaLoadingWrap}>
             <ActivityIndicator size="large" color="#FF8A65" />
-            <Text style={styles.qaLoadingText}>🤔 小浣熊正在认真思考…</Text>
+            <Text style={styles.qaLoadingText}>{t('story.qa.thinking2')}</Text>
           </View>
         ) : null}
 
         {aiAnswer ? (
           <View style={styles.aiAnswerWrap}>
-            <Text style={styles.aiAnswerLabel}>你问了：</Text>
+            <Text style={styles.aiAnswerLabel}>{t('story.qa.youAsked')}</Text>
             <Text style={styles.aiAnswerQuestion}>{childQuestion.trim()}</Text>
             <Text style={styles.aiAnswer}>🤖 {aiAnswer}</Text>
           </View>
@@ -1545,13 +1542,13 @@ export default function StoryPlayScreen() {
 
         {aiAskError ? (
           <View style={styles.aiAnswerWrap}>
-            <Text style={styles.aiAnswer}>⚠️ 网络或 AI 暂时无法回答，但你的提问已悄悄记下来，留给爸爸妈妈看啦～</Text>
+            <Text style={styles.aiAnswer}>{t('story.qa.aiOffline')}</Text>
           </View>
         ) : null}
 
         {(aiAnswer || aiAskError) ? (
           <TouchableOpacity style={styles.askBtn} onPress={resetChildQuestion}>
-            <Text style={styles.askBtnText}>🔄 再问一个</Text>
+            <Text style={styles.askBtnText}>{t('story.qa.askAgain')}</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -1689,7 +1686,18 @@ const styles = StyleSheet.create({
 
   title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#3D3229', flex: 1 },
   storyScroll: { flex: 1, borderRadius: 22, backgroundColor: '#FFFDF7', padding: 20 },
-  storyText: { fontSize: 16, lineHeight: 28, color: '#3D3229' },
+  /**
+   * iPad 横屏下整行能到 1300pt 宽，一行字太长很难读。
+   * 这里给正文一个阅读宽度上限并居中 —— 手机上仍是满宽。
+   */
+  storyText: {
+    fontSize: 16,
+    lineHeight: 28,
+    color: '#3D3229',
+    width: '100%',
+    maxWidth: 780,
+    alignSelf: 'center',
+  },
   progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, marginTop: 12, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#F7A072', borderRadius: 4 },
   // 播放页呼吸光晕（背景，盖在内容之下）
@@ -1873,7 +1881,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center', marginTop: 12,
   },
   askBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
-  qaContent: { paddingTop: 64, paddingHorizontal: 20, paddingBottom: 130 },
+  qaContent: {
+    paddingTop: 64,
+    paddingHorizontal: 20,
+    paddingBottom: 130,
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+  },
   qaRound2Wrap: { flex: 1, position: 'relative' },
   seekToast: { textAlign: 'center', color: '#fff', backgroundColor: 'rgba(108,92,231,0.92)', fontSize: 13, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 22, marginTop: 10, alignSelf: 'center' },
   aiAnswerWrap: { marginTop: 16, backgroundColor: '#F3E5F5', borderRadius: 22, padding: 16 },

@@ -20,10 +20,11 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import type { Session, User } from '@supabase/supabase-js';
 import { isAuthConfigured, supabase } from './supabase';
+import { ts } from './i18n';
 
 /** 账号服务未配置时统一抛这个，UI 据此给出准确提示而不是"网络错误" */
 export const AUTH_NOT_CONFIGURED =
-  '账号服务尚未配置（缺少 Supabase 环境变量），请在构建环境中补齐后重试。';
+  ts('auth.err.notConfigured');
 
 function client() {
   if (!supabase || !isAuthConfigured) throw new Error(AUTH_NOT_CONFIGURED);
@@ -68,16 +69,16 @@ export async function signInWithApple(): Promise<AppleSignInResult> {
     const code = (err as { code?: string })?.code;
     // ERR_CANCELED 是用户自己点了取消，不该弹错误
     if (code === 'ERR_CANCELED' || code === 'ERR_REQUEST_CANCELED') {
-      const e = new Error('已取消登录') as Error & { userCancelled?: boolean };
+      const e = new Error(ts('auth.err.cancelled')) as Error & { userCancelled?: boolean };
       e.userCancelled = true;
       throw e;
     }
-    throw new Error('Apple 登录失败，请稍后重试');
+    throw new Error(ts('auth.err.appleFail'));
   }
 
   const identityToken = credential.identityToken;
   if (!identityToken) {
-    throw new Error('未拿到 Apple 身份令牌，请重试（若反复出现请检查 App ID 是否开启 Sign in with Apple）');
+    throw new Error(ts('auth.err.noToken'));
   }
 
   const { data, error } = await sb.auth.signInWithIdToken({
@@ -115,7 +116,7 @@ export async function sendEmailCode(email: string, redirectTo?: string): Promise
   const sb = client();
   const clean = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
-    throw new Error('邮箱格式不正确，请检查后重试');
+    throw new Error(ts('auth.err.emailInvalid'));
   }
   const { error } = await sb.auth.signInWithOtp({
     email: clean,
@@ -135,7 +136,7 @@ export async function verifyEmailCode(
   const sb = client();
   const clean = email.trim().toLowerCase();
   const token = code.replace(/\D/g, '');
-  if (token.length < 6) throw new Error('请输入邮件里的 6 位数字验证码');
+  if (token.length < 6) throw new Error(ts('auth.err.codeShort'));
 
   const { data, error } = await sb.auth.verifyOtp({
     email: clean,
@@ -186,7 +187,7 @@ export async function handleAuthUrl(url: string): Promise<Session | null> {
   const p = parseUrlParams(url);
 
   if (p.error || p.error_description) {
-    throw new Error(p.error_description || p.error || '登录链接已失效，请重新获取');
+    throw new Error(p.error_description || p.error || ts('auth.err.linkExpired'));
   }
 
   if (p.access_token && p.refresh_token) {
@@ -250,7 +251,7 @@ export async function deleteAccountAsync(): Promise<void> {
   const { error } = await sb.rpc('delete_me');
   if (error) {
     throw new Error(
-      '账号删除失败。若这是首次使用该功能，请确认 Supabase 已创建 delete_me 函数。'
+      ts('auth.err.deleteFail')
     );
   }
   await sb.auth.signOut().catch(() => {});
@@ -264,21 +265,21 @@ function friendlyAuthError(error: { message?: string; status?: number }): Error 
   const msg = (error?.message || '').toLowerCase();
 
   if (msg.includes('provider is not enabled') || msg.includes('unsupported provider')) {
-    return new Error('该登录方式尚未在服务端开启，请联系开发者配置 Supabase 的 Apple Provider');
+    return new Error(ts('auth.err.providerOff'));
   }
   if (msg.includes('rate limit') || msg.includes('too many')) {
-    return new Error('发送太频繁了，请稍等几分钟再试');
+    return new Error(ts('auth.err.tooFrequent'));
   }
   if (msg.includes('expired') || msg.includes('invalid') || msg.includes('token')) {
-    return new Error('验证码不正确或已过期，请重新获取');
+    return new Error(ts('auth.err.codeWrong'));
   }
   if (msg.includes('signups not allowed') || msg.includes('email not confirmed')) {
-    return new Error('该邮箱暂时无法注册，请换一个邮箱或联系客服');
+    return new Error(ts('auth.err.emailBlocked'));
   }
   if (msg.includes('network') || msg.includes('fetch')) {
     // 把底层真实原因（如 fetch failed / DNS 解析失败 / Invalid API key）一并返回，
     // 方便定位：是构建机根本没连上 Supabase 项目，还是 key/项目配错。
-    return new Error(`网络异常，请检查网络后重试（底层：${error?.message || 'fetch failed'}）`);
+    return new Error(ts('auth.err.network').replace('{detail}', error?.message || 'fetch failed'));
   }
-  return new Error(`${error?.message || '操作失败，请稍后重试'}`);
+  return new Error(`${error?.message || ts('auth.err.generic')}`);
 }

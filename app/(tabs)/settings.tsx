@@ -181,11 +181,13 @@ export default function SettingsScreen() {
         <View style={styles.cardLeft}>
           <Text style={styles.cardIcon}>{isSignedIn ? '👤' : '🔑'}</Text>
           <View style={styles.cardTextWrap}>
-            <Text style={styles.cardText}>{isSignedIn ? displayName : '登录账号'}</Text>
+            <Text style={styles.cardText}>
+          {isSignedIn ? displayName : t('settings.account.signIn')}
+        </Text>
             <Text style={styles.cardSub}>
               {isSignedIn
-                ? accountEmail || 'Apple 账号 · 会员已绑定'
-                : '登录后会员可在新手机上找回，缴费有凭证'}
+                ? accountEmail || t('settings.account.appleBound')
+                : t('settings.account.hint')}
             </Text>
           </View>
         </View>
@@ -227,6 +229,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 40,
+    /** iPad 横屏：设置项居中一列，不铺满整屏 */
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
   },
   raccoWrap: {
     alignItems: 'center',

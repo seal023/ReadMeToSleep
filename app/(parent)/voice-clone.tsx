@@ -105,7 +105,7 @@ export default function VoiceClonePage() {
         Alert.alert(
           t('vc.previewFailedTitle') || '试听失败',
           detail
-            ? `${t('vc.previewFailedMsg') || '没能用克隆声播放。'}\n\n诊断信息：${detail}`
+            ? `${t('vc.previewFailedMsg')}\n\n${t('vc.diagLabel')}${detail}`
             : (t('vc.previewFailedMsg') ||
                 '没能用克隆声播放。常见原因：音色仍在训练（提交后约几分钟），或设备处于静音模式。请稍后重试，或在设置里用系统音试听。')
         );
@@ -155,8 +155,8 @@ export default function VoiceClonePage() {
         }
         setGatePassed(false);
         Alert.alert(gate.title, gate.message, [
-          { text: '返回', style: 'cancel', onPress: () => router.back() },
-          { text: '查看方案', onPress: () => router.push('/(parent)/subscription') },
+          { text: t('common.back'), style: 'cancel', onPress: () => router.back() },
+          { text: t('vc.viewPlans'), onPress: () => router.push('/(parent)/subscription') },
         ]);
       })();
       return () => {
@@ -209,7 +209,7 @@ export default function VoiceClonePage() {
       });
       Alert.alert(
         t('vc.diag'),
-        `name: ${err?.name ?? '无'}\nmessage: ${err?.message ?? '无'}\n${
+        `name: ${err?.name ?? t('vc.none')}\nmessage: ${err?.message ?? t('vc.none')}\n${
           err?.stack ? String(err.stack).slice(0, 240) : ''
         }`
       );

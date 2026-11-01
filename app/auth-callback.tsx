@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
 import { EMAIL_LOGIN_ENABLED } from '../constants/featureFlags';
+import { useLanguage } from '../hooks/useLanguage';
 
 /**
  * 邮件「魔法链接」深链承接页。
@@ -25,6 +26,7 @@ type Phase = 'working' | 'ok' | 'fail';
 
 export default function AuthCallbackScreen() {
   const { isSignedIn, email, linkLoginSeq } = useAuth();
+  const { t } = useLanguage();
   const [phase, setPhase] = useState<Phase>('working');
 
   /** 进入本页时的深链登录计数基线，用来区分「这次链接真的登录了」与「本来就已登录」 */
@@ -70,9 +72,9 @@ export default function AuthCallbackScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.emoji}>✅</Text>
-        <Text style={styles.okTitle}>登录成功</Text>
+        <Text style={styles.okTitle}>{t('cb.okTitle')}</Text>
         {!!email && <Text style={styles.okEmail}>{email}</Text>}
-        <Text style={styles.tip}>正在回到首页…</Text>
+        <Text style={styles.tip}>{t('cb.goingHome')}</Text>
       </View>
     );
   }
@@ -81,10 +83,9 @@ export default function AuthCallbackScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.emoji}>🔗</Text>
-        <Text style={styles.failTitle}>登录未完成</Text>
+        <Text style={styles.failTitle}>{t('cb.failTitle')}</Text>
         <Text style={styles.tip}>
-          这条登录链接可能已过期，或已在别的设备上使用过。{'\n'}
-          {EMAIL_LOGIN_ENABLED ? '回到登录页重新获取一次即可。' : '请在登录页改用 Apple 账号登录。'}
+          {EMAIL_LOGIN_ENABLED ? t('cb.failBodyEmail') : t('cb.failBodyApple')}
         </Text>
         <Pressable
           style={styles.primaryBtn}
@@ -95,11 +96,11 @@ export default function AuthCallbackScreen() {
           }}
         >
           <Text style={styles.primaryText}>
-            {EMAIL_LOGIN_ENABLED ? '重新获取登录邮件' : '返回登录页'}
+            {EMAIL_LOGIN_ENABLED ? t('cb.resendMail') : t('cb.backToLogin')}
           </Text>
         </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={goHome}>
-          <Text style={styles.secondaryText}>先回首页</Text>
+          <Text style={styles.secondaryText}>{t('cb.goHome')}</Text>
         </Pressable>
       </View>
     );
@@ -108,7 +109,7 @@ export default function AuthCallbackScreen() {
   return (
     <View style={styles.center}>
       <ActivityIndicator size="large" color="#6c5ce7" />
-      <Text style={styles.tip}>正在登录…</Text>
+      <Text style={styles.tip}>{t('cb.working')}</Text>
     </View>
   );
 }

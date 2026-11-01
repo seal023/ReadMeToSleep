@@ -6,11 +6,17 @@ import {
 import { router } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
+import { useLanguage } from '@/hooks/useLanguage';
+import { COLORS, FONT } from '@/constants/theme';
 
 // 家长模式沿用全局 3D 粘土风吉祥物（原 raccoon-parent.png 已并入 assets/clay）
 
+/** 输入区最大宽度：iPad 横屏下不再拉成一整屏，整块居中成一个「面板」 */
+const PANEL_MAX_WIDTH = 420;
+
 export default function ParentIndex() {
-  const { height } = useWindowDimensions();
+  const { t } = useLanguage();
+  const { width, height } = useWindowDimensions();
   /**
    * 横屏（尤其 iPhone 横过来只有 ~390pt 高）时：
    *  · 170pt 的浣熊会直接把两个密码框顶出屏幕；
@@ -18,7 +24,7 @@ export default function ParentIndex() {
    * 这里按高度自动降级，并让 ScrollView 真正可滚动（见 styles.scroll）。
    */
   const compact = height < 560;
-  const raccoSize = compact ? 84 : 170;
+  const raccoSize = compact ? 84 : height > 900 ? 200 : 170;
 
   const [mode, setMode] = useState<'setup' | 'unlock'>('setup');
   const [digits1, setDigits1] = useState('');
@@ -38,22 +44,22 @@ export default function ParentIndex() {
   // Lockout timer
   useEffect(() => {
     if (!locked || failCount < 3) return;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setLocked(false);
       setFailCount(0);
     }, 30_000);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [locked, failCount]);
 
   // ---- Setup flow ----
   const handleSetupNext = async () => {
     Keyboard.dismiss();
     if (digits1.length !== 4 || digits2.length !== 4) {
-      Alert.alert('提示', '请输入完整的 4 位数字密码');
+      Alert.alert(t('parentPin.alertTitle'), t('parentPin.incomplete'));
       return;
     }
     if (digits1 !== digits2) {
-      Alert.alert('提示', '两次输入的密码不一致，请重新输入');
+      Alert.alert(t('parentPin.alertTitle'), t('parentPin.mismatch'));
       setDigits1('');
       setDigits2('');
       return;
@@ -86,21 +92,30 @@ export default function ParentIndex() {
         setPinEntry('');
         if (newCount >= 3) {
           setLocked(true);
-          Alert.alert('锁定', '密码错误次数过多，请等待 30 秒后重试');
+          Alert.alert(t('parentPin.lockTitle'), t('parentPin.lockMsg'));
         } else {
-          Alert.alert('错误', `密码错误 (${newCount}/3)`);
+          Alert.alert(
+            t('parentPin.wrongTitle'),
+            t('parentPin.wrongMsg').replace('{n}', String(newCount)),
+          );
         }
         return;
       }
       router.push('/(parent)/hub');
     } catch {
-      Alert.alert('错误', '验证失败，请重试');
+      Alert.alert(t('parentPin.wrongTitle'), t('parentPin.verifyFail'));
     }
   };
 
   // Numeric keypad layout
   const keys = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
 
+  /**
+   * 竖屏 / 横屏共用的「居中面板」：
+   * 之前内容直接铺在 ScrollView 里，标题、提示、输入框全部左对齐，
+   * 在 iPad 横屏（1024~1366pt 宽）上会贴着左边缘，视觉重心严重偏左。
+   * 现在外面套一层 maxWidth 420 的容器并居中，输入框内文字也居中。
+   */
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -120,68 +135,72 @@ export default function ParentIndex() {
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={false}
       >
-      {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
-      <View style={styles.racco}>
-        <Racco state="sleeping" size={raccoSize}  />
-      </View>
-      <Text style={[styles.title, compact && styles.titleCompact]}>家长模式</Text>
+        <View style={styles.panel}>
+          {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
+          <View style={styles.racco}>
+            <Racco state="sleeping" size={raccoSize} />
+          </View>
+          <Text style={[styles.title, compact && styles.titleCompact]}>{t('parentPin.title')}</Text>
 
-      {locked ? (
-        <Text style={styles.lockedText}>⏳ 已锁定，请稍后再试</Text>
-      ) : mode === 'setup' ? (
-        <>
-          <Text style={styles.label}>设置 4 位数字密码</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="第一次输入密码"
-            keyboardType="number-pad"
-            maxLength={4}
-            value={digits1}
-            onChangeText={setDigits1}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="再次输入密码"
-            keyboardType="number-pad"
-            maxLength={4}
-            value={digits2}
-            onChangeText={setDigits2}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <TouchableOpacity style={styles.btn} onPress={handleSetupNext}>
-            <Text style={styles.btnText}>完成设置</Text>
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <Text style={styles.label}>输入密码解锁</Text>
-          {/* Pin dots */}
-          <View style={styles.dotsRow}>
-            {[0,1,2,3].map(i => (
-              <View key={i} style={i < pinEntry.length ? styles.dotFilled : styles.dot} />
-            ))}
-          </View>
-          {/* Number pad */}
-          <View style={styles.keypad}>
-            {keys.map((k, i) => (
-              k === '' ? (
-                <View key={`e${i}`} style={styles.keyEmpty} />
-              ) : k === '⌫' ? (
-                <TouchableOpacity key="del" style={styles.key} onPress={handleDelete}>
-                  <Text style={styles.keyText}>⌫</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity key={k} style={styles.key} onPress={() => handlePinTap(k)}>
-                  <Text style={styles.keyText}>{k}</Text>
-                </TouchableOpacity>
-              )
-            ))}
-          </View>
-        </>
-      )}
+          {locked ? (
+            <Text style={styles.lockedText}>{t('parentPin.locked')}</Text>
+          ) : mode === 'setup' ? (
+            <>
+              <Text style={styles.label}>{t('parentPin.setupLabel')}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder={t('parentPin.setupPh1')}
+                placeholderTextColor="#B9AFA6"
+                keyboardType="number-pad"
+                maxLength={4}
+                value={digits1}
+                onChangeText={setDigits1}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder={t('parentPin.setupPh2')}
+                placeholderTextColor="#B9AFA6"
+                keyboardType="number-pad"
+                maxLength={4}
+                value={digits2}
+                onChangeText={setDigits2}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={styles.btn} onPress={handleSetupNext}>
+                <Text style={styles.btnText}>{t('parentPin.setupDone')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.label}>{t('parentPin.unlockLabel')}</Text>
+              {/* Pin dots */}
+              <View style={styles.dotsRow}>
+                {[0,1,2,3].map(i => (
+                  <View key={i} style={i < pinEntry.length ? styles.dotFilled : styles.dot} />
+                ))}
+              </View>
+              {/* Number pad */}
+              <View style={styles.keypad}>
+                {keys.map((k, i) => (
+                  k === '' ? (
+                    <View key={`e${i}`} style={styles.keyEmpty} />
+                  ) : k === '⌫' ? (
+                    <TouchableOpacity key="del" style={styles.key} onPress={handleDelete}>
+                      <Text style={styles.keyText}>⌫</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity key={k} style={styles.key} onPress={() => handlePinTap(k)}>
+                      <Text style={styles.keyText}>{k}</Text>
+                    </TouchableOpacity>
+                  )
+                ))}
+              </View>
+            </>
+          )}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -192,53 +211,72 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF5E6',
     alignItems: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
   },
   /** 必须 flex:1：否则横屏内容溢出父容器却无法滚动 */
   scroll: { flex: 1, width: '100%' },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingVertical: 24,
   },
   /** 横屏：可用高度小，压缩上下留白 */
   scrollContentCompact: { paddingVertical: 10, justifyContent: 'flex-start' },
+  /** 居中面板：竖屏横屏都只占中间一条，不贴左 */
+  panel: {
+    width: '100%',
+    maxWidth: PANEL_MAX_WIDTH,
+    alignItems: 'center',
+  },
   racco: { alignItems: 'center', marginBottom: 4 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32, color: '#3D3229' },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 32,
+    color: '#3D3229',
+    textAlign: 'center',
+    fontFamily: FONT.rounded,
+  },
   titleCompact: { fontSize: 20, marginBottom: 12 },
-  label: { fontSize: 16, color: '#555', marginBottom: 12 },
+  label: { fontSize: 16, color: '#7A6A5E', marginBottom: 12, textAlign: 'center' },
   input: {
     width: '100%',
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    height: 54,
+    borderWidth: 1.5,
+    borderColor: '#E8DCD2',
     borderRadius: 18,
     paddingHorizontal: 16,
-    fontSize: 18,
+    fontSize: 20,
     marginBottom: 12,
     backgroundColor: '#fff',
+    textAlign: 'center',
+    letterSpacing: 6,
+    color: '#3D3229',
   },
   btn: {
     marginTop: 16,
-    backgroundColor: '#F2827F',
-    paddingVertical: 14,
+    backgroundColor: COLORS.orangeDeep,
+    paddingVertical: 16,
     paddingHorizontal: 48,
-    borderRadius: 18,
+    borderRadius: 999,
+    minWidth: 200,
+    alignItems: 'center',
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  lockedText: { color: '#c00', fontSize: 16, textAlign: 'center' },
-  dotsRow: { flexDirection: 'row', gap: 16, marginBottom: 24 },
+  btnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  lockedText: { color: '#c0392b', fontSize: 16, textAlign: 'center' },
+  dotsRow: { flexDirection: 'row', gap: 16, marginBottom: 24, justifyContent: 'center' },
   dot: {
     width: 18, height: 18, borderRadius: 9,
-    borderWidth: 2, borderColor: '#aaa', backgroundColor: 'transparent',
+    borderWidth: 2, borderColor: '#C9BBAF', backgroundColor: 'transparent',
   },
-  dotFilled: { backgroundColor: '#F2827F', borderColor: '#F2827F' },
+  dotFilled: { backgroundColor: COLORS.orangeDeep, borderColor: COLORS.orangeDeep },
   keypad: {
     flexDirection: 'row', flexWrap: 'wrap', width: 260,
     justifyContent: 'center', gap: 12,
   },
   key: {
-    width: 66, height: 56, borderRadius: 30,
+    width: 66, height: 56, borderRadius: 28,
     backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center',
     boxShadow: '0 2px 4px rgba(0, 0, 0, 0.08)',
     elevation: 2,

@@ -258,6 +258,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+    /** iPad 横屏：卡片限宽居中 */
+    width: '100%', maxWidth: 820, alignSelf: 'center',
     marginHorizontal: 16,
     marginTop: 12,
     borderRadius: 18,

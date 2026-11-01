@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { COLORS, FONT } from '@/constants/theme';
+import { useLanguage } from '@/hooks/useLanguage';
 import type { PaidPlan, Plan } from '@/services/iap';
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,6 @@ const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 //   相比按月订阅：$4.99 × 12 = $59.88 → 省 (59.88-24.99)/59.88 ≈ 58%
 // ---------------------------------------------------------------------------
 const MONTHLY_EQUIVALENT = '$2.08';
-const YEARLY_SAVING = '省 58%';
 
 type FeatureRow = {
   feature: string;
@@ -47,17 +47,20 @@ type FeatureRow = {
  *    额度常量定义在 services/entitlement.ts：
  *      FREE_DAILY_STORY_LIMIT = 1、FREE_TOTAL_CHECKIN_LIMIT = 3
  */
-const FEATURES: FeatureRow[] = [
-  { feature: '每日故事数', free: '1个', monthly: '无限', yearly: '无限' },
-  { feature: '克隆声音', free: false, monthly: true, yearly: true },
-  { feature: '旅行打卡', free: '3次', monthly: '无限', yearly: '无限' },
-  { feature: '家长控制面板', free: true, monthly: true, yearly: true },
-];
+/** 功能对比表：文案全部走 i18n，切换语言时跟着变 */
+function buildFeatures(t: (k: string) => string): FeatureRow[] {
+  return [
+    { feature: t('sub.feat.stories'), free: t('sub.val.oneDay'), monthly: t('sub.val.unlimited'), yearly: t('sub.val.unlimited') },
+    { feature: t('sub.feat.clone'), free: false, monthly: true, yearly: true },
+    { feature: t('sub.feat.travel'), free: t('sub.val.threeTimes'), monthly: t('sub.val.unlimited'), yearly: t('sub.val.unlimited') },
+    { feature: t('sub.feat.parent'), free: true, monthly: true, yearly: true },
+  ];
+}
 
-const STATUS_MAP: Record<Plan, { label: string; color: string }> = {
-  free: { label: '免费版', color: '#B9AFA6' },
-  monthly: { label: '月度会员', color: '#9B7EDE' },
-  yearly: { label: '年度会员', color: '#5FC3A4' },
+const STATUS_MAP: Record<Plan, { labelKey: string; color: string }> = {
+  free: { labelKey: 'sub.plan.free', color: '#B9AFA6' },
+  monthly: { labelKey: 'sub.plan.monthly', color: '#9B7EDE' },
+  yearly: { labelKey: 'sub.plan.yearly', color: '#5FC3A4' },
 };
 
 function Cell({ val }: { val: boolean | string }) {
@@ -85,6 +88,7 @@ function ReceiptRow({ label, value, mono }: { label: string; value: string; mono
 }
 
 export default function SubscriptionPage() {
+  const { t } = useLanguage();
   /** 用户在卡片上选中的方案（尚未购买） */
   const [selected, setSelected] = useState<PaidPlan>('yearly');
   /** 用户是否手动点过方案卡；没点过就跟随「当前订阅」自动定位 */
@@ -138,7 +142,7 @@ export default function SubscriptionPage() {
 
   const handlePurchase = async () => {
     if (!supported) {
-      Alert.alert('提示', '此功能需要使用正式构建版本，开发环境暂不支持购买。');
+      Alert.alert(t('sub.alert.devTitle'), t('sub.alert.devPurchase'));
       return;
     }
     // 购买前先登录：缴费凭证必须挂在一个明确账号上，否则客户换手机后无从证明
@@ -150,42 +154,43 @@ export default function SubscriptionPage() {
       const result = await purchase(selected);
       if (!result) return; // 用户取消，不打扰
       Alert.alert(
-        '订阅成功 🎉',
-        `已开通「${STATUS_MAP[result.plan].label}」，有效期至 ${formatDate(result.expiryMs)}。\n\n` +
-          `这笔订阅已记在你的账号 ${accountEmail || displayName} 名下，换手机用同一账号登录即可找回。`
+        t('sub.alert.successTitle'),
+        t('sub.alert.successMsg')
+          .replace('{plan}', t(STATUS_MAP[result.plan].labelKey))
+          .replace('{date}', formatDate(result.expiryMs))
+          .replace('{account}', accountEmail || displayName)
       );
     } catch (err) {
-      Alert.alert('购买未完成', (err as Error)?.message || '请稍后重试');
+      Alert.alert(t('sub.alert.purchaseFail'), (err as Error)?.message || t('sub.alert.retry'));
     }
   };
 
   const handleRestore = async () => {
     if (!supported) {
-      Alert.alert('提示', '此功能需要使用正式构建版本，开发环境暂不支持恢复购买。');
+      Alert.alert(t('sub.alert.devTitle'), t('sub.alert.devRestore'));
       return;
     }
     try {
       const restored = await restore();
       if (restored) {
         Alert.alert(
-          '恢复成功 ✅',
-          `已恢复「${STATUS_MAP[restored.plan].label}」，有效期至 ${formatDate(restored.expiryMs)}。`
+          t('sub.alert.restoreOk'),
+          t('sub.alert.restoreMsg')
+            .replace('{plan}', t(STATUS_MAP[restored.plan].labelKey))
+            .replace('{date}', formatDate(restored.expiryMs))
         );
       } else {
-        Alert.alert(
-          '未找到订阅',
-          '当前 App Store 登录的 Apple ID 下没有有效订阅。\n\n请确认：\n· 用的是当初购买时那个 Apple ID\n· 在「设置 → Apple ID → 媒体与购买项目」里查看当前登录的账号'
-        );
+        Alert.alert(t('sub.alert.notFoundTitle'), t('sub.alert.notFoundMsg'));
       }
     } catch (err) {
-      Alert.alert('恢复失败', (err as Error)?.message || '请检查网络后重试');
+      Alert.alert(t('sub.alert.restoreFail'), (err as Error)?.message || t('sub.alert.network'));
     }
   };
 
   const handleManage = async () => {
     const opened = await manage();
     if (!opened) {
-      Alert.alert('提示', '无法打开订阅管理，请在 iOS「设置 → Apple ID → 订阅」中管理。');
+      Alert.alert(t('sub.alert.devTitle'), t('sub.alert.manageFail'));
     }
   };
 
@@ -193,7 +198,7 @@ export default function SubscriptionPage() {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert('提示', '无法打开链接，请稍后重试。');
+      Alert.alert(t('sub.alert.devTitle'), t('sub.alert.linkFail'));
     }
   };
 
@@ -203,6 +208,7 @@ export default function SubscriptionPage() {
   return (
     <CartoonScreen gradient="candy" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.page}>
       {/* Racco 吉祥物 */}
       <View style={styles.raccoTop}>
         <Racco state="happy" size={90} />
@@ -210,21 +216,23 @@ export default function SubscriptionPage() {
 
       {/* 当前订阅状态 */}
       <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>当前订阅</Text>
+        <Text style={styles.statusLabel}>{t('sub.currentTitle')}</Text>
         <View style={[styles.badge, { backgroundColor: status.color }]}>
-          <Text style={styles.badgeText}>{status.label}</Text>
+          <Text style={styles.badgeText}>{t(status.labelKey)}</Text>
         </View>
         {isSubscribed && entitlement ? (
           <Text style={styles.expiryText}>
-            {entitlement.autoRenewing ? '自动续订中' : '到期后不再续订'} · 有效期至{' '}
-            {formatDate(entitlement.expiryMs)}
+            {(entitlement.autoRenewing ? t('sub.expiryRenewing') : t('sub.expiryEnding')).replace(
+              '{date}',
+              formatDate(entitlement.expiryMs)
+            )}
           </Text>
         ) : (
-          <Text style={styles.upgradePrompt}>升级享受更多功能 ✨</Text>
+          <Text style={styles.upgradePrompt}>{t('sub.upgradePrompt')}</Text>
         )}
         {switching && (
           <Text style={styles.switchHint}>
-            已选「{STATUS_MAP[selected].label}」，确认购买后按 App Store 提示生效
+            {t('sub.switchHint').replace('{plan}', t(STATUS_MAP[selected].labelKey))}
           </Text>
         )}
         {initializing && <ActivityIndicator style={{ marginTop: 10 }} color="#6c5ce7" />}
@@ -239,27 +247,27 @@ export default function SubscriptionPage() {
         <Text style={styles.accountEmoji}>{isSignedIn ? '👤' : '🔑'}</Text>
         <View style={{ flex: 1 }}>
           <Text style={styles.accountTitle} numberOfLines={1}>
-            {isSignedIn ? `已登录：${accountEmail || displayName}` : '尚未登录'}
+            {isSignedIn
+              ? t('sub.signedInAs').replace('{name}', accountEmail || displayName)
+              : t('sub.notSignedIn')}
           </Text>
           <Text style={styles.accountSub}>
-            {isSignedIn
-              ? '会员记在这个账号上，换手机登录后可找回'
-              : '登录后才能开通会员，缴费凭证会记在账号上'}
+            {isSignedIn ? t('sub.signedSub') : t('sub.unsignedSub')}
           </Text>
         </View>
-        {!isSignedIn && <Text style={styles.accountArrow}>去登录</Text>}
+        {!isSignedIn && <Text style={styles.accountArrow}>{t('sub.goLogin')}</Text>}
       </TouchableOpacity>
 
       {/* 功能对比 */}
-      <Text style={styles.sectionTitle}>功能对比</Text>
+      <Text style={styles.sectionTitle}>{t('sub.featureTable')}</Text>
       <View style={styles.tableOuter}>
         <View style={styles.tableHeader}>
-          <Text style={[styles.th, { flex: 2 }]}>功能</Text>
-          <Text style={[styles.th, { flex: 1 }]}>免费</Text>
-          <Text style={[styles.th, { flex: 1 }]}>月度</Text>
-          <Text style={[styles.th, { flex: 1 }]}>年度</Text>
+          <Text style={[styles.th, { flex: 2 }]}>{t('sub.col.feature')}</Text>
+          <Text style={[styles.th, { flex: 1 }]}>{t('sub.col.free')}</Text>
+          <Text style={[styles.th, { flex: 1 }]}>{t('sub.col.monthly')}</Text>
+          <Text style={[styles.th, { flex: 1 }]}>{t('sub.col.yearly')}</Text>
         </View>
-        {FEATURES.map((row, i) => (
+        {buildFeatures(t).map((row, i) => (
           <View key={i} style={[styles.tableRow, i % 2 === 0 && styles.rowEven]}>
             <Text style={[styles.td, { flex: 2 }]}>{row.feature}</Text>
             <Cell val={row.free} />
@@ -270,9 +278,9 @@ export default function SubscriptionPage() {
       </View>
 
       {/* 选择方案 */}
-      <Text style={styles.sectionTitle}>选择方案</Text>
+      <Text style={styles.sectionTitle}>{t('sub.choosePlan')}</Text>
       {!usingShopPrice && supported && (
-        <Text style={styles.priceHint}>暂时无法获取商店价格，以下为参考价</Text>
+        <Text style={styles.priceHint}>{t('sub.priceHint')}</Text>
       )}
       <View style={styles.planCards}>
         <TouchableOpacity
@@ -285,13 +293,13 @@ export default function SubscriptionPage() {
         >
           {activePlan === 'monthly' && (
             <View style={styles.currentBadge}>
-              <Text style={styles.currentText}>当前</Text>
+              <Text style={styles.currentText}>{t('sub.current')}</Text>
             </View>
           )}
-          <Text style={styles.planName}>月度会员</Text>
+          <Text style={styles.planName}>{t('sub.plan.monthly')}</Text>
           <Text style={styles.planPrice}>{priceOf('monthly')}</Text>
-          <Text style={styles.planUnit}>每月</Text>
-          <Text style={styles.planDesc}>自动续订，随时取消</Text>
+          <Text style={styles.planUnit}>{t('sub.perMonth')}</Text>
+          <Text style={styles.planDesc}>{t('sub.monthlyDesc')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -304,16 +312,18 @@ export default function SubscriptionPage() {
         >
           {activePlan === 'yearly' && (
             <View style={styles.currentBadge}>
-              <Text style={styles.currentText}>当前</Text>
+              <Text style={styles.currentText}>{t('sub.current')}</Text>
             </View>
           )}
           <View style={styles.bestBadge}>
-            <Text style={styles.bestText}>{YEARLY_SAVING}</Text>
+            <Text style={styles.bestText}>{t('sub.yearlySaving')}</Text>
           </View>
-          <Text style={styles.planName}>年度会员</Text>
+          <Text style={styles.planName}>{t('sub.plan.yearly')}</Text>
           <Text style={styles.planPrice}>{priceOf('yearly')}</Text>
-          <Text style={styles.planUnit}>每年</Text>
-          <Text style={styles.planDesc}>约 {MONTHLY_EQUIVALENT}/月，一次性预付</Text>
+          <Text style={styles.planUnit}>{t('sub.perYear')}</Text>
+          <Text style={styles.planDesc}>
+            {t('sub.yearlyDesc').replace('{price}', MONTHLY_EQUIVALENT)}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -327,7 +337,7 @@ export default function SubscriptionPage() {
           <ActivityIndicator color="#fff" />
         ) : (
           <Text style={styles.buyBtnText}>
-            {isSubscribed ? '更换方案' : '🚀 开始订阅'}
+            {isSubscribed ? t('sub.changePlan') : t('sub.startSub')}
           </Text>
         )}
       </TouchableOpacity>
@@ -335,11 +345,11 @@ export default function SubscriptionPage() {
       {/* 恢复 / 管理 */}
       <View style={styles.linkRow}>
         <TouchableOpacity style={styles.restoreBtn} onPress={handleRestore} disabled={busy}>
-          <Text style={styles.restoreText}>恢复购买</Text>
+          <Text style={styles.restoreText}>{t('sub.restore')}</Text>
         </TouchableOpacity>
         {isSubscribed && (
           <TouchableOpacity style={styles.restoreBtn} onPress={handleManage} disabled={busy}>
-            <Text style={styles.restoreText}>管理订阅</Text>
+            <Text style={styles.restoreText}>{t('sub.manage')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -347,52 +357,46 @@ export default function SubscriptionPage() {
       {/* 订阅凭证：客户缴费后要能自己核对/截图留存的凭据 */}
       {isSubscribed && entitlement && (
         <View style={styles.receiptCard}>
-          <Text style={styles.receiptTitle}>🧾 订阅凭证</Text>
-          <ReceiptRow label="订阅方案" value={STATUS_MAP[entitlement.plan].label} />
+          <Text style={styles.receiptTitle}>{t('sub.receiptTitle')}</Text>
+          <ReceiptRow label={t('sub.receipt.plan')} value={t(STATUS_MAP[entitlement.plan].labelKey)} />
           <ReceiptRow
-            label="购买账号"
-            value={accountEmail || (isSignedIn ? displayName : '未登录（建议登录后绑定）')}
+            label={t('sub.receipt.account')}
+            value={accountEmail || (isSignedIn ? displayName : t('sub.receipt.noAccount'))}
           />
           {!!entitlement.purchasedAtMs && (
-            <ReceiptRow label="购买日期" value={formatDate(entitlement.purchasedAtMs)} />
+            <ReceiptRow label={t('sub.receipt.date')} value={formatDate(entitlement.purchasedAtMs)} />
           )}
-          <ReceiptRow label="有效期至" value={formatDate(entitlement.expiryMs)} />
+          <ReceiptRow label={t('sub.receipt.expiry')} value={formatDate(entitlement.expiryMs)} />
           <ReceiptRow
-            label="续订状态"
-            value={entitlement.autoRenewing ? '自动续订中' : '到期后不再续订'}
+            label={t('sub.receipt.renew')}
+            value={entitlement.autoRenewing ? t('sub.expiryRenewing').split(' ·')[0] : t('sub.expiryEnding').split(' ·')[0]}
           />
           {!!entitlement.transactionId && (
-            <ReceiptRow label="交易号" value={entitlement.transactionId} mono />
+            <ReceiptRow label={t('sub.receipt.txn')} value={entitlement.transactionId} mono />
           )}
           <TouchableOpacity
             onPress={() => openLink('https://apps.apple.com/account/subscriptions')}
             hitSlop={6}
           >
-            <Text style={styles.receiptLink}>在 App Store 查看官方购买记录 ›</Text>
+            <Text style={styles.receiptLink}>{t('sub.receipt.shopLink')}</Text>
           </TouchableOpacity>
-          <Text style={styles.receiptHint}>
-            App Store 会把收据邮件发到你 Apple ID 的邮箱，那是可用于报销的正式凭据。
-          </Text>
+          <Text style={styles.receiptHint}>{t('sub.receipt.hint')}</Text>
         </View>
       )}
 
       {/* 订阅条款说明（Apple 3.1.2 要求） */}
       <View style={styles.legalBox}>
-        <Text style={styles.legalText}>
-          · 确认购买后，费用将从你的 Apple ID 账户扣除。{'\n'}·
-          月度订阅会在当前周期结束前 24 小时内自动续订，除非提前至少 24 小时关闭自动续订。
-          {'\n'}· 年度订阅为一次性预付，到期后不会自动续订。{'\n'}·
-          可在 Apple ID 账户设置中管理或取消订阅。
-        </Text>
+        <Text style={styles.legalText}>{t('sub.legal.body')}</Text>
         <View style={styles.legalLinks}>
           <TouchableOpacity onPress={() => openLink(TERMS_URL)}>
-            <Text style={styles.legalLink}>服务条款</Text>
+            <Text style={styles.legalLink}>{t('sub.legal.terms')}</Text>
           </TouchableOpacity>
           <Text style={styles.dot}>·</Text>
           <TouchableOpacity onPress={() => openLink(PRIVACY_URL)}>
-            <Text style={styles.legalLink}>隐私政策</Text>
+            <Text style={styles.legalLink}>{t('sub.legal.privacy')}</Text>
           </TouchableOpacity>
         </View>
+      </View>
       </View>
       </ScrollView>
     </CartoonScreen>
@@ -402,6 +406,8 @@ export default function SubscriptionPage() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 40 },
+  /** iPad 横屏：内容居中一条，避免表格和方案卡被拉得过宽 */
+  page: { width: '100%', maxWidth: 860, alignSelf: 'center' },
   raccoTop: { alignItems: 'center', marginBottom: 8 },
   sectionTitle: { fontSize: 17, color: COLORS.purple, marginVertical: 8, fontFamily: FONT.rounded },
   priceHint: { fontSize: 11, color: '#A8988A', marginBottom: 8, textAlign: 'center' },

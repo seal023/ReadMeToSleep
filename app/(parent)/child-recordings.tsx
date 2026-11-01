@@ -13,7 +13,7 @@ import { COLORS, FONT } from '../../constants/theme';
 import type { Story } from '../../types';
 
 export default function ChildRecordingsScreen() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [recordings, setRecordings] = useState<Story[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [childName, setChildName] = useState<string>('');
@@ -76,27 +76,23 @@ export default function ChildRecordingsScreen() {
       // 并配置正确的音频会话（静音模式也能出声）。
       const ok = await playLocalFile(story.audioUri, onEnded);
       if (!ok) {
-        Alert.alert(
-          '播放失败',
-          getLastCloneError() ||
-            '这段录音的文件找不到了。若是重装 App 之前录的，旧录音可能已随沙盒一起被清除，请让孩子重新录一段。',
-        );
+        Alert.alert(t('rec.playFail'), getLastCloneError() || t('rec.playFailMsg'));
         return;
       }
       setPlayingId(story.id);
     } catch (e) {
       console.error('播放失败:', e);
-      Alert.alert('播放失败', String((e as Error)?.message || e));
+      Alert.alert(t('rec.playFail'), String((e as Error)?.message || e));
     }
   }
 
   async function handleDelete(story: Story) {
     Alert.alert(
-      t('common.confirm') || '确认删除',
-      `确定要删除「${story.title}」吗？`,
+      t('common.confirm'),
+      t('rec.deleteMsg').replace('{title}', story.title),
       [
-        { text: t('common.cancel') || '取消', style: 'cancel' },
-        { text: t('common.delete') || '删除', style: 'destructive', onPress: async () => {
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.delete'), style: 'destructive', onPress: async () => {
           // 如果正在播放被删除的录音，先停
           if (playingId === story.id) {
             stopClonedAudio();
@@ -122,7 +118,7 @@ export default function ChildRecordingsScreen() {
     setComments(prev => ({ ...prev, [story.id]: text }));
     setCommentBoxFor(null);
     setCommentDraft('');
-    Alert.alert('已留言 💌', '宝贝在听这个故事时会看到你的悄悄话～');
+    Alert.alert(t('rec.savedTitle'), t('rec.savedMsg'));
   }
 
   function closeCommentBox() {
@@ -138,7 +134,10 @@ export default function ChildRecordingsScreen() {
 
   function formatDate(dateStr: string): string {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+    return d.toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+    });
   }
 
   return (
@@ -147,12 +146,14 @@ export default function ChildRecordingsScreen() {
       <View style={styles.raccoWrap}>
         <Racco state="happy" size={100} />
       </View>
-      <Text style={styles.title}>{childName ? `${childName}讲故事` : (t('myStories.title') || '孩子录音')}</Text>
+      <Text style={styles.title}>
+        {childName ? t('rec.titleNamed').replace('{name}', childName) : t('myStories.title')}
+      </Text>
 
       {recordings.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyIcon}>🎤</Text>
-          <Text style={styles.emptyText}>暂无录音 / No recordings yet</Text>
+          <Text style={styles.emptyText}>{t('rec.empty')}</Text>
         </View>
       ) : (
         recordings.map(story => (
@@ -173,22 +174,26 @@ export default function ChildRecordingsScreen() {
                 style={playingId === story.id ? styles.playingBtn : styles.actionBtn}
                 onPress={() => playRecording(story)}
               >
-                <Text style={styles.actionText}>{playingId === story.id ? '⏹ 停止' : '▶ 播放'}</Text>
+                <Text style={styles.actionText}>
+                  {playingId === story.id ? t('rec.stop') : t('rec.play')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(story)}>
-                <Text style={styles.deleteText}>🗑 删除</Text>
+                <Text style={styles.deleteText}>{t('rec.delete')}</Text>
               </TouchableOpacity>
             </View>
             {/* 听后给宝贝写悄悄话 / 赞扬（Issue 2） */}
             <TouchableOpacity style={styles.commentBtn} onPress={() => openCommentBox(story)}>
-              <Text style={styles.commentBtnText}>💌 {comments[story.id] ? '修改悄悄话' : '写悄悄话 / 赞扬'}</Text>
+              <Text style={styles.commentBtnText}>
+                💌 {comments[story.id] ? t('rec.editNote') : t('rec.writeNote')}
+              </Text>
             </TouchableOpacity>
             {commentBoxFor === story.id ? (
               <View style={styles.commentBox}>
                 <TextInput
                   ref={commentInputRef}
                   style={styles.commentInput}
-                  placeholder="写一句悄悄话或赞扬，宝贝会听到～"
+                  placeholder={t('rec.notePh')}
                   placeholderTextColor={COLORS.textSub}
                   value={commentDraft}
                   onChangeText={setCommentDraft}
@@ -197,16 +202,16 @@ export default function ChildRecordingsScreen() {
                 />
                 <View style={styles.commentBoxActions}>
                   <TouchableOpacity style={styles.commentCancel} onPress={closeCommentBox}>
-                    <Text style={styles.commentCancelText}>取消</Text>
+                    <Text style={styles.commentCancelText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.commentSend} onPress={() => saveComment(story)}>
-                    <Text style={styles.commentSendText}>发送 💌</Text>
+                    <Text style={styles.commentSendText}>{t('rec.send')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ) : comments[story.id] ? (
               <View style={styles.commentSaved}>
-                <Text style={styles.commentSavedLabel}>💌 已留言</Text>
+                <Text style={styles.commentSavedLabel}>{t('rec.savedBadge')}</Text>
                 <Text style={styles.commentSavedText}>{comments[story.id]}</Text>
               </View>
             ) : null}

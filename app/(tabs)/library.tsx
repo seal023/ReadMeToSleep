@@ -321,6 +321,8 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 22,
+    /** iPad 横屏：卡片限宽居中，不拉成整屏一条 */
+    width: '100%', maxWidth: 820, alignSelf: 'center',
     padding: 14, marginBottom: 10,
     boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)', elevation: 2,
   },

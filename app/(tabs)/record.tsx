@@ -231,7 +231,7 @@ export default function RecordScreen() {
     const d = new Date(iso);
     return language === 'en'
       ? `${d.getMonth() + 1}/${d.getDate()}`
-      : `${d.getMonth() + 1}月${d.getDate()}日`;
+      : d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
   };
   const totalSec = recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
 
@@ -332,7 +332,9 @@ export default function RecordScreen() {
                 ? (language === 'en' ? 'No recordings yet' : '还没有录音')
                 : (language === 'en'
                     ? `${recordings.length} clip(s) · total ${fmt(totalSec)}`
-                    : `共 ${recordings.length} 段 · 总计 ${fmt(totalSec)}`)}
+                    : t('record.count')
+                  .replace('{n}', String(recordings.length))
+                  .replace('{t}', fmt(totalSec)))}
             </Text>
           </View>
 
@@ -372,7 +374,14 @@ export default function RecordScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, alignItems: 'center' },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
   title: { fontSize: 22, fontWeight: 'bold', color: COLORS.text, marginTop: 8, marginBottom: 8 },
   intro: {
     fontSize: 13,

@@ -18,6 +18,7 @@
 
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ts } from './i18n';
 import {
   ErrorCode,
   endConnection,
@@ -174,7 +175,7 @@ export async function loadOffers(): Promise<PlanOffer[] | null> {
  */
 export async function purchasePlan(plan: PaidPlan): Promise<Entitlement> {
   if (!(await ensureConnection())) {
-    throw new Error('无法连接到 App Store，请稍后重试');
+    throw new Error(ts('iap.err.connect'));
   }
 
   const sku = PRODUCT_IDS[plan];
@@ -242,7 +243,7 @@ async function applyPurchase(purchase: Purchase): Promise<Entitlement> {
 
   const entitlement = entitlementFromPurchase(purchase);
   if (!entitlement) {
-    throw new Error('购买成功，但未能识别订阅方案');
+    throw new Error(ts('iap.err.unknownPlan'));
   }
   await saveEntitlement(entitlement);
   return entitlement;
@@ -255,7 +256,7 @@ async function applyPurchase(purchase: Purchase): Promise<Entitlement> {
 /** 恢复购买（Apple 要求：有订阅的 App 必须提供恢复入口） */
 export async function restorePurchasesAsync(): Promise<Entitlement | null> {
   if (!(await ensureConnection())) {
-    throw new Error('无法连接到 App Store，请稍后重试');
+    throw new Error(ts('iap.err.connect'));
   }
 
   const purchases = await getAvailablePurchases({
@@ -447,28 +448,28 @@ function toFriendlyError(error: PurchaseError | unknown): Error {
   const code = (error as PurchaseError | undefined)?.code;
 
   if (code === ErrorCode.UserCancelled) {
-    const err = new Error('已取消购买') as Error & { userCancelled?: boolean };
+    const err = new Error(ts('iap.err.cancelled')) as Error & { userCancelled?: boolean };
     err.userCancelled = true;
     return err;
   }
   if (code === ErrorCode.Pending) {
-    return new Error('购买已提交，正在等待家长确认');
+    return new Error(ts('iap.err.pending'));
   }
   if (code === ErrorCode.ItemUnavailable || code === ErrorCode.SkuNotFound) {
-    return new Error('该订阅暂时不可用，请稍后再试');
+    return new Error(ts('iap.err.unavailable'));
   }
   if (code === ErrorCode.NetworkError || code === ErrorCode.ServiceError) {
-    return new Error('网络异常，请检查网络后重试');
+    return new Error(ts('iap.err.network'));
   }
   if (code === ErrorCode.AlreadyOwned) {
-    return new Error('你已经订阅了该方案');
+    return new Error(ts('iap.err.already'));
   }
 
   const message = (error as PurchaseError | undefined)?.message;
-  return new Error(message || '购买失败，请稍后重试');
+  return new Error(message || ts('iap.err.failed'));
 }
 
 function wrapError(err: unknown): Error {
   if (err instanceof Error) return err;
-  return new Error(typeof err === 'string' ? err : '购买失败，请稍后重试');
+  return new Error(typeof err === 'string' ? err : ts('iap.err.failed'));
 }

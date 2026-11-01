@@ -5,6 +5,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
 import { getProgress, getStories, getChildQAs, getChildQuizzes, type ChildQA, type ChildQuiz } from '../../services/storage';
 import type { Story } from '../../types';
+import { useLanguage } from '../../hooks/useLanguage';
 
 const RACCO_IDLE_SIZE = 80;
 
@@ -19,8 +20,11 @@ function localMonthStr(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 }
-function monthLabel(monthStr: string) {
-  return `${parseInt(monthStr.split('-')[1], 10)}月`;
+const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function monthLabel(monthStr: string, lang: 'zh' | 'en') {
+  const n = parseInt(monthStr.split('-')[1], 10);
+  return lang === 'en' ? EN_MONTHS[n - 1] : `${n}月`;
 }
 
 interface StatCard {
@@ -30,6 +34,9 @@ interface StatCard {
 }
 
 export default function StatisticsPage() {
+  const { t, language } = useLanguage();
+  /** 日期/时间跟随界面语言：英文包下不要再出现 2026-11-02 的 zh-CN 格式 */
+  const localeTag = language === 'en' ? 'en-US' : 'zh-CN';
   const [loaded, setLoaded] = useState(false);
   const [cards, setCards] = useState<StatCard[]>([]);
   const [months, setMonths] = useState<string[]>([]);
@@ -49,12 +56,12 @@ export default function StatisticsPage() {
       const recordingCount = stories.filter((s) => (s.type as string) === 'recording' || !!s.audioUri).length;
 
       setCards([
-        { icon: '📖', label: '总听故事数', value: p.listenedStories.length },
-        { icon: '🤖', label: 'AI生成故事数', value: aiCount },
-        { icon: '✈️', label: '旅行打卡次数', value: p.checkIns.length },
-        { icon: '🎙️', label: '孩子录音数', value: recordingCount },
-        { icon: '🔥', label: '连续打卡天数', value: p.streakDays },
-        { icon: '🏅', label: '已获得勋章数', value: p.badges.length },
+        { icon: '📖', label: t('stats.card.listened'), value: p.listenedStories.length },
+        { icon: '🤖', label: t('stats.card.ai'), value: aiCount },
+        { icon: '✈️', label: t('stats.card.checkins'), value: p.checkIns.length },
+        { icon: '🎙️', label: t('stats.card.recordings'), value: recordingCount },
+        { icon: '🔥', label: t('stats.card.streak'), value: p.streakDays },
+        { icon: '🏅', label: t('stats.card.badges'), value: p.badges.length },
       ]);
 
       // 最近 7 个月
@@ -73,16 +80,16 @@ export default function StatisticsPage() {
         log
           .filter((l) => localDateStr(l.at) === todayStr)
           .map((l) => ({
-            title: l.title || '未命名故事',
-            time: new Date(l.at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+            title: l.title || t('stats.unknownStory'),
+            time: new Date(l.at).toLocaleTimeString(localeTag, { hour: '2-digit', minute: '2-digit' }),
           })),
       );
 
       // 历史记录（最新在前，最多 50 条）
       setHistoryList(
         log.slice(0, 50).map((l) => ({
-          title: l.title || '未命名故事',
-          date: new Date(l.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }),
+          title: l.title || t('stats.unknownStory'),
+          date: new Date(l.at).toLocaleDateString(localeTag, { month: 'numeric', day: 'numeric' }),
         })),
       );
 
@@ -93,7 +100,7 @@ export default function StatisticsPage() {
 
       setLoaded(true);
     })();
-  }, []);
+  }, [t, localeTag]);
 
   const maxCount = Math.max(1, ...monthlyCounts);
 
@@ -102,18 +109,18 @@ export default function StatisticsPage() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.raccoTop}>
           <Racco state="idle" size={RACCO_IDLE_SIZE} />
-          <Text style={styles.raccoLabel}>让我来看看你的数据！</Text>
+          <Text style={styles.raccoLabel}>{t('stats.raccoLabel')}</Text>
         </View>
 
         {!loaded ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={COLORS.purple} />
-            <Text style={styles.loadingText}>正在读取数据…</Text>
+            <Text style={styles.loadingText}>{t('stats.loading')}</Text>
           </View>
         ) : (
           <>
             {/* Stats Grid */}
-            <Text style={styles.sectionTitle}>数据统计</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.overview')}</Text>
             <View style={styles.grid}>
               {cards.map((card, i) => (
                 <View key={i} style={styles.card}>
@@ -125,7 +132,7 @@ export default function StatisticsPage() {
             </View>
 
             {/* Monthly Bar Chart */}
-            <Text style={styles.sectionTitle}>每月听故事数</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.monthly')}</Text>
             <View style={styles.chartContainer}>
               <View style={styles.chartArea}>
                 {months.map((m, i) => {
@@ -133,7 +140,7 @@ export default function StatisticsPage() {
                   return (
                     <View key={i} style={styles.barGroup}>
                       <View style={[styles.bar, { height: Math.max(monthlyCounts[i] > 0 ? 6 : 0, height) }]} />
-                      <Text style={styles.barLabel}>{monthLabel(m)}</Text>
+                      <Text style={styles.barLabel}>{monthLabel(m, language)}</Text>
                       <Text style={styles.barValue}>{monthlyCounts[i]}</Text>
                     </View>
                   );
@@ -142,10 +149,10 @@ export default function StatisticsPage() {
             </View>
 
             {/* 今日收听 */}
-            <Text style={styles.sectionTitle}>🌞 今日收听</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.today')}</Text>
             <View style={styles.listCard}>
               {todayList.length === 0 ? (
-                <Text style={styles.emptyText}>今天还没有听故事哦～</Text>
+                <Text style={styles.emptyText}>{t('stats.empty.today')}</Text>
               ) : (
                 todayList.map((it, i) => (
                   <View key={i} style={styles.listRow}>
@@ -158,10 +165,10 @@ export default function StatisticsPage() {
             </View>
 
             {/* 历史记录 */}
-            <Text style={styles.sectionTitle}>📚 历史记录</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.history')}</Text>
             <View style={styles.listCard}>
               {historyList.length === 0 ? (
-                <Text style={styles.emptyText}>还没有收听记录</Text>
+                <Text style={styles.emptyText}>{t('stats.empty.history')}</Text>
               ) : (
                 historyList.map((it, i) => (
                   <View key={i} style={[styles.listRow, i < historyList.length - 1 && styles.listRowBorder]}>
@@ -174,35 +181,37 @@ export default function StatisticsPage() {
             </View>
 
             {/* 孩子答题（后台可见，含对错） */}
-            <Text style={styles.sectionTitle}>📝 孩子答题</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.quiz')}</Text>
             <View style={styles.listCard}>
               {childQuizzes.length === 0 ? (
-                <Text style={styles.emptyText}>孩子还没有答题哦～</Text>
+                <Text style={styles.emptyText}>{t('stats.empty.quiz')}</Text>
               ) : (
                 childQuizzes.slice(0, 20).map((q, i) => (
                   <View key={q.id} style={[styles.quizRow, i < childQuizzes.slice(0, 20).length - 1 && styles.listRowBorder]}>
                     <Text style={styles.qaQ}>❓ {q.question}</Text>
                     <Text style={styles.qaA}>
                       {q.isCorrect ? '✅ ' : '❌ '}
-                      正确：{q.correctText} · 孩子选了：{q.chosen}
+                      {t('stats.quiz.line')
+                        .replace('{a}', q.correctText)
+                        .replace('{b}', q.chosen)}
                     </Text>
-                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</Text>
+                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString(localeTag, { month: 'numeric', day: 'numeric' })}</Text>
                   </View>
                 ))
               )}
             </View>
 
             {/* 孩子提问（后台可见） */}
-            <Text style={styles.sectionTitle}>💬 孩子提问</Text>
+            <Text style={styles.sectionTitle}>{t('stats.section.qa')}</Text>
             <View style={styles.listCard}>
               {childQAs.length === 0 ? (
-                <Text style={styles.emptyText}>孩子还没有提问哦～</Text>
+                <Text style={styles.emptyText}>{t('stats.empty.qa')}</Text>
               ) : (
                 childQAs.slice(0, 20).map((q, i) => (
                   <View key={q.id} style={[styles.qaRow, i < childQAs.slice(0, 20).length - 1 && styles.listRowBorder]}>
                     <Text style={styles.qaQ}>🧒 {q.question}</Text>
                     <Text style={styles.qaA}>🤖 {q.answer}</Text>
-                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</Text>
+                    <Text style={styles.qaMeta}>{q.storyTitle} · {new Date(q.at).toLocaleDateString(localeTag, { month: 'numeric', day: 'numeric' })}</Text>
                   </View>
                 ))
               )}

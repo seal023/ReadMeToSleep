@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ts } from './i18n';
 import { getProgress } from './storage';
 import { isPremium, type Plan } from './iap';
 
@@ -150,8 +151,8 @@ export async function checkStoryGate(): Promise<GateResult> {
   if (snap.storiesRemaining !== null && snap.storiesRemaining <= 0) {
     return {
       allowed: false,
-      title: '今日额度已用完',
-      message: `免费版每天可以生成 ${FREE_DAILY_STORY_LIMIT} 个故事，明天再来吧。升级会员即可无限生成。`,
+      title: ts('gate.dailyTitle'),
+      message: ts('gate.dailyMsg').replace('{n}', String(FREE_DAILY_STORY_LIMIT)),
     };
   }
   return { allowed: true };
@@ -180,8 +181,8 @@ export async function checkCheckInGate(): Promise<GateResult> {
   if (snap.checkInsRemaining !== null && snap.checkInsRemaining <= 0) {
     return {
       allowed: false,
-      title: '打卡次数已用完',
-      message: `免费版可以打卡 ${FREE_TOTAL_CHECKIN_LIMIT} 个景点，升级会员即可无限打卡。`,
+      title: ts('gate.checkinTitle'),
+      message: ts('gate.checkinMsg').replace('{n}', String(FREE_TOTAL_CHECKIN_LIMIT)),
     };
   }
   return { allowed: true };

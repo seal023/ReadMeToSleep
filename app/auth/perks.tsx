@@ -18,6 +18,7 @@ import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
 import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
+import { useLanguage } from '@/hooks/useLanguage';
 
 interface Perk {
   emoji: string;
@@ -27,32 +28,36 @@ interface Perk {
   member: string;
 }
 
-const PERKS: Perk[] = [
-  {
-    emoji: '🎙️',
-    title: '用你自己的声音讲',
-    desc: '录一段话，AI 学会你的音色，之后每篇故事都用你的声音念给孩子听。',
-    free: '可体验 1 次',
-    member: '不限次使用',
-  },
-  {
-    emoji: '📚',
-    title: '想听几个就听几个',
-    desc: '睡前听一个不过瘾？会员当天故事数量不设上限。',
-    free: '每天 1 个',
-    member: '无限',
-  },
-  {
-    emoji: '🗺️',
-    title: '走到哪里，故事讲到哪里',
-    desc: '旅行打卡把城市地标变成专属故事，路上也能哄睡。',
-    free: '共 3 次',
-    member: '无限',
-  },
-];
+/** 权益卡：文案走 i18n，随界面语言切换 */
+function buildPerks(t: (k: string) => string): Perk[] {
+  return [
+    {
+      emoji: '🎙️',
+      title: t('perks.p1.title'),
+      desc: t('perks.p1.desc'),
+      free: t('perks.p1.free'),
+      member: t('perks.p1.member'),
+    },
+    {
+      emoji: '📚',
+      title: t('perks.p2.title'),
+      desc: t('perks.p2.desc'),
+      free: t('perks.p2.free'),
+      member: t('perks.p2.member'),
+    },
+    {
+      emoji: '🗺️',
+      title: t('perks.p3.title'),
+      desc: t('perks.p3.desc'),
+      free: t('perks.p3.free'),
+      member: t('perks.p3.member'),
+    },
+  ];
+}
 
 export default function PerksScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const { isSignedIn } = useAuth();
 
   // 从登录页回来时（已登录）自动退回订阅页：不该让用户看完待遇再点一次。
@@ -79,18 +84,22 @@ export default function PerksScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.hero}>
           <Racco state="happy" size={78} />
-          <Text style={styles.title}>开通会员，你可以</Text>
+          <Text style={styles.title}>{t('perks.title')}</Text>
         </View>
 
-        {PERKS.map((p) => (
+        {buildPerks(t).map((p) => (
           <View key={p.title} style={styles.card}>
             <Text style={styles.cardEmoji}>{p.emoji}</Text>
             <View style={styles.cardBody}>
               <Text style={styles.cardTitle}>{p.title}</Text>
               <Text style={styles.cardDesc}>{p.desc}</Text>
               <View style={styles.compareRow}>
-                <Text style={styles.freeTag}>免费 · {p.free}</Text>
-                <Text style={styles.memberTag}>会员 · {p.member}</Text>
+                <Text style={styles.freeTag}>
+                  {t('perks.freeTag').replace('{v}', p.free)}
+                </Text>
+                <Text style={styles.memberTag}>
+                  {t('perks.memberTag').replace('{v}', p.member)}
+                </Text>
               </View>
             </View>
           </View>
@@ -98,28 +107,25 @@ export default function PerksScreen() {
 
         {/* 为什么要登录 */}
         <View style={styles.whyCard}>
-          <Text style={styles.whyTitle}>💡 为什么要先登录？</Text>
+          <Text style={styles.whyTitle}>{t('perks.whyTitle')}</Text>
           <Text style={styles.whyBody}>
-            你的会员是记在账号上的，不是记在这台手机上。{'\n'}
-            {`登录后，换新手机、重装 App，用同一个账号${
-              EMAIL_LOGIN_ENABLED ? '（Apple 或邮箱）' : '（Apple 账号）'
-            }登录，会员会自动回来，不用再付一次钱。`}
+            {EMAIL_LOGIN_ENABLED ? t('perks.whyBodyEmail') : t('perks.whyBodyApple')}
           </Text>
         </View>
 
         <View style={styles.cta}>
-          <CartoonButton title="登录并开通会员" emoji="🎁" full onPress={goNext} />
+          <CartoonButton title={t('perks.cta')} emoji="🎁" full onPress={goNext} />
         </View>
 
         <Text style={styles.notice}>
-          订阅通过 App Store 扣款，可随时在系统设置中取消。{'\n'}
+          {t('perks.notice')}{'\n'}
           <Text
             style={styles.noticeLink}
             onPress={() =>
               Linking.openURL('https://seal023.github.io/ReadMeToSleep/terms.html').catch(() => {})
             }
           >
-            《用户协议》
+            {t('perks.noticeTerms')}
           </Text>
           {' · '}
           <Text
@@ -128,12 +134,12 @@ export default function PerksScreen() {
               Linking.openURL('https://seal023.github.io/ReadMeToSleep/privacy.html').catch(() => {})
             }
           >
-            《隐私政策》
+            {t('perks.noticePrivacy')}
           </Text>
         </Text>
 
         <Text style={styles.skip} onPress={() => router.back()}>
-          再想想，先回去看看
+          {t('perks.skip')}
         </Text>
       </ScrollView>
     </CartoonScreen>

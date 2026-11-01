@@ -4,6 +4,7 @@ import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpaci
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
+import { useLanguage } from '../../hooks/useLanguage';
 
 interface CardDef {
   icon: string;
@@ -13,30 +14,48 @@ interface CardDef {
   action?: () => void;
 }
 
+/** 内容最大宽度：iPad 横屏下卡片不会被拉成一整屏那么宽 */
+const MAX_CONTENT_WIDTH = 1024;
+
 // 家长页沿用全局 3D 粘土风吉祥物（原 raccoon-parent.png 已并入 assets/clay）
 export default function ParentHub() {
-  const w = useWindowDimensions().width;
-  const cardWidth = useMemo(() => (w - 64 - 12) / 2, [w]);
+  const { t } = useLanguage();
+  const { width, height } = useWindowDimensions();
+
+  /**
+   * iPad 是这个 App 的主要设备，横屏是主场景。
+   * 横屏时一行 3 张卡、竖屏 2 张，卡片宽度按「可用宽度 ÷ 列数」算，
+   * 并给内容区一个上限，避免 1366pt 宽屏上每张卡片宽过 600pt 显得松散。
+   */
+  const { cardWidth, columns } = useMemo(() => {
+    const cols = width >= 900 ? 3 : 2;
+    const contentW = Math.min(width, MAX_CONTENT_WIDTH) - 32;
+    const gap = 12;
+    return { cardWidth: (contentW - gap * (cols - 1)) / cols, columns: cols };
+  }, [width]);
+
+  /** 横屏高度紧张时收掉大浣熊，把首屏留给功能卡 */
+  const compact = height < 500;
 
   const CARDS: CardDef[] = useMemo(() => [
-    { icon: '🛡️', title: '敏感词管理', desc: '管理睡眠内容的敏感词汇过滤', href: '/(parent)/sensitive-words' },
-    { icon: '😴', title: '睡眠定时', desc: '到点自动停止播放，防止孩子睡着后还在听', href: '/(parent)/sleep-timer' },
-    { icon: '🎤', title: '孩子录音收听', desc: '收听孩子在应用中的语音记录', href: '/(parent)/child-recordings' },
-    { icon: '🔊', title: '声音克隆', desc: '克隆自定义哄睡声源', href: '/(parent)/voice-clone' },
-    { icon: '💳', title: '订阅管理', desc: '查看和续费会员订阅', href: '/(parent)/subscription' },
-    { icon: '👤', title: '账号与凭证', desc: '登录账号、查看缴费凭证、换机找回', href: '/(parent)/account' },
-    { icon: '📊', title: '使用统计', desc: '查看使用情况与数据统计', href: '/(parent)/statistics' },
+    { icon: '🛡️', title: t('parentHub.card.sensitive.title'), desc: t('parentHub.card.sensitive.desc'), href: '/(parent)/sensitive-words' },
+    { icon: '😴', title: t('parentHub.card.sleep.title'), desc: t('parentHub.card.sleep.desc'), href: '/(parent)/sleep-timer' },
+    { icon: '🎤', title: t('parentHub.card.recordings.title'), desc: t('parentHub.card.recordings.desc'), href: '/(parent)/child-recordings' },
+    { icon: '🔊', title: t('parentHub.card.voice.title'), desc: t('parentHub.card.voice.desc'), href: '/(parent)/voice-clone' },
+    { icon: '💳', title: t('parentHub.card.subscription.title'), desc: t('parentHub.card.subscription.desc'), href: '/(parent)/subscription' },
+    { icon: '👤', title: t('parentHub.card.account.title'), desc: t('parentHub.card.account.desc'), href: '/(parent)/account' },
+    { icon: '📊', title: t('parentHub.card.stats.title'), desc: t('parentHub.card.stats.desc'), href: '/(parent)/statistics' },
     // 配色页在根级路由（孩子端设置页也能直接进），这里只是同一个页面的家长入口
-    { icon: '🎨', title: '界面配色', desc: '4 套主题：糖果 / 森林 / 星空 / 樱花（孩子端也能进）', href: '/theme' },
-    { icon: '💌', title: '给孩子写悄悄话', desc: '给某篇故事写下专属鼓励', href: '/(parent)/parent-comments' },
-    { icon: '🧪', title: '奖励测试', desc: '测试用：直接推进等级/勋章，不必逐条听完', href: '/(parent)/reward-test' },
-    { icon: '🚪', title: '退出家长模式', desc: '返回孩子界面（不是退出账号）', action: () => {
-      Alert.alert('确认退出', '确定要退出家长模式吗？', [
-        { text: '取消' },
-        { text: '退出', style: 'destructive', onPress: () => router.back() },
+    { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },
+    { icon: '💌', title: t('parentHub.card.comments.title'), desc: t('parentHub.card.comments.desc'), href: '/(parent)/parent-comments' },
+    { icon: '🧪', title: t('parentHub.card.testing.title'), desc: t('parentHub.card.testing.desc'), href: '/(parent)/reward-test' },
+    { icon: '🚪', title: t('parentHub.card.exit.title'), desc: t('parentHub.card.exit.desc'), action: () => {
+      Alert.alert(t('parentHub.exitTitle'), t('parentHub.exitMsg'), [
+        { text: t('common.cancel') },
+        { text: t('parentHub.exit'), style: 'destructive', onPress: () => router.back() },
       ]);
     }},
-  ], []);
+  ], [t]);
 
   const handleCardPress = (card: CardDef) => {
     if (card.href) {
@@ -49,22 +68,28 @@ export default function ParentHub() {
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {/* 封面英雄区：柔和光晕 + 星星点缀 + 更大的小浣熊，比原来单张小图更亲切 */}
-        <View style={styles.hero}>
-          <View style={styles.heroGlow} pointerEvents="none" />
-          <Racco state="idle" size={150} />
-        </View>
-        <Text style={styles.header}>家长模式</Text>
-        <Text style={styles.headerSub}>在这里管理声音、睡眠时长与孩子的收听记录</Text>
-        <View style={styles.grid}>
-          {CARDS.map((card, i) => (
-            <TouchableOpacity key={i} style={{ ...styles.card, width: cardWidth }} onPress={() => handleCardPress(card)}>
-              <Text style={styles.icon}>{card.icon}</Text>
-              <Text style={styles.cardTitle}>{card.title}</Text>
-              <Text style={styles.desc}>{card.desc}</Text>
-              <Text style={styles.arrow}>›</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.page}>
+          {/* 封面英雄区：柔和光晕 + 星星点缀 + 更大的小浣熊，比原来单张小图更亲切 */}
+          <View style={[styles.hero, compact && styles.heroCompact]}>
+            <View style={[styles.heroGlow, compact && styles.heroGlowCompact]} pointerEvents="none" />
+            <Racco state="idle" size={compact ? 84 : 150} />
+          </View>
+          <Text style={[styles.header, compact && styles.headerCompact]}>{t('parentHub.title')}</Text>
+          <Text style={styles.headerSub}>{t('parentHub.sub')}</Text>
+          <View style={styles.grid}>
+            {CARDS.map((card, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.card, { width: cardWidth }]}
+                onPress={() => handleCardPress(card)}
+              >
+                <Text style={styles.icon}>{card.icon}</Text>
+                <Text style={styles.cardTitle}>{card.title}</Text>
+                <Text style={styles.desc}>{card.desc}</Text>
+                <Text style={styles.arrow}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </ScrollView>
     </CartoonScreen>
@@ -74,7 +99,7 @@ export default function ParentHub() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingBottom: 32 },
-  raccoWrap: { alignItems: 'center', paddingTop: 16, marginBottom: 4 },
+  page: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
   hero: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -82,6 +107,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     position: 'relative',
   },
+  heroCompact: { paddingTop: 8, paddingBottom: 0 },
   heroGlow: {
     position: 'absolute',
     top: 8,
@@ -90,7 +116,15 @@ const styles = StyleSheet.create({
     borderRadius: 89,
     backgroundColor: 'rgba(255, 203, 92, 0.34)',
   },
-  header: { fontSize: 22, textAlign: 'center', color: COLORS.text, marginBottom: 6, fontFamily: FONT.rounded },
+  heroGlowCompact: { top: 4, width: 104, height: 104, borderRadius: 52 },
+  header: {
+    fontSize: 22,
+    textAlign: 'center',
+    color: COLORS.text,
+    marginBottom: 6,
+    fontFamily: FONT.rounded,
+  },
+  headerCompact: { fontSize: 18, marginBottom: 2 },
   headerSub: {
     fontSize: 13,
     textAlign: 'center',
