@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -e
 set -x
 
@@ -69,7 +69,61 @@ echo "=== Secret check done ==="
 echo ".env generated successfully"
 set -x
 
-brew install node || true
+# ---------------------------------------------------------------
+# Node.js 获取（构建 72 的失败点，勿再退化成「只靠 brew」）
+#
+# 2026-11-01 构建 72 失败链路：
+#   brew install node → Homebrew 自身需升级内置 portable-ruby
+#   → 从 ghcr.io 拉包被限流/拦截 → "Failed to upgrade Homebrew Portable Ruby!"
+#   → brew 完全不可用 → node 没装上 → `node -v` 报 command not found
+#   → set -e 触发，脚本 exit 127，整个 Archive 失败。
+#
+# 现在改成三级兜底，任一级成功即可，且最脆弱的一级放最后：
+#   1) 镜像自带 / 常见前缀里的 node（最快，零网络）
+#   2) nodejs.org 官方 mac 二进制包直下（不经过 Homebrew，避开 ghcr.io）
+#   3) brew install node（best-effort，失败只告警不中断）
+# ---------------------------------------------------------------
+node_ready() { command -v node >/dev/null 2>&1; }
+
+if ! node_ready; then
+  for p in /usr/local/bin /opt/homebrew/bin /opt/homebrew/opt/node/bin /usr/local/opt/node/bin; do
+    if [ -x "$p/node" ]; then
+      export PATH="$p:$PATH"
+      echo "found node at $p"
+      break
+    fi
+  done
+fi
+
+if ! node_ready; then
+  # Node 22 LTS：满足 Expo SDK 57 / RN 0.86 的 >= 20 要求。
+  # 版本号写死（不查 latest），保证下载地址长期可复现。
+  NODE_VERSION="v22.11.0"
+  case "$(uname -m)" in
+    arm64) NODE_ARCH="arm64" ;;
+    *)     NODE_ARCH="x64" ;;
+  esac
+  NODE_DIR="$HOME/.ci-node"
+  echo "node not found -> downloading official binary $NODE_VERSION ($NODE_ARCH)"
+  rm -rf "$NODE_DIR"
+  mkdir -p "$NODE_DIR"
+  curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 20 \
+    "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-${NODE_ARCH}.tar.gz" -o /tmp/node.tar.gz
+  tar -xzf /tmp/node.tar.gz -C "$NODE_DIR" --strip-components=1
+  export PATH="$NODE_DIR/bin:$PATH"
+fi
+
+if ! node_ready; then
+  echo "node still missing -> last resort: brew (may be blocked by ghcr.io)"
+  HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ANALYTICS=1 \
+    brew install node || echo "WARN: brew install node failed"
+fi
+
+if ! node_ready; then
+  echo "ERROR: node unavailable, abort. Check nodejs.org connectivity or the image's node path"
+  exit 1
+fi
+
 node -v
 npm -v
 
