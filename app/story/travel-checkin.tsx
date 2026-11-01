@@ -922,10 +922,10 @@ const styles = StyleSheet.create({
 
   // Buttons
   primaryBtn: {
-    backgroundColor: '#F7A072', borderRadius: 30, paddingVertical: 14, paddingHorizontal: 40,
+    backgroundColor: '#EE8B5E', borderRadius: 30, paddingVertical: 14, paddingHorizontal: 40,
     elevation: 2, marginTop: 8,
   },
-  primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#FFF' },
+  primaryBtnText: { fontSize: 16, fontWeight: 'bold', color: '#3D3229' },
   primaryBtnDisabled: { backgroundColor: '#D8CFC5', elevation: 0 },
   playBtn: {
     backgroundColor: '#9B7EDE', borderRadius: 26, paddingVertical: 12, paddingHorizontal: 32,

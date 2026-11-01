@@ -130,14 +130,19 @@ interface CartoonButtonProps {
 }
 
 const VARIANT_BG: Record<ButtonVariant, string> = {
-  primary: COLORS.orange,
+  /**
+   * 主按钮用「深一档的蜜桃」(orangeDeep)，配深咖字。
+   * 原来浅蜜桃 #F7A072 + 白字只有 2.7:1 对比度，小孩在暗光下看不清；
+   * 现在 #EE8B5E + #3D3229 = 5.0:1，达到 WCAG AA 正文标准。
+   */
+  primary: COLORS.orangeDeep,
   secondary: COLORS.purple,
   soft: COLORS.pinkLight,
   danger: '#FF7A7A',
 };
 
 const VARIANT_TEXT: Record<ButtonVariant, string> = {
-  primary: COLORS.white,
+  primary: COLORS.onPrimary,
   secondary: COLORS.white,
   soft: COLORS.text,
   danger: COLORS.white,

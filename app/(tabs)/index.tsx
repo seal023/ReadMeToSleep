@@ -723,10 +723,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   onboardBtn: {
-    backgroundColor: '#F7A072',
+    // 深一档蜜桃 + 深咖字：对比度 5:1（原来的浅蜜桃配白字只有 2.7:1）
+    backgroundColor: '#EE8B5E',
     borderRadius: 26,
     paddingVertical: 14,
     paddingHorizontal: 48,
   },
-  onboardBtnText: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  onboardBtnText: { fontSize: 17, fontWeight: '700', color: '#3D3229' },
 });

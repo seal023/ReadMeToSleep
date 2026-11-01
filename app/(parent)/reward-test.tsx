@@ -352,13 +352,13 @@ const styles = StyleSheet.create({
   },
   chipPrimaryText: { fontSize: 13, fontWeight: '700', color: '#F2827F' },
   primaryBtn: {
-    backgroundColor: '#F7A072',
+    backgroundColor: '#EE8B5E',
     borderRadius: 24,
     paddingVertical: 11,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  primaryText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  primaryText: { fontSize: 14, fontWeight: '700', color: '#3D3229' },
   dangerBtn: {
     backgroundColor: '#FFF0ED',
     borderRadius: 24,

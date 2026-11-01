@@ -1180,21 +1180,48 @@ export default function StoryPlayScreen() {
           </View>
         ) : null}
 
+        {/*
+          播放控制区：主次分明。
+          中间「播放 / 暂停」是核心操作，放大到 84pt（原 56pt 的 1.5 倍）；
+          左右快退 / 快进缩小到 48pt，退成辅助位，孩子一眼知道该按哪个。
+          原来播放、暂停、停止三个按钮同尺寸横排，视觉上不分主次，
+          且快进快退在另一行，操作时要来回找。
+        */}
         <View style={styles.controls}>
+          <TouchableOpacity
+            style={styles.seekControl}
+            onPress={() => handleSeekBy(-15)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.seekControlIcon}>⏪</Text>
+            <Text style={styles.seekControlLabel}>15</Text>
+          </TouchableOpacity>
+
           <Animated.View style={{ transform: [{ scale: playPulse }] }}>
             <TouchableOpacity
-              style={[styles.controlBtn, isPlaying && styles.controlBtnActive]}
-              onPress={handlePlay}
-              disabled={isPlaying}
+              style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+              onPress={isPlaying ? handlePause : handlePlay}
+              activeOpacity={0.9}
             >
-              <Text style={styles.controlIcon}>▶️</Text>
+              <Text style={styles.playIcon}>{isPlaying ? '⏸️' : '▶️'}</Text>
             </TouchableOpacity>
           </Animated.View>
-          <TouchableOpacity style={styles.controlBtn} onPress={handlePause} disabled={!isPlaying}>
-            <Text style={styles.controlIcon}>⏸️</Text>
+
+          <TouchableOpacity
+            style={styles.seekControl}
+            onPress={() => handleSeekBy(15)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.seekControlIcon}>⏩</Text>
+            <Text style={styles.seekControlLabel}>15</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlBtn} onPress={handleStop}>
-            <Text style={styles.controlIcon}>⏹️</Text>
+        </View>
+
+        <View style={styles.stopRow}>
+          <TouchableOpacity style={styles.stopBtn} onPress={handleStop} activeOpacity={0.8}>
+            <Text style={styles.stopBtnText}>
+              ⏹️ {uiLang === 'en' ? 'Stop' : '停止播放'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1212,15 +1239,6 @@ export default function StoryPlayScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-
-        <View style={styles.seekRow}>
-          <TouchableOpacity style={styles.seekBtn} onPress={() => handleSeekBy(-15)}>
-            <Text style={styles.seekBtnText}>⏪ 15秒</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.seekBtn} onPress={() => handleSeekBy(15)}>
-            <Text style={styles.seekBtnText}>15秒 ⏩</Text>
-          </TouchableOpacity>
-        </View>
 
         {sleepRemaining > 0 ? (
           <View style={styles.sleepBadge}>
@@ -1594,20 +1612,57 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#FF9A56',
   },
-  controls: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 16 },
-  controlBtn: {
-    width: 56, height: 56, borderRadius: 30, backgroundColor: '#F7A072',
-    justifyContent: 'center', alignItems: 'center', elevation: 2,
+  // ── 播放控制区：主按钮 84pt / 次按钮 48pt，主次差 1.75 倍 ──
+  controls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 30,
+    marginTop: 18,
   },
-  // 播放中：按钮高亮放大 + 暖色光晕，直观表示「正在播放」
-  controlBtnActive: {
+  // 核心：播放 / 暂停。原 56pt → 84pt（+50%），投影更重，一眼就是"主操作"
+  playBtn: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: '#EE8B5E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.55)',
+    shadowColor: '#E07B4F',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  // 播放中：更饱和的实心色 + 暖色光晕，直观表示「正在播放」
+  playBtnActive: {
     backgroundColor: '#FF6F3C',
-    borderWidth: 3, borderColor: '#FFE0CC',
-    shadowColor: '#F7A072', shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 12, elevation: 6,
+    borderColor: '#FFE0CC',
+    shadowOpacity: 0.6,
+    shadowRadius: 22,
+    elevation: 10,
   },
-  controlIcon: { fontSize: 22 },
-  seekRow: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 10 },
+  playIcon: { fontSize: 36 },
+  // 辅助：快退 / 快进 15 秒。原 56pt → 48pt，退成配角
+  seekControl: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FFE0CC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 1,
+  },
+  seekControlIcon: { fontSize: 18 },
+  seekControlLabel: { fontSize: 9, color: '#A8988A', marginTop: -2 },
+  // 停止：降级为文字按钮，不与播放抢视线
+  stopRow: { alignItems: 'center', marginTop: 10 },
+  stopBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
+  stopBtnText: { fontSize: 13, color: '#8A7B6E' },
   // 断点提示（v62 反馈 #2）：上次听到哪、可一键从头听
   resumeRow: {
     flexDirection: 'row',
@@ -1618,12 +1673,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   resumeText: { fontSize: 13, color: '#8A7B6E' },
-  resumeReset: { fontSize: 13, color: '#F7A072', fontWeight: '700' },
-  seekBtn: {
-    paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24, backgroundColor: '#FFF',
-    borderWidth: 1, borderColor: '#FFE0B2', elevation: 1,
-  },
-  seekBtnText: { fontSize: 14, color: '#F7A072', fontWeight: '700' },
+  resumeReset: { fontSize: 13, color: '#E07B4F', fontWeight: '700' },
   preparingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1675,14 +1725,14 @@ const styles = StyleSheet.create({
   qaLoadingText: { fontSize: 15, color: '#A8988A', marginTop: 16 },
 
   primaryBtn: {
-    backgroundColor: '#F7A072', borderRadius: 30, paddingVertical: 16, paddingHorizontal: 40,
+    backgroundColor: '#EE8B5E', borderRadius: 30, paddingVertical: 16, paddingHorizontal: 40,
     elevation: 2, marginTop: 10,
   },
   primaryBtn2: {
-    backgroundColor: '#F7A072', borderRadius: 30, paddingVertical: 18, paddingHorizontal: 52,
+    backgroundColor: '#EE8B5E', borderRadius: 30, paddingVertical: 18, paddingHorizontal: 52,
     elevation: 2, marginTop: 24, alignSelf: 'center',
   },
-  primaryBtnText: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  primaryBtnText: { fontSize: 18, fontWeight: 'bold', color: '#3D3229' },
 
   childQWrap: { marginTop: 16, backgroundColor: '#FFF', borderRadius: 22, padding: 16 },
   childQ: { fontSize: 16, color: '#3D3229', marginBottom: 12 },

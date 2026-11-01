@@ -1,5 +1,5 @@
 /**
- * constants/Colors.ts — 全 App 唯一的糖果色盘（马卡龙配色）
+ * constants/Colors.ts — 全 App 唯一的色盘（马卡龙糖果风）+ 4 套全局预设主题
  *
  * 设计原则（2026-11 视觉升级）：
  *  1. 暖白打底：不用死白 #FFFFFF，用奶油白 #FDF9F3，眼睛更舒服，也更像绘本纸。
@@ -12,37 +12,258 @@
  *    这样将来整体换肤只改这一个文件。
  *  - CANDY 是「裸色板」，用于需要强调的局部（勋章、标签、插画底色）。
  *  - 不要再在页面里硬编码 #xxxxxx 颜色（历史遗留的会逐步清掉）。
+ *
+ * ── 主题切换（2026-11 新增）──────────────────────────────
+ *  下方 THEMES 里预置 4 套完整色盘：candy（糖果系，默认）/ forest（森林系）
+ *  / starry（星空系）/ sakura（樱花系）。
+ *  换肤只需改一行：把 ACTIVE_THEME 改成想要的 key，全 App 立刻换色
+ *  （所有页面都是通过 COLORS / CANDY 取色的，没有二次定义）。
+ *  暂不做进用户 UI —— 留作以后节日换肤用。
  */
 
-// ── 裸色板：马卡龙糖果色 ────────────────────────────────
-export const CANDY = {
-  /** 蜜桃橙 —— 主行动色 */
-  peach: '#F7A072',
-  peachSoft: '#FFD9C2',
-  /** 草莓粉 —— 强调 / 收藏 */
-  berry: '#EE7EA4',
-  berrySoft: '#FFD6E4',
-  /** 葡萄紫 —— 次行动色（原 #6c5ce7 系） */
-  grape: '#9B7EDE',
-  grapeSoft: '#E2D8FB',
-  /** 天空蓝 —— 信息 / 旅行 */
+// ══════════════════════════════════════════════════════════
+// 主题类型
+// ══════════════════════════════════════════════════════════
+
+export type ThemeKey = 'candy' | 'forest' | 'starry' | 'sakura';
+
+export interface ThemePalette {
+  readonly key: ThemeKey;
+  /** 中文名，仅用于调试 / 日志 */
+  readonly name: string;
+
+  /** 主行动色（主按钮、进度条、强调数字） */
+  readonly primary: string;
+  /**
+   * 主按钮底色：比 primary 深一档。
+   * 浅蜜桃上配白字对比度只有 2.7:1（儿童看不清），
+   * 所以主按钮改用 primaryDeep + 深咖字 onPrimary，实测 5:1。
+   */
+  readonly primaryDeep: string;
+  readonly primarySoft: string;
+
+  /** 次行动色（次要按钮、链接） */
+  readonly secondary: string;
+  readonly secondarySoft: string;
+
+  /** 强调色（收藏、角标、徽章） */
+  readonly accent: string;
+  readonly accentSoft: string;
+
+  /** 页面底色 / 卡片 */
+  readonly bg: string;
+  readonly card: string;
+  readonly cardSoft: string;
+  /** 背景三段渐变 */
+  readonly gradient: readonly [string, string, string];
+
+  /** 文字（深咖系，不用纯黑） */
+  readonly text: string;
+  readonly textSub: string;
+  readonly textLight: string;
+  /** 主按钮上的文字：浅底配深字，保证对比度 */
+  readonly onPrimary: string;
+
+  /** 功能色 */
+  readonly sky: string;
+  readonly skySoft: string;
+  readonly mint: string;
+  readonly mintSoft: string;
+  readonly lemon: string;
+  readonly lemonSoft: string;
+  readonly coral: string;
+  readonly coralSoft: string;
+
+  /** 分隔线 / 阴影 */
+  readonly divider: string;
+  readonly shadow: string;
+}
+
+// ══════════════════════════════════════════════════════════
+// 4 套预设主题
+// ══════════════════════════════════════════════════════════
+
+/** ① 糖果系（默认）：蜜桃主色 + 草莓强调 + 暖白/淡粉底 */
+const CANDY_THEME: ThemePalette = {
+  key: 'candy',
+  name: '糖果系',
+  primary: '#F7A072',
+  primaryDeep: '#EE8B5E',
+  primarySoft: '#FFD9C2',
+  secondary: '#9B7EDE',
+  secondarySoft: '#E2D8FB',
+  accent: '#EE7EA4',
+  accentSoft: '#FFD6E4',
+  bg: '#FDF9F3',
+  card: '#FFFFFF',
+  cardSoft: '#FFFCF7',
+  gradient: ['#FDF9F3', '#FFF1F4', '#FDEFE3'],
+  text: '#3D3229',
+  textSub: '#7A6A5D',
+  textLight: '#A8988A',
+  onPrimary: '#3D3229',
   sky: '#7FBEEB',
   skySoft: '#D3EAFB',
-  /** 薄荷绿 —— 成功 / 已完成 */
   mint: '#5FC3A4',
   mintSoft: '#D2F2E6',
-  /** 柠檬黄 —— 提示 / 星星 */
   lemon: '#FFD166',
   lemonSoft: '#FFEFC2',
-  /** 珊瑚 —— 危险 / 删除 */
   coral: '#F2827F',
   coralSoft: '#FFDCDA',
+  divider: '#F2E8DC',
+  shadow: '#8A6A55',
+};
+
+/** ② 森林系：薄荷绿主色 + 柠檬黄辅色 + 极淡草绿底 */
+const FOREST_THEME: ThemePalette = {
+  key: 'forest',
+  name: '森林系',
+  primary: '#5FC3A4',
+  primaryDeep: '#43A585',
+  primarySoft: '#D2F2E6',
+  secondary: '#FFD166',
+  secondarySoft: '#FFEFC2',
+  accent: '#F2827F',
+  accentSoft: '#FFDCDA',
+  bg: '#F6FBF2',
+  card: '#FFFFFF',
+  cardSoft: '#FBFEF8',
+  gradient: ['#F6FBF2', '#E7F5DF', '#FDFCF3'],
+  text: '#2F3A2E',
+  textSub: '#6B7A66',
+  textLight: '#9BAA95',
+  onPrimary: '#1F3B31',
+  sky: '#7FBEEB',
+  skySoft: '#D3EAFB',
+  mint: '#5FC3A4',
+  mintSoft: '#D2F2E6',
+  lemon: '#FFD166',
+  lemonSoft: '#FFEFC2',
+  coral: '#F2827F',
+  coralSoft: '#FFDCDA',
+  divider: '#E4F0DC',
+  shadow: '#5E7A55',
+};
+
+/** ③ 星空系：天空蓝主色 + 葡萄紫辅色 + 极淡星空蓝底 */
+const STARRY_THEME: ThemePalette = {
+  key: 'starry',
+  name: '星空系',
+  primary: '#6FA8E8',
+  primaryDeep: '#548FD4',
+  primarySoft: '#D3EAFB',
+  secondary: '#9B7EDE',
+  secondarySoft: '#E2D8FB',
+  accent: '#FFD166',
+  accentSoft: '#FFEFC2',
+  bg: '#F2F7FD',
+  card: '#FFFFFF',
+  cardSoft: '#F8FBFF',
+  gradient: ['#F2F7FD', '#E4EEFB', '#F7F4FF'],
+  text: '#2C3444',
+  textSub: '#66718A',
+  textLight: '#98A2B8',
+  onPrimary: '#1E2E45',
+  sky: '#7FBEEB',
+  skySoft: '#D3EAFB',
+  mint: '#5FC3A4',
+  mintSoft: '#D2F2E6',
+  lemon: '#FFD166',
+  lemonSoft: '#FFEFC2',
+  coral: '#F2827F',
+  coralSoft: '#FFDCDA',
+  divider: '#E0EAF7',
+  shadow: '#5A6B8C',
+};
+
+/** ④ 樱花系：草莓粉主色 + 珊瑚红辅色 + 极淡樱花粉底 */
+const SAKURA_THEME: ThemePalette = {
+  key: 'sakura',
+  name: '樱花系',
+  primary: '#EE7EA4',
+  primaryDeep: '#DE6690',
+  primarySoft: '#FFD6E4',
+  secondary: '#F2827F',
+  secondarySoft: '#FFDCDA',
+  accent: '#FFD166',
+  accentSoft: '#FFEFC2',
+  bg: '#FFF7F9',
+  card: '#FFFFFF',
+  cardSoft: '#FFFBFD',
+  gradient: ['#FFF7F9', '#FFEAF1', '#FDF5FF'],
+  text: '#3F3038',
+  textSub: '#7C6A73',
+  textLight: '#AC9AA3',
+  onPrimary: '#3A2530',
+  sky: '#7FBEEB',
+  skySoft: '#D3EAFB',
+  mint: '#5FC3A4',
+  mintSoft: '#D2F2E6',
+  lemon: '#FFD166',
+  lemonSoft: '#FFEFC2',
+  coral: '#F2827F',
+  coralSoft: '#FFDCDA',
+  divider: '#FBE4EC',
+  shadow: '#A06A80',
+};
+
+export const THEMES: Record<ThemeKey, ThemePalette> = {
+  candy: CANDY_THEME,
+  forest: FOREST_THEME,
+  starry: STARRY_THEME,
+  sakura: SAKURA_THEME,
+};
+
+export const THEME_KEYS = Object.keys(THEMES) as ThemeKey[];
+
+// ══════════════════════════════════════════════════════════
+// 一键换肤开关（改这一行即可切换全局主题）
+// ══════════════════════════════════════════════════════════
+export const ACTIVE_THEME: ThemeKey = 'candy';
+
+const T: ThemePalette = THEMES[ACTIVE_THEME];
+
+/** 取任意主题色盘（调试 / 节日预览用） */
+export function getTheme(key: ThemeKey): ThemePalette {
+  return THEMES[key] ?? THEMES.candy;
+}
+
+/** 当前生效的主题（业务代码一般用不到，需要读主题名/色板时用） */
+export const theme = T;
+
+// ══════════════════════════════════════════════════════════
+// 兼容层：保持旧键名，历史页面零改动即可跟随换肤
+// ══════════════════════════════════════════════════════════
+
+/** 裸色板（键名沿用糖果系命名，值是「当前主题」的对应色） */
+export const CANDY = {
+  /** 主行动色 */
+  peach: T.primary,
+  /** 主按钮底色：比 peach 深一档 */
+  peachDeep: T.primaryDeep,
+  peachSoft: T.primarySoft,
+  /** 强调色（收藏 / 角标） */
+  berry: T.accent,
+  berrySoft: T.accentSoft,
+  /** 次行动色 */
+  grape: T.secondary,
+  grapeSoft: T.secondarySoft,
+  sky: T.sky,
+  skySoft: T.skySoft,
+  mint: T.mint,
+  mintSoft: T.mintSoft,
+  lemon: T.lemon,
+  lemonSoft: T.lemonSoft,
+  coral: T.coral,
+  coralSoft: T.coralSoft,
 } as const;
 
-// ── 语义色：业务代码主要用这组 ──────────────────────────
+/** 语义色：业务代码主要用这组 */
 export const COLORS = {
   // 主色系（保留旧键名，避免大量页面改动）
   orange: CANDY.peach,
+  /** 主按钮底（浅底 + 深咖字，对比度 5:1，孩子看得清） */
+  orangeDeep: CANDY.peachDeep,
   orangeLight: CANDY.peachSoft,
   pink: CANDY.berry,
   pinkLight: CANDY.berrySoft,
@@ -56,27 +277,29 @@ export const COLORS = {
   yellowLight: CANDY.lemonSoft,
 
   // 背景 / 卡片：暖白而非死白
-  cream: '#FDF9F3',
-  card: '#FFFFFF',
-  cardSoft: '#FFFCF7',
+  cream: T.bg,
+  card: T.card,
+  cardSoft: T.cardSoft,
 
   // 文字：深咖啡，而非纯黑
-  text: '#3D3229',
-  textSub: '#7A6A5D',
-  textLight: '#A8988A',
+  text: T.text,
+  textSub: T.textSub,
+  textLight: T.textLight,
+  /** 主按钮上的文字色：浅底配深字，保证对比度 */
+  onPrimary: T.onPrimary,
   white: '#FFFFFF',
 
   // 功能色
-  divider: '#F2E8DC',
-  shadow: '#8A6A55',
+  divider: T.divider,
+  shadow: T.shadow,
   danger: CANDY.coral,
   success: CANDY.mint,
 } as const;
 
-/** 背景渐变（暖调，替代大面积纯色） */
+/** 背景渐变（暖调，替代大面积纯色；跟随当前主题） */
 export const CANDY_GRADIENTS = {
-  /** 奶油白 → 淡粉（默认主背景） */
-  cream: ['#FDF9F3', '#FFF1F4', '#FDEFE3'],
+  /** 主背景（默认） */
+  cream: T.gradient,
   /** 草莓奶昔 */
   berry: ['#FFF1F5', '#FFE3EC', '#FFD9C9'],
   /** 蜜桃气泡 */

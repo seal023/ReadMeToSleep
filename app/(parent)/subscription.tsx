@@ -452,16 +452,21 @@ const styles = StyleSheet.create({
   planActive: { borderColor: '#9B7EDE', backgroundColor: '#f0edff' },
   yearBest: { position: 'relative' },
   // 角标：区分「正在生效的方案」与「准备购买的方案」
+  // 原来是实心饱和绿(#5FC3A4) + 白字，面积小、纯度又高，在奶油底上很跳，
+  // 和马卡龙色系不协调。改为「浅薄荷底 + 薄荷描边 + 深薄荷字」的小胶囊，
+  // 色值仍全部取自色盘（mint/mintSoft），对比度约 4.5:1。
   currentBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: '#5FC3A4',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    top: 8,
+    right: 8,
+    backgroundColor: '#D2F2E6',
+    borderWidth: 1,
+    borderColor: '#5FC3A4',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: 999,
   },
-  currentText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  currentText: { color: '#22775C', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
   bestBadge: {
     position: 'absolute',
     top: -8,
