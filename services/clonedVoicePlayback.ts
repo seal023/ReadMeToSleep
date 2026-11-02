@@ -65,6 +65,8 @@ function hashText(text: string): string {
 let endWatchTimer: ReturnType<typeof setInterval> | null = null;
 let endFired = false;
 let endOnce: (() => void) | null = null;
+/** onEnded 事件的守门人（只有真到末尾才放行），见 armEndWatch 内注释 */
+let acceptEnd: (() => void) | null = null;
 // 出现过的最大时长：长音频起播/缓冲抖动时 duration 可能瞬间回退，
 // 用它识别「duration 异常回退」从而避免误判结束（Issue 8）。
 let maxDur = 0;
@@ -123,6 +125,7 @@ function resetEndWatch(): void {
   clearHardEnd();
   endFired = false;
   endOnce = null;
+  acceptEnd = null;
   maxDur = 0;
 }
 
@@ -144,6 +147,26 @@ function armEndWatch(onDone?: () => void): void {
       /* 忽略回调异常 */
     }
   };
+  /**
+   * 事件式 onEnded 的守门人（v82 反馈 #3 根因修复）
+   * ---------------------------------------------------------------------------
+   * expo-audio 的 `player.onEnded` 会在**不止一种**情况下触发：
+   *   · 真的播到结尾（我们要的）；
+   *   · seek 到断点后缓冲、音频还没 ready；
+   *   · 切后台 / 锁屏时音频会话被系统收回。
+   * 后两种都是「假播完」。之前这里直接把 endOnce 挂给 onEnded，于是一次假信号就：
+   *   ① 立刻把界面推到「故事讲完啦」；
+   *   ② 顺带把 endFired 置位、停掉轮询，导致**真的播完时再也不结束**。
+   * 现在只接受「位置确实在末尾」的信号，其余忽略且不置 endFired，
+   * 让轮询（①位置到末尾 / ②硬定时器 / ③停滞判定）继续兜底。
+   */
+  const acceptEndSignal = () => {
+    if (endFired) return;
+    const dur = getClonedDuration();
+    const pos = getClonedPosition();
+    if (dur > 0.4 && pos >= dur - 1.5) endOnce?.();
+  };
+  acceptEnd = acceptEndSignal;
   endWatchTimer = setInterval(() => {
     if (endFired || !currentPlayer) return;
     const dur = getClonedDuration();
@@ -376,16 +399,18 @@ async function startPlayback(
       /* 忽略回调异常 */
     }
 
-    // 事件式兜底（若该版本支持 onEnded）；与轮询共用 endOnce，保证只触发一次
+    // 事件式兜底（若该版本支持 onEnded）。
+    // ⚠️ 走 acceptEnd 守门，不能直挂 endOnce：onEnded 会在 seek/缓冲/音频会话被收回时
+    // 假触发，直挂会导致「一声没出就判播完」，且把 endFired 置位后真播完反而不结束。
     if (typeof player.onEnded === 'function') {
       try {
-        (player.onEnded as (cb: () => void) => void)(() => endOnce?.());
+        (player.onEnded as (cb: () => void) => void)(() => acceptEnd?.());
       } catch {
         /* 忽略差异 */
       }
     } else {
       try {
-        (player as { onEnded?: () => void }).onEnded = () => endOnce?.();
+        (player as { onEnded?: () => void }).onEnded = () => acceptEnd?.();
       } catch {
         /* 忽略差异 */
       }
@@ -515,6 +540,23 @@ export function getClonedDuration(): number {
   } catch {
     return 0;
   }
+}
+
+/**
+ * 本次播放是否**真的出过声**（播放器 playing 曾经变为 true）。
+ *
+ * 给上层过滤「还没响就报播完」的假结束信号用（v82 反馈 #3）：
+ * 云端合成一次要好几秒，音频刚加载 / 刚被 seek 时常常立刻回调 ended，
+ * 若上层只看「从点播放到现在过了多少秒」，就会把「还在准备」误判成「已经播完」，
+ * 界面直接被推到「故事讲完啦」→ 提问环节。
+ */
+export function didPlayThisSession(): boolean {
+  return sawPlaying;
+}
+
+/** 本次播放到达过的最大位置（秒）；没真正出声时通常接近 0 */
+export function getMaxPlayedPosition(): number {
+  return maxPos;
 }
 
 /**

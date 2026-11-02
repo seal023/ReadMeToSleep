@@ -301,7 +301,9 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
       if (createRes.status === 403 || /Model\.?AccessDenied|Model access denied/i.test(msg)) {
         return {
           ok: false,
-          message: ts('vc.svc.modelDenied').replace('{model}', CLONE_MODEL),
+          // 注意：这条文案里 {model} 出现了两次，String.replace 只换第一个，
+          // 之前弹窗上就留着一个没替换的 "{model}"。用 split/join 全替换。
+          message: ts('vc.svc.modelDenied').split('{model}').join(CLONE_MODEL),
         };
       }
       return {

@@ -273,6 +273,7 @@
   "vc.submit": "✅ 确认并提交克隆",
   "vc.submitting": "正在提交克隆…",
   "vc.successOk": "声音克隆已提交！",
+  "vc.failTitle": "克隆没成功",
   "vc.successSubOk": "通常需要几分钟处理时间，之后即可在「妈妈 / 爸爸 / 外婆」音色中使用。",
   "vc.successSubFail": "服务端返回：{msg}。请检查克隆接口地址与请求格式是否与百炼 / 通义听悟文档一致。",
   "vc.retry": "🔁 重新克隆",

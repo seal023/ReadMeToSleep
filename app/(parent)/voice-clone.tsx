@@ -429,12 +429,20 @@ export default function VoiceClonePage() {
         <View style={styles.successCard}>
           <Text style={{ fontSize: 48 }}>{cloning ? '⏳' : cloneResult?.ok ? '🎉' : '⚠️'}</Text>
           <Text style={styles.successText}>
-            {cloning ? t('vc.submitting') : (cloneResult?.message || t('vc.successOk'))}
+            {cloning
+              ? t('vc.submitting')
+              : cloneResult?.ok
+              ? t('vc.successOk')
+              : cloneResult
+              ? t('vc.failTitle')
+              : t('vc.successOk')}
           </Text>
+          {/*
+            v82 反馈 #1：原来标题直接用 cloneResult.message、下面「服务端返回：{msg}」又贴一遍，
+            同一段诊断话出现了两次。现在标题固定为短句「克隆没成功」，原因只显示一次。
+          */}
           {!cloning && cloneResult && !cloneResult.ok && (
-            <Text style={styles.successSub}>
-              {t('vc.successSubFail').replace('{msg}', cloneResult.message)}
-            </Text>
+            <Text style={styles.successSub}>{cloneResult.message}</Text>
           )}
           {!cloning && cloneResult?.ok && (
             <>

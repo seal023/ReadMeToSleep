@@ -273,6 +273,7 @@
   "vc.submit": "✅ Confirm & Submit Clone",
   "vc.submitting": "Submitting clone…",
   "vc.successOk": "Voice clone submitted!",
+  "vc.failTitle": "Cloning failed",
   "vc.successSubOk": "It usually takes a few minutes to process, then you can use this voice under Mom / Dad / Grandma.",
   "vc.successSubFail": "Server returned: {msg}. Please check the clone endpoint and request format against the DashScope / CosyVoice docs.",
   "vc.retry": "🔁 Try Again",

@@ -7,8 +7,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
-import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, getChildName, setChildName } from '../../services/storage';
-import { voiceDisplayName, normalizeVoiceId } from '../../services/voiceCatalog';
+import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName } from '../../services/storage';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version + 原生 build number） */
@@ -22,7 +21,6 @@ export default function SettingsScreen() {
   // 账号：让家长在设置页一级就能看见"会员记在哪个账号上"
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
-  const [currentVoice, setCurrentVoice] = useState('preset:cherry');
   const [childName, setChildNameState] = useState('');
 
   useEffect(() => {
@@ -30,7 +28,6 @@ export default function SettingsScreen() {
   }, []);
 
   useEffect(() => {
-    getVoiceSetting().then((v) => v && setCurrentVoice(normalizeVoiceId(v)));
     (async () => {
       setChildNameState(await getChildName());
     })();
@@ -49,16 +46,7 @@ export default function SettingsScreen() {
     ]);
   };
 
-  /**
-   * v81：声音选择从「弹窗里选 4 个亲属」改为进入统一的「声音设置」页。
-   * 那里把「提示音」和「故事朗读」分开列，并会把内置样本音色一起列出来——
-   * 原来只有 系统/妈妈/爸爸/外婆 四项，没克隆过的人选谁都是同一把机器音。
-   */
-  const showVoiceOptions = () => {
-    router.push('/(parent)/voices');
-  };
-
-  const currentVoiceLabel = voiceDisplayName(currentVoice, language === 'en' ? 'en' : 'zh');
+  /** 声音设置入口已统一收到家长中心（/(parent)/voices），设置页不再重复放卡 */
 
   return (
     <CartoonScreen gradient="day" decor>
@@ -121,13 +109,11 @@ export default function SettingsScreen() {
         />
       </View>
 
-      <TouchableOpacity style={styles.card} onPress={showVoiceOptions}>
-        <View style={styles.cardLeft}>
-          <Text style={styles.cardIcon}>🔊</Text>
-          <Text style={styles.cardText}>{t('settings.voice')}</Text>
-        </View>
-        <Text style={styles.cardValue}>{currentVoiceLabel}</Text>
-      </TouchableOpacity>
+      {/*
+        v82 反馈 #2：这里原来还有一张「🔊 声音」卡，点进去和家长中心的
+        「🎚️ 声音设置」跳的是同一个页面（/(parent)/voices），两个入口一模一样。
+        声音选择属于家长配置，统一收在家长中心一处；孩子端设置页保持精简。
+      */}
 
       {/* 需求 3 占位：语音引导开关（真实语音识别待接入 STT） */}
       <View style={styles.card}>

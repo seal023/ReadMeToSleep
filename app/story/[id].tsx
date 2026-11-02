@@ -14,6 +14,8 @@ import {
   PanResponder,
   Keyboard,
   AppState,
+  Modal,
+  Pressable,
   type DimensionValue,
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
@@ -24,7 +26,7 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor 
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -210,6 +212,8 @@ export default function StoryPlayScreen() {
   // 正在准备克隆声（合成/下载中）：给「点播放后等待」一个可见反馈，
   // 同时作为并发保护，避免等待期间重复点击开出第二路播放（双声叠加）。
   const [preparing, setPreparing] = useState(false);
+  /** v82 反馈 #4：声线选择改成「一个按钮 + 底部弹层」，不再常驻占掉三分之一屏幕 */
+  const [voiceSheetOpen, setVoiceSheetOpen] = useState(false);
   const startingRef = useRef(false);
   // 每次播放递增；过期的 onDone / 定时器回调一律作废，避免旧播放把新播放的界面推走
   const playTokenRef = useRef(0);
@@ -233,6 +237,12 @@ export default function StoryPlayScreen() {
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 本次播放真正开始的时刻（用于识别「被系统收回音频会话后立刻回调播完」的假结束） */
   const playingSinceRef = useRef(0);
+  /**
+   * 是否仍处在「准备声音」阶段（合成 / 加载中）。
+   * v82 反馈 #3：准备期间的任何 ended 回调都不可信——音频还没就绪就报"播完"，
+   * 会把界面直接推到「讲完啦」。用 ref 而非 state，避免闭包里读到旧值。
+   */
+  const preparingRef = useRef(false);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 提问环节「按住说话、松开停止」的真实录音（expo-audio，与声音克隆页同款）
@@ -750,6 +760,8 @@ export default function StoryPlayScreen() {
     // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
     setIsPlaying(true);
     setPreparing(true);
+    preparingRef.current = true; // 准备阶段：任何 ended 回调一律忽略（见 onEnded 注释）
+    clonedPlayingRef.current = false; // 本轮还没确定用云端音频，先按系统音兜底逻辑走
     playingSinceRef.current = Date.now();
 
     try {
@@ -768,19 +780,35 @@ export default function StoryPlayScreen() {
          * v79 修复：切到别的 App / 锁屏时，iOS 会收回音频会话，
          * 播放器（尤其云端合成音）常常立刻回调「播完了」——
          * 于是界面被误推到「讲完啦」，回到前台再点播放就直接进提问环节。
-         * 用「实际播了多久」兜底：从头播却不到 2.5 秒就结束的，一律判定为被打断，
-         * 停在播放页不动，让用户回来还能接着听。
          *
-         * v81 修正：原来还附加了「且没有断点」的条件，结果**有断点**的故事
-         * （seek 到 45 秒后缓冲、player.playing 短暂为 false）会被误判成播完，
-         * 表现就是「第一遍点播放，屏幕直接变成故事讲完啦」。
-         * 现在改为看「是不是真的到末尾」：离结尾还远就一律忽略这次结束信号。
+         * v81 修正：判据从「是不是没断点」改成「是不是真的到末尾」。
+         *
+         * v82 修正（反馈 #3：第一次点播放直接进提问 / 换声后缓冲很久直接跳提问）：
+         * 原来用 `playedMs`（从**点播放开始准备**算起）判断是不是被打断，
+         * 但云端合成一次要好几秒，等音频就绪时 playedMs 早就超过 3000ms，
+         * 这个「已经播够久」的假象让一次假 ended 直接被当成正常播完。
+         * 现在改成让结束信号**自证**：
+         *   ① 还在准备声音阶段 → 一律忽略；
+         *   ② 用了云端音频（克隆声 / 本地录音）→ 必须「真的出过声 + 位置推进过」，或真的到末尾；
+         *   ③ 系统音（TTS）→ onDone 由引擎触发、可信，只用最短时长兜底。
          */
-        const playedMs = Date.now() - playingSinceRef.current;
         const endDur = getClonedDuration();
         const endPos = getClonedPosition();
-        const nearEnd = endDur > 1 && endPos >= endDur - 3;
-        if (playedMs < 3000 && !nearEnd) {
+        const reallyAtEnd = endDur > 1 && endPos >= endDur - 3;
+        const everHeard = didPlayThisSession();
+        const advanced = getMaxPlayedPosition() > 1;
+
+        if (preparingRef.current && !reallyAtEnd) {
+          return; // 声音还没就绪，此刻的 ended 一定不可信
+        }
+        if (clonedPlayingRef.current && !reallyAtEnd && !(everHeard && advanced)) {
+          startingRef.current = false;
+          setPreparing(false);
+          setIsPlaying(false);
+          return;
+        }
+        const playedMs = Date.now() - playingSinceRef.current;
+        if (!clonedPlayingRef.current && playedMs < 2500 && !reallyAtEnd) {
           startingRef.current = false;
           setPreparing(false);
           setIsPlaying(false);
@@ -862,6 +890,7 @@ export default function StoryPlayScreen() {
     } finally {
       if (token === playTokenRef.current) {
         setPreparing(false);
+        preparingRef.current = false;
       }
       startingRef.current = false;
     }
@@ -878,11 +907,21 @@ export default function StoryPlayScreen() {
     if (!id || id === selectedVoice) return;
     const wasPlaying = isPlaying;
     const pos = getClonedPosition();
+    const dur = getClonedDuration();
     setSelectedVoice(id);
     void saveVoiceSetting(id); // 记住选择，下次进故事页直接沿用
     if (!wasPlaying) return;
 
-    resumeAtRef.current = pos > 3 ? pos : 0;
+    /**
+     * v82 反馈 #3：换声后「缓冲了很久，直接跳到提问环节」。
+     * 换声是「从当前位置用新声线重起播」，如果当时位置已经贴到结尾
+     * （剩余不足 12 秒），新声音一加载就几乎立刻播完，
+     * 孩子的感受就是「等半天，然后直接进提问」。
+     * 这种情况改成用新声音**从头讲**，让他真的听到新声音讲故事。
+     */
+    const remain = dur > 1 ? dur - pos : Infinity;
+    const restartFromZero = remain < 12;
+    resumeAtRef.current = !restartFromZero && pos > 3 ? pos : 0;
     setResumeSec(resumeAtRef.current > 0 ? Math.floor(resumeAtRef.current) : 0);
     // 作废旧那一路的播放回调：否则旧音频的「播完」会把界面推到完成页
     playTokenRef.current++;
@@ -1431,51 +1470,91 @@ export default function StoryPlayScreen() {
           </View>
         ) : null}
 
-        {/* 想让谁来讲？孩子自己点 —— v79：从「小字切换」改成常显的大按钮，
-            不识字的孩子也能看懂「这里有得选」 */}
-        <View style={styles.voiceBlock}>
-          <Text style={styles.voicePickLabel}>{t('story.voice.pick')}</Text>
-          <View style={styles.voiceChips}>
-            {voiceOptions.map((v) => {
-              const active = v.id === selectedVoice;
-              return (
-                <TouchableOpacity
-                  key={v.id}
-                  style={[styles.voiceChip, active && styles.voiceChipActive]}
-                  onPress={() => pickVoice(v.id)}
-                  activeOpacity={0.85}
-                >
-                  <ClayIcon name="mic" size={22} />
-                  <Text style={[styles.voiceChipText, active && styles.voiceChipTextActive]}>
-                    {v.emoji} {uiLang === 'en' ? v.nameEn : v.nameZh}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {/*
-            v80 #3 / v81 #2：孩子和家长都要一眼知道「现在是谁在说话」。
-            选内置样本 → 显示样本名；选克隆 → 显示「XX 的克隆声音」；选手机语音 → 明说离线。
-          */}
-          <Text style={styles.voiceNow}>
+        {/*
+          v82 反馈 #4：原来这里把「想让谁来讲」+ 4 个声线大按钮 + 当前音色说明
+          全部常驻，在 iPhone 上吃掉近三分之一屏幕，故事正文只剩一小条缝，孩子看不见。
+          现在压成一行「当前声音」条，点开才弹出底部的选择面板。
+          不识字的孩子也能认：左边耳朵图标 + 右边「换声音」＋下拉箭头，点了就有面板。
+        */}
+        <TouchableOpacity
+          style={styles.voiceBar}
+          onPress={() => setVoiceSheetOpen(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.voiceBarIcon}>
+            {selectedVoice === 'system' ? '📱' : voiceIsCloned ? '🎙' : '🔊'}
+          </Text>
+          <Text style={styles.voiceBarText} numberOfLines={1}>
             {selectedVoice === 'system'
               ? uiLang === 'en'
-                ? '📱 Phone voice: offline, sounds robotic'
-                : '📱 现在是手机自带语音（离线，声音偏机械）'
+                ? 'Phone voice (offline)'
+                : '手机自带语音（离线）'
               : voiceIsCloned
               ? uiLang === 'en'
-                ? `🎙 Now playing in ${voiceDisplayName(selectedVoice, 'en')}`
-                : `🎙 现在是「${voiceDisplayName(selectedVoice, 'zh')}」在讲`
+                ? `${voiceDisplayName(selectedVoice, 'en')}'s cloned voice`
+                : `「${voiceDisplayName(selectedVoice, 'zh')}」的克隆声音`
               : uiLang === 'en'
-              ? `🔊 Now playing: ${voiceDisplayName(selectedVoice, 'en')}`
-              : `🔊 现在是 ${voiceDisplayName(selectedVoice, 'zh')} 在讲`}
+              ? `Story voice: ${voiceDisplayName(selectedVoice, 'en')}`
+              : `朗读声音：${voiceDisplayName(selectedVoice, 'zh')}`}
           </Text>
-        </View>
+          <Text style={styles.voiceBarAction}>
+            {uiLang === 'en' ? 'Change' : '换声音'} ▾
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.raccoCorner}>
           <Racco state="talking" size={60} />
         </View>
       </View>
+
+      {/*
+        v82 反馈 #4：声线选择弹层。
+        底部滑出、只占屏幕下半部分，故事正文始终完整可见；
+        每个声线一行大字（emoji + 名称），不识字的孩子也能靠图标辨认。
+      */}
+      <Modal
+        visible={voiceSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setVoiceSheetOpen(false)}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setVoiceSheetOpen(false)}>
+          <Pressable style={styles.sheetCard} onPress={() => { /* 吞掉点击，避免穿透关闭 */ }}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>
+              {uiLang === 'en' ? 'Who should read the story?' : '想让谁来讲故事？'}
+            </Text>
+            <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+              {voiceOptions.map((v) => {
+                const active = v.id === selectedVoice;
+                return (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.sheetRow, active && styles.sheetRowActive]}
+                    onPress={() => {
+                      setVoiceSheetOpen(false);
+                      pickVoice(v.id);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.sheetRowEmoji}>{v.emoji}</Text>
+                    <Text style={[styles.sheetRowText, active && styles.sheetRowTextActive]}>
+                      {uiLang === 'en' ? v.nameEn : v.nameZh}
+                    </Text>
+                    {active ? <Text style={styles.sheetRowCheck}>✓</Text> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <Text style={styles.sheetHint}>
+              {uiLang === 'en'
+                ? 'Changes apply right away, from where you are now.'
+                : '选完立刻生效，从当前听的位置接着讲。'}
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
       </CartoonScreen>
     );
   }
@@ -1964,6 +2043,53 @@ const styles = StyleSheet.create({
   voiceChipTextActive: { color: '#FFFFFF' },
   // v80 #3：当前实际发音的音色名（"现在是 Cherry（大姐姐）的声音"）
   voiceNow: { fontSize: 13, color: '#8A6D5B', marginTop: 10, lineHeight: 18 },
+
+  /* v82 #4：一行式「当前声音」条，替代原来占掉三分之一屏的声线按钮墙 */
+  voiceBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#FFE0B2',
+    elevation: 1,
+  },
+  voiceBarIcon: { fontSize: 17 },
+  voiceBarText: { flex: 1, fontSize: 14, color: '#3D3229', fontWeight: '600' },
+  voiceBarAction: { fontSize: 13, color: '#F7A072', fontWeight: '700' },
+
+  /* v82 #4：声线选择底部弹层（只占下半屏，故事正文始终可见） */
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(40,28,20,0.45)', justifyContent: 'flex-end' },
+  sheetCard: {
+    backgroundColor: '#FFF9F2',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
+    maxHeight: '68%',
+  },
+  sheetHandle: {
+    alignSelf: 'center', width: 44, height: 5, borderRadius: 3,
+    backgroundColor: '#E6D8C8', marginBottom: 12,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#3D3229', textAlign: 'center', marginBottom: 14 },
+  sheetList: { maxHeight: 360 },
+  sheetRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 15, paddingHorizontal: 16, borderRadius: 18,
+    backgroundColor: '#FFFFFF', marginBottom: 10, borderWidth: 1.5, borderColor: '#F0E4D6',
+  },
+  sheetRowActive: { backgroundColor: '#FFF0E2', borderColor: '#F7A072' },
+  sheetRowEmoji: { fontSize: 20 },
+  sheetRowText: { flex: 1, fontSize: 17, color: '#3D3229', fontWeight: '600' },
+  sheetRowTextActive: { color: '#E07B4F' },
+  sheetRowCheck: { fontSize: 18, color: '#F7A072', fontWeight: '800' },
+  sheetHint: { fontSize: 12, color: '#8A7B6E', textAlign: 'center', marginTop: 4 },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
   completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 24 },
