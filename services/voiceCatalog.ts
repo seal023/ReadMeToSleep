@@ -1,5 +1,15 @@
-import { hasClonedVoice } from './clonedVoicePlayback';
-import { getClonedTargets, type CloneTarget } from './voiceClone';
+import { hasClonedVoice, clearClonedCacheForTarget } from './clonedVoicePlayback';
+import {
+  getClonedTargets,
+  getClonedVoiceId,
+  renameClonedTargetStorage,
+  removeClonedTargetStorage,
+  type CloneTarget,
+} from './voiceClone';
+import {
+  getVoiceSetting, saveVoiceSetting,
+  getPromptVoiceSetting, savePromptVoiceSetting,
+} from './storage';
 
 /**
  * 全 App 统一的「可选声音」清单
@@ -140,4 +150,100 @@ export async function listAvailableVoices(): Promise<VoiceOption[]> {
   });
 
   return [...PRESET_VOICE_OPTIONS, SYSTEM_VOICE_OPTION, ...cloned];
+}
+
+/* -------------------------------------------------------------------------- */
+/*  已克隆声音的管理：改称呼 / 删除                                             */
+/* -------------------------------------------------------------------------- */
+
+/** 自定义称呼的最大字数（与克隆页输入框上限一致，避免一边能输一边截断） */
+export const MAX_CLONE_NAME_LEN = 8;
+
+export type RenameResult =
+  | { ok: true; newId: string; changed: boolean }
+  | { ok: false; reason: 'empty' | 'tooLong' | 'duplicate' | 'notFound' };
+
+/**
+ * 给已克隆的声音改称呼。
+ * ---------------------------------------------------------------------------
+ * 音色本身（voice_id）不动，只把本地记录搬到一个新 key 下——
+ * 因为含义上「这个声音是谁」由 key 表达（mom/dad/custom:<名字>），
+ * 改 key 之后全 App 的显示名、播放选音都会自动跟着变，无需额外同步。
+ * 注意：固定亲属（妈妈/爸爸）改名后会变成 `custom:<新称呼>`，
+ * 不再占用「妈妈/爸爸」那个一键入口——这正是「改错名字后纠正」的预期行为。
+ *
+ * 若原先「故事朗读 / 提示音」用的就是这个声音，一并迁移到新 id，避免改完名失效。
+ */
+export async function renameClonedVoice(oldId: string, rawName: string): Promise<RenameResult> {
+  const name = (rawName || '').trim().replace(/\s+/g, ' ');
+  if (!name) return { ok: false, reason: 'empty' };
+  if ([...name].length > MAX_CLONE_NAME_LEN) return { ok: false, reason: 'tooLong' };
+
+  const newId = `custom:${name}`;
+  if (newId === oldId) return { ok: true, newId, changed: false };
+
+  // 原对象必须真的克隆过
+  let voiceId: string | null = null;
+  try {
+    voiceId = await getClonedVoiceId(oldId);
+  } catch {
+    voiceId = null;
+  }
+  if (!voiceId) return { ok: false, reason: 'notFound' };
+
+  // 目标称呼重名：先看是否已有同名克隆（否则会把别人的音色覆盖掉）
+  try {
+    if (await getClonedVoiceId(newId)) return { ok: false, reason: 'duplicate' };
+  } catch {
+    /* 读取失败按不重名处理，下面写入时还有一次机会 */
+  }
+
+  const moved = await renameClonedTargetStorage(oldId, newId);
+  if (!moved) return { ok: false, reason: 'notFound' };
+
+  // 清掉旧 key 下的合成缓存（文件名带 target 前缀），新称呼会重新合成一次，
+  // 否则旧缓存命中后可能出现「名字换了、声音还是老的」的错觉。
+  try {
+    clearClonedCacheForTarget(oldId as CloneTarget);
+  } catch {
+    /* 缓存清理失败不影响改名结果 */
+  }
+
+  // 迁移两处声音设置
+  try {
+    if ((await getVoiceSetting()) === oldId) await saveVoiceSetting(newId);
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    if ((await getPromptVoiceSetting()) === oldId) await savePromptVoiceSetting(newId);
+  } catch {
+    /* 忽略 */
+  }
+
+  return { ok: true, newId, changed: true };
+}
+
+/**
+ * 删除一个已克隆的声音（仅本机记录 + 缓存，云端音色不动）。
+ * 若当前「故事朗读 / 提示音」正在用它，回落到默认内置大姐姐，
+ * 避免设置里留着一个已经不存在的 id（表现为「静音」或「声音突然变了」）。
+ */
+export async function deleteClonedVoice(id: string): Promise<void> {
+  await removeClonedTargetStorage(id);
+  try {
+    clearClonedCacheForTarget(id as CloneTarget);
+  } catch {
+    /* 缓存清理失败忽略 */
+  }
+  try {
+    if ((await getVoiceSetting()) === id) await saveVoiceSetting(DEFAULT_VOICE);
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    if ((await getPromptVoiceSetting()) === id) await savePromptVoiceSetting(DEFAULT_VOICE);
+  } catch {
+    /* 忽略 */
+  }
 }

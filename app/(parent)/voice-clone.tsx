@@ -137,22 +137,33 @@ export default function VoiceClonePage() {
   const [customName, setCustomName] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customTargets, setCustomTargets] = useState<{ key: CloneTarget; label: string; icon: string }[]>([]);
-  useEffect(() => {
-    (async () => {
-      const all = await getClonedTargets();
-      const fixed = new Set(PRESET_TARGETS.map((p) => p.key));
-      // 除妈妈/爸爸外，凡本机克隆过的对象都排成一格：
-      //   custom:爷爷 → 显示「爷爷」；历史 grandma → 显示「外婆」。
-      const extras = all
-        .filter((k) => !fixed.has(k))
-        .map((k) => ({
-          key: k,
-          label: k.startsWith('custom:') ? k.slice('custom:'.length) : k,
-          icon: LEGACY_TARGETS.find((l) => l.key === k)?.icon || '🧑',
-        }));
-      setCustomTargets(extras);
-    })();
-  }, []);
+  /**
+   * 每次进入本页都重新扫描已克隆对象。
+   * v84：家长可能在「声音设置」里把某个声音改名或删掉了，
+   * 若只在挂载时扫一次，返回本页还会看到旧的（甚至已删除的）对象。
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        const all = await getClonedTargets();
+        const fixed = new Set(PRESET_TARGETS.map((p) => p.key));
+        // 除妈妈/爸爸外，凡本机克隆过的对象都排成一格：
+        //   custom:爷爷 → 显示「爷爷」；历史 grandma → 显示「外婆」。
+        const extras = all
+          .filter((k) => !fixed.has(k))
+          .map((k) => ({
+            key: k,
+            label: k.startsWith('custom:') ? k.slice('custom:'.length) : k,
+            icon: LEGACY_TARGETS.find((l) => l.key === k)?.icon || '🧑',
+          }));
+        if (alive) setCustomTargets(extras);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
   const confirmCustom = () => {
     const name = customName.trim();
     if (!name) return;

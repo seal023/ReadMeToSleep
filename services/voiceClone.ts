@@ -184,6 +184,32 @@ export async function getClonedTargets(): Promise<string[]> {
   }
 }
 
+/**
+ * 把一个已克隆对象的音色 id 搬到新的 key 下（重命名用）。
+ * 只搬本地记录，**不会重新训练**音色，所以不消耗复刻配额。
+ * 返回 false 表示原对象没有可用的 voice_id（视为未克隆）。
+ */
+export async function renameClonedTargetStorage(oldTarget: string, newTarget: string): Promise<boolean> {
+  try {
+    const voiceId = await AsyncStorage.getItem(STORAGE_KEY(oldTarget));
+    if (!voiceId) return false;
+    await AsyncStorage.setItem(STORAGE_KEY(newTarget), voiceId);
+    await AsyncStorage.removeItem(STORAGE_KEY(oldTarget));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 删除某个已克隆对象的本地记录（只删本机，不动云端音色） */
+export async function removeClonedTargetStorage(target: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY(target));
+  } catch {
+    /* 存储异常忽略：最坏情况是删除后仍在列表里，不会崩 */
+  }
+}
+
 /** 根据文件后缀推断 MIME，用于拼 Base64 Data URI */
 function mimeFromUri(uri: string): string {
   const lower = uri.toLowerCase();

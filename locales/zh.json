@@ -759,6 +759,17 @@
   "voices.sectionStory": "📖 故事朗读：用谁的声音",
   "voices.storyDesc": "念故事正文时用这个声音。克隆成功会自动切到你刚克隆的那个声音。",
   "voices.tip": "「手机系统语音」不用联网、一定能出声，但听感偏机械；内置样本音色更自然，第一次使用需要联网合成一次，之后缓存在本机。",
-  "parentHub.card.voiceSettings.title": "声音设置",
+
+  "voices.clonedSection": "🎙 已克隆的声音",
+  "voices.clonedDesc": "可以给克隆好的声音改个称呼，或者删掉不用的。改名只是换个叫法，不会重新克隆。",
+  "voices.rename": "改名",
+  "voices.renameTitle": "改个称呼",
+  "voices.renameSub": "现在叫「{name}」，改成你想叫的称呼。",
+  "voices.renamePlaceholder": "如：奶奶、外公",
+  "voices.renameEmpty": "称呼不能为空，写一个字也行～",
+  "voices.renameTooLong": "称呼最多 {n} 个字，短一点更好认。",
+  "voices.renameDuplicate": "已经有一个叫「{name}」的声音了，换个称呼试试。",
+  "voices.deleteTitle": "删除「{name}」？",
+  "voices.deleteConfirm": "删除后这个声音在本机就不能再用了，需要重新克隆才能恢复。其他声音不受影响。",  "parentHub.card.voiceSettings.title": "声音设置",
   "parentHub.card.voiceSettings.desc": "提示音与故事朗读分开选，可试听"
 }

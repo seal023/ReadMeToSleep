@@ -759,6 +759,17 @@
   "voices.sectionStory": "📖 Story reading: whose voice",
   "voices.storyDesc": "Used when reading the story itself. Cloning a voice switches this automatically.",
   "voices.tip": "Phone voice works offline and always speaks, but sounds robotic. Built-in voices sound more natural: the first use synthesizes once, then it is cached on this device.",
-  "parentHub.card.voiceSettings.title": "Voice settings",
+
+  "voices.clonedSection": "🎙 Cloned voices",
+  "voices.clonedDesc": "Rename a cloned voice, or remove ones you no longer use. Renaming only changes the label — no re-cloning needed.",
+  "voices.rename": "Rename",
+  "voices.renameTitle": "Rename voice",
+  "voices.renameSub": "Currently called “{name}”. Type the name you would like to use.",
+  "voices.renamePlaceholder": "e.g. Grandma, Uncle",
+  "voices.renameEmpty": "The name can't be empty — even one character works!",
+  "voices.renameTooLong": "Keep it to {n} characters or fewer so it stays easy to recognise.",
+  "voices.renameDuplicate": "There is already a voice called “{name}”. Try another name.",
+  "voices.deleteTitle": "Delete “{name}”?",
+  "voices.deleteConfirm": "Once deleted, this voice can no longer be used on this device until you clone it again. Other voices are not affected.",  "parentHub.card.voiceSettings.title": "Voice settings",
   "parentHub.card.voiceSettings.desc": "Separate prompt / story voices, with preview"
 }
