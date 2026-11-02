@@ -37,7 +37,19 @@ function readEnv() {
 
 const env = readEnv();
 const key = cliKey || env.EXPO_PUBLIC_AI_API_KEY || '';
-const baseUrl = (env.EXPO_PUBLIC_AI_BASE_URL || 'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com').replace(/\/+$/, '');
+
+/** 只取协议 + 主机：用户填的 Base URL 可能带 /compatible-mode/v1，路径由脚本自己拼 */
+function originOf(raw) {
+  if (!raw) return '';
+  let s = String(raw).replace(/[\s\u3000]/g, '').replace(/^["']+|["']+$/g, '');
+  if (!/^[a-z]+:\/\//i.test(s)) s = 'https://' + s;
+  if (/^http:\/\//i.test(s)) s = 'https://' + s.slice('http://'.length);
+  const m = s.match(/^https:\/\/[^/?#]+/i);
+  return m ? m[0] : '';
+}
+
+const rawBase = env.EXPO_PUBLIC_AI_BASE_URL || '';
+const baseUrl = originOf(rawBase) || 'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com';
 const workspace = env.EXPO_PUBLIC_VOICE_WORKSPACE_ID || '(未设置)';
 
 const line = (s = '') => console.log(s);
@@ -48,22 +60,31 @@ kv('来源', cliKey ? '命令行参数' : '.env 文件');
 kv('是否存在', key ? '是' : '❌ 空');
 if (key) {
   kv('长度', `${key.length} 字符`);
-  kv('前缀', `${key.slice(0, 3)}***`);
+  kv('前缀', `${key.slice(0, 6)}…`);
   kv('首尾空白', key !== key.trim() ? '⚠️ 有（会导致 401）' : '无');
   kv('含内部空白', /\s/.test(key) ? '⚠️ 有' : '无');
   kv('含引号', /["']/.test(key) ? '⚠️ 有' : '无');
   kv('全 ASCII', /^[\x20-\x7E]+$/.test(key) ? '是' : '⚠️ 否（可能有全角/零宽字符）');
-  const standard = /^sk-[A-Za-z0-9]{32}$/.test(key);
-  kv('百炼标准格式', standard ? '✅ sk- + 32 位' : `⚠️ 否（标准为 sk- 加 32 位，共 35 字符）`);
-  if (!standard) {
-    const segs = key.split('-');
-    kv('分段结构', segs.map((s) => s.length).join('-') + `（共 ${segs.length} 段，${(key.match(/\./g) || []).length} 个点号）`);
-  }
+  const isStandard = /^sk-[A-Za-z0-9]{32}$/.test(key);
+  const isWorkspace = /^sk-ws-[A-Za-z0-9._-]{20,}$/.test(key);
+  kv(
+    'Key 类型',
+    isStandard
+      ? '✅ 传统 Key（sk- + 32 位，任何站点都认）'
+      : isWorkspace
+      ? '✅ 业务空间专属 Key（sk-ws-…，只能配它所属 workspace 的专属域名）'
+      : '⚠️ 无法识别（既不是 35 位传统 Key，也不像 sk-ws- 专属 Key）'
+  );
 }
 
 line();
 line('══════════ 2. 地址与工作空间 ══════════');
-kv('Base URL', baseUrl);
+kv('EXPO_PUBLIC_AI_BASE_URL 原值', rawBase || '(未设置，用内置默认)');
+kv('归一后 origin', baseUrl);
+if (rawBase && originOf(rawBase) !== rawBase.replace(/\/+$/, '')) {
+  kv('路径处理', '已自动剥掉末尾路径，不会拼出双份 /compatible-mode/v1');
+}
+kv('实际请求地址', `${baseUrl}/compatible-mode/v1/chat/completions`);
 kv('Workspace ID', workspace);
 try {
   const host = new URL(baseUrl).hostname;
@@ -97,14 +118,24 @@ if (formatOnly) {
 line();
 line('══════════ 3. 真实请求探测 ══════════');
 
-const probes = [
-  { label: '通用国际站（只看 Key 所属账号）', base: 'https://dashscope-intl.aliyuncs.com' },
-  { label: '项目实际的 Base URL', base: baseUrl },
-];
+const isWorkspaceKey = /^sk-ws-/.test(key);
+
+// sk-ws- 专属 Key 打到通用国际站必然 401（它只认自己 workspace 的专属域名），
+// 探了只会误导，所以这类 Key 不探通用站；再用一把假 Key 做对照组：
+// 若真 Key 的报错与假 Key 完全一致，就说明这把 Key 本身不被承认。
+const probes = [];
+if (!isWorkspaceKey) {
+  probes.push({ label: '通用国际站（只看 Key 所属账号）', base: 'https://dashscope-intl.aliyuncs.com' });
+}
+probes.push({ label: '项目实际的 Base URL', base: baseUrl });
+probes.push({ label: '对照组：假 Key（应为 401）', base: baseUrl, fake: true });
+
+const FAKE_KEY = 'sk-0123456789abcdef0123456789abcdef';
 
 const results = [];
 for (const p of probes) {
   const url = `${p.base}/compatible-mode/v1/chat/completions`;
+  const probeKey = p.fake ? FAKE_KEY : key;
   const t0 = Date.now();
   let status = null;
   let code = '';
@@ -112,7 +143,7 @@ for (const p of probes) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${probeKey}` },
       body: JSON.stringify({ model: 'qwen-plus', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
       signal: AbortSignal.timeout(15000),
     });
@@ -143,25 +174,29 @@ for (const p of probes) {
 
 line();
 line('══════════ 结论 ══════════');
-const anyOk = results.some((r) => r.ok);
-const all401 = results.every((r) => r.status === 401);
-const allNet = results.every((r) => r.status === null);
+const realResults = results.filter((r) => !r.fake);
+const fakeResult = results.find((r) => r.fake);
+const anyOk = realResults.some((r) => r.ok);
+const all401 = realResults.length > 0 && realResults.every((r) => r.status === 401);
+const allNet = realResults.every((r) => r.status === null);
+const sameAsFake =
+  fakeResult && all401 && realResults.every((r) => r.status === fakeResult.status && r.code === fakeResult.code);
 
 if (anyOk) {
   line('✅ Key 有效，链路通。');
-  const failed = results.filter((r) => !r.ok);
+  const failed = realResults.filter((r) => !r.ok);
   if (failed.length) {
-    line(`⚠️ 但有 ${failed.length} 个地址失败 → Base URL 与 Key 可能不属于同一个 workspace，检查该地址。`);
+    line(`⚠️ 但有 ${failed.length} 个地址失败 → 该地址与 Key 可能不属于同一个 workspace。`);
   }
+} else if (sameAsFake) {
+  line('❌ 真 Key 的报错与假 Key 完全一致 → 这把 Key 不被服务端承认。');
+  line('   → 不是地址问题（地址已按要求归一），是 Key 本身：没复制全 / 已被轮换 / 属于别的账号或地域。');
+  line('   → 请到控制台重新复制一次完整 Key，再执行：node scripts/diag-ai.mjs <新Key>');
 } else if (all401) {
-  line('❌ 两个地址都返回 401 invalid_api_key。');
-  line('   → 这不是「地址不匹配」，而是 Key 本身不被承认：');
-  line('     复制错 / 已删除 / 已轮换 / 带了不可见字符 / 贴成了别的服务的 Key。');
-  line('   → 去百炼控制台重新生成一把（形如 sk- 加 32 位），再跑一次本脚本。');
+  line('❌ 返回 401，但报错细节与假 Key 不同 → 更可能是 Key 与地址（workspace / 地域）不匹配。');
+  line('   → 确认 Base URL 的 workspace 与地域，和 Key 所属业务空间完全一致。');
 } else if (allNet) {
   line('❌ 全部无响应 → 网络/DNS 问题（或本机代理拦截）。');
 } else {
   line('⚠️ 结果不一致，看上面每个地址的状态码。');
-  line('   → 通用站点通、workspace 站点不通 = 地址或 workspace 写错；');
-  line('   → 通用站点也不通 = Key 问题。');
 }

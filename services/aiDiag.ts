@@ -16,6 +16,7 @@
 
 import axios from 'axios';
 import { AI_CONFIG } from './ai';
+import { chatCompletionsUrl } from './endpoints';
 
 export interface AiProbe {
   /** 展示用名称，如「通用国际站」 */
@@ -31,14 +32,24 @@ export interface AiProbe {
 
 export type AiVerdict = 'ok' | 'invalid_key' | 'missing_key' | 'network' | 'unknown';
 
+/**
+ * Key 形态：
+ *  - standard   传统百炼 Key，形如 sk- + 32 位（共 35 字符），任何站点都认
+ *  - workspace  业务空间专属 Key，形如 sk-ws-… （约 100-130 字符），
+ *               ⚠️ 只能配它所属 workspace 的专属域名，打到通用国际站必然 401，
+ *               所以对这类 Key 不能拿通用站的结果判它「无效」
+ */
+export type AiKeyKind = 'standard' | 'workspace' | 'unknown';
+
 export interface AiDiagResult {
   keyPresent: boolean;
   keyLength: number;
   /** 仅 'sk-…' 这种级别的前缀，用于判断是不是贴错了服务 */
   keyPrefix: string;
   keyHasWhitespace: boolean;
-  /** 百炼标准 Key 形如 sk- + 32 位 = 35 字符 */
+  /** 格式是否可识别（standard / workspace 均算可识别） */
   keyStandard: boolean;
+  keyKind: AiKeyKind;
   baseUrl: string;
   model: string;
   probes: AiProbe[];
@@ -61,7 +72,7 @@ function buildBody() {
 }
 
 async function probeChat(label: string, baseUrl: string, key: string): Promise<AiProbe> {
-  const url = `${baseUrl.replace(/\/+$/, '')}${AI_CONFIG.chatPath}`;
+  const url = chatCompletionsUrl(baseUrl);
   const t0 = Date.now();
   try {
     const res = await axios.post(url, buildBody(), {
@@ -99,16 +110,22 @@ export async function runAiDiagnosis(): Promise<AiDiagResult> {
   const rawKey = (AI_CONFIG.apiKey || '').trim();
   const keyPresent = rawKey.length > 0;
   const keyHasWhitespace = keyPresent && rawKey !== AI_CONFIG.apiKey;
-  // 标准百炼 Key：sk- 开头、总长 35
-  const keyStandard = /^sk-[A-Za-z0-9]{32}$/.test(rawKey);
+  // 两种合法形态：传统 35 位 sk-+32；业务空间专属 sk-ws-…（约 100-130 位）
+  const keyKind: AiKeyKind = /^sk-[A-Za-z0-9]{32}$/.test(rawKey)
+    ? 'standard'
+    : /^sk-ws-[A-Za-z0-9._-]{20,}$/.test(rawKey)
+    ? 'workspace'
+    : 'unknown';
+  const keyStandard = keyKind !== 'unknown';
 
   const baseUrl = (AI_CONFIG.baseUrl || '').replace(/\/+$/, '');
   const result: AiDiagResult = {
     keyPresent,
     keyLength: rawKey.length,
-    keyPrefix: rawKey ? `${rawKey.slice(0, 3)}…` : '',
+    keyPrefix: rawKey ? `${rawKey.slice(0, 6)}…` : '',
     keyHasWhitespace,
     keyStandard,
+    keyKind,
     baseUrl,
     model: AI_CONFIG.model,
     probes: [],
@@ -121,11 +138,14 @@ export async function runAiDiagnosis(): Promise<AiDiagResult> {
   }
 
   // 1) 通用国际站：只看 Key 所属账号，不看 workspace —— 用来区分「Key 坏了」还是「地址不匹配」
+  //    但 sk-ws- 业务空间专属 Key 打到通用站必然 401，那不代表 Key 无效，
+  //    所以这类 Key 不探通用站，只用 workspace 专属域名做权威判定。
   // 2) 项目实际使用的 Base URL：真实链路
-  const targets: { label: string; base: string }[] = [
-    { label: 'intl', base: 'https://dashscope-intl.aliyuncs.com' },
-  ];
-  if (baseUrl && !baseUrl.startsWith('https://dashscope-intl.aliyuncs.com')) {
+  const targets: { label: string; base: string }[] = [];
+  if (keyKind !== 'workspace') {
+    targets.push({ label: 'intl', base: 'https://dashscope-intl.aliyuncs.com' });
+  }
+  if (baseUrl) {
     targets.push({ label: 'workspace', base: baseUrl });
   }
 

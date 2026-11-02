@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
+import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl, voiceSynthUrl } from './endpoints';
 import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
 //    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
@@ -30,6 +31,11 @@ import { File } from 'expo-file-system/next';
 const ENROLL_URL = process.env.EXPO_PUBLIC_VOICE_ENROLL_URL as string | undefined;
 const WORKSPACE_ID = process.env.EXPO_PUBLIC_VOICE_WORKSPACE_ID as string | undefined;
 const TTS_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
+// 归一成「协议 + 主机」：用户填的可能是带 /compatible-mode/v1 的完整串，
+// 这里统一剥掉路径，后面各端点自己拼固定路径，避免双份路径 404。
+// 未配置时保持 undefined（不要默认成内置主机），以免「尚未配置」的提示消失、
+// 变成拿空 Key 去请求。
+const TTS_ORIGIN = TTS_BASE_URL ? endpointOrigin(TTS_BASE_URL) : undefined;
 const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
 // 合成端点可单独指定：默认与注册共用同一 workspace（克隆音色就注册在那里，必须同
 // workspace 才能找到该音色）。仅在「注册与合成必须分属不同地域 workspace」的特殊场景
@@ -52,8 +58,10 @@ function resolveEnrollEndpoint(): string | undefined {
   if (ENROLL_URL && /services\/audio\/tts\/customization|api\/v1\/services\/audio/i.test(ENROLL_URL)) {
     return toHttps(ENROLL_URL);
   }
-  if (TTS_BASE_URL) {
-    return toHttps(`${TTS_BASE_URL.replace(/\/+$/, '')}/api/v1/services/audio/tts/customization`);
+  if (TTS_ORIGIN) {
+    // 用 endpointOrigin 归一再拼路径：用户填的 Base URL 可能带 /compatible-mode/v1 后缀，
+    // 直接字符串拼接会得到 .../compatible-mode/v1/api/v1/services/... 而 404。
+    return toHttps(voiceEnrollUrl(TTS_ORIGIN));
   }
   return ENROLL_URL ? toHttps(ENROLL_URL) : undefined;
 }
@@ -62,13 +70,12 @@ function resolveEnrollEndpoint(): string | undefined {
 // ENROLL_URL / AI_BASE_URL 的「协议+主机」拼官方合成路径。不复用字符串后缀替换
 // （容易因配置里多一个斜杠/query 而静默失败、合成打到错误端点）。
 function resolveSynthEndpoint(): string | undefined {
-  const src = SYNTH_URL || ENROLL_URL || TTS_BASE_URL;
+  const src = SYNTH_URL || ENROLL_URL || TTS_ORIGIN;
   if (!src) return undefined;
   // 用户已给完整合成端点则直接使用
   if (/SpeechSynthesizer/i.test(src)) return toHttps(src);
-  const m = src.match(/^https?:\/\/[^/]+/i);
-  const host = m ? m[0] : src.replace(/\/+$/, '');
-  return toHttps(`${host}/api/v1/services/audio/tts/SpeechSynthesizer`);
+  // 只取 origin（协议+主机），避免配置里带 /compatible-mode/v1 之类后缀导致路径重复
+  return toHttps(voiceSynthUrl(src));
 }
 
 // 复刻模型：注册（create_voice 的 target_model）使用的模型。可通过
@@ -434,13 +441,13 @@ export async function synthesizeWithClonedVoice(
  * 返回识别文本；失败/未配置返回 null，调用方据此回退到手动输入。
  */
 export async function transcribeAudio(audioUri: string): Promise<string | null> {
-  if (!AI_API_KEY || !TTS_BASE_URL) return null;
+  if (!AI_API_KEY || !TTS_ORIGIN) return null;
   try {
     const bytes = await new File(audioUri).bytes();
     const b64 = uint8ToBase64(bytes);
     const mime = mimeFromUri(audioUri);
     const dataUri = `data:${mime};base64,${b64}`;
-    const res = await fetch(`${TTS_BASE_URL.replace(/\/+$/, '')}/compatible-mode/v1/chat/completions`, {
+    const res = await fetch(chatCompletionsUrl(TTS_ORIGIN), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({

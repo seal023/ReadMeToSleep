@@ -57,9 +57,20 @@ for v in EXPO_PUBLIC_AI_API_KEY EXPO_PUBLIC_AI_BASE_URL EXPO_PUBLIC_TTS_BASE_URL
     if [ "$trimmed" != "$val" ]; then
       note="$note HAS_WHITESPACE"
     fi
-    # 百炼 API Key 标准形态：sk- + 32 位 = 35 字符。长度不对基本就是复制错了
-    if [ "$v" = "EXPO_PUBLIC_AI_API_KEY" ] && [ "$len" -ne 35 ]; then
-      note="$note UNEXPECTED_LEN(expected35)"
+    # 两种合法形态：传统 sk-+32 位（35 字符）；业务空间专属 sk-ws-…（约 100-130 字符）
+    if [ "$v" = "EXPO_PUBLIC_AI_API_KEY" ]; then
+      case "$val" in
+        sk-ws-*)
+          if [ "$len" -lt 90 ]; then
+            note="$note SUSPICIOUS_LEN(sk-ws-keyTooShort)"
+          fi
+          ;;
+        *)
+          if [ "$len" -ne 35 ]; then
+            note="$note UNEXPECTED_LEN(expected35orSkWs)"
+          fi
+          ;;
+      esac
     fi
     echo "SECRET_CHECK: $v = present (len=$len prefix=$prefix)$note"
   fi
@@ -69,9 +80,24 @@ echo "=== Secret check done ==="
 # —— AI Key 连通性预检（best-effort，失败只告警不中断构建）——
 # 目的：在构建日志里直接确认「云端这把 Key 到底能不能用」，
 # 避免打完包到真机上才发现 AI 一直在静默降级。
+#
+# ⚠️ 必须打「配置里那个 Base URL」，而不是写死通用国际站：
+#    业务空间专属 Key（sk-ws-…）只认它所属 workspace 的专属域名，
+#    打通用站必然 401，写死会导致日志永远显示 FAILED、把真问题掩盖掉。
+#
+# 地址归一：只取协议+主机（用户的 Base URL 可能带 /compatible-mode/v1，
+# 直接拼会变成双份路径）。与 services/endpoints.ts 的规则保持一致。
+ORIGIN_IN="${EXPO_PUBLIC_AI_BASE_URL:-}"
+ORIGIN_HOST=$(printf '%s' "$ORIGIN_IN" | sed -E 's#^[A-Za-z]+://##; s#[/?#].*$##' | tr -d '[:space:]')
+if [ -z "$ORIGIN_HOST" ]; then
+  ORIGIN_HOST="ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com"
+fi
+AI_ORIGIN="https://${ORIGIN_HOST}"
+echo "AI_PROBE: base=${AI_ORIGIN} (raw=${ORIGIN_IN:-empty})"
+
 if [ -n "${EXPO_PUBLIC_AI_API_KEY:-}" ]; then
   AI_STATUS=$(curl -s -o /tmp/ai_probe.json -w '%{http_code}' --max-time 20 \
-    -X POST "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions" \
+    -X POST "${AI_ORIGIN}/compatible-mode/v1/chat/completions" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${EXPO_PUBLIC_AI_API_KEY}" \
     -d '{"model":"qwen-plus","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' || echo "000")

@@ -2,6 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../types';
 import { Alert } from 'react-native';
+import { endpointOrigin } from './endpoints';
 
 /**
  * AI 服务层 —— 阿里云百炼（DashScope OpenAI 兼容模式）
@@ -33,15 +34,22 @@ import { Alert } from 'react-native';
  *    静态替换；一旦裹上 (globalThis as any)?.process?.env?.X 或可选链，运行期就读不到
  *    值（落到 undefined），导致 API Key 为空、AI 永远降级到本地故事。
  */
-const ENV_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
+const ENV_API_KEY = (process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined) || '';
+const ENV_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
+
+/**
+ * Base URL 容错：百炼控制台给的可能是「只到主机」也可能是「带 /compatible-mode/v1」的
+ * 完整串，两种都接受——统一归一成 origin（协议+主机），chat 路径由自己拼，
+ * 避免出现 .../compatible-mode/v1/compatible-mode/v1/chat/completions 这种双份路径。
+ * 详见 services/endpoints.ts。
+ */
+const RESOLVED_ORIGIN = endpointOrigin(ENV_BASE_URL);
 
 export const AI_CONFIG = {
-  baseUrl:
-    (process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined) ||
-    'https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com',
+  baseUrl: RESOLVED_ORIGIN,
   chatPath: '/compatible-mode/v1/chat/completions',
   /** 仅来自环境变量；未配置时为空，generateStory 会自动降级到内置故事库 */
-  apiKey: ENV_API_KEY ?? '',
+  apiKey: ENV_API_KEY.trim(),
   model: 'qwen-plus',
   timeoutMs: 90_000,
   maxTokens: 3072,
