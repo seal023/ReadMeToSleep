@@ -125,23 +125,20 @@ line('══════════ 3. 真实请求探测 ═══════
 //   ① 按量付费  sk-…    → https://{WorkspaceId}.{region}.maas.aliyuncs.com  (compatible-mode)
 //   ② Coding Plan sk-ws-… → https://coding.dashscope.aliyuncs.com/v1        (OpenAI 兼容)
 //   ③ Token Plan  sk-sp-… → https://token-plan.cn-beijing.maas.aliyuncs.com
-// 所以按 Key 前缀决定探哪些地址，再配一把假 Key 作对照组。
-const isCodingKey = /^sk-ws-/.test(key);
-const isTokenPlanKey = /^sk-sp-/.test(key);
-
-const probes = [];
-if (isCodingKey) {
-  probes.push({ label: 'Coding Plan（中国站）', url: 'https://coding.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' });
-  probes.push({ label: 'Coding Plan（国际站）', url: 'https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' });
-} else if (isTokenPlanKey) {
-  probes.push({ label: 'Token Plan', url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' });
-} else {
-  probes.push({ label: '按量付费·通用国际站', url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' });
-}
-probes.push({ label: '项目配置的 Base URL（按量付费兼容模式）', url: `${baseUrl}/compatible-mode/v1/chat/completions`, model: 'qwen-plus' });
-probes.push({ label: '对照组：假 Key（必然失败）', url: probes[0].url, model: probes[0].model, fake: true });
+//
+// ⚠️ 实测发现 sk-ws- 前缀并不能唯一判定为 Coding Plan：业务空间的专属 Key 也是
+//    sk-ws- 开头（如 sk-ws-H.xxxx.xxxx.MEUCIQ…），它配 workspace 专属域名就能用。
+//    所以不按前缀猜，直接把三条路都探一遍，再用假 Key 作对照组。
+const probes = [
+  { label: '项目配置的 Base URL（业务空间兼容模式）', url: `${baseUrl}/compatible-mode/v1/chat/completions`, model: 'qwen-plus' },
+  { label: '按量付费·通用国际站', url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+  { label: 'Coding Plan（中国站）', url: 'https://coding.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' },
+  { label: 'Coding Plan（国际站）', url: 'https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' },
+  { label: 'Token Plan', url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
+];
 
 const FAKE_KEY = 'sk-0123456789abcdef0123456789abcdef';
+probes.push({ label: '对照组：假 Key（必然失败）', url: probes[0].url, model: probes[0].model, fake: true });
 
 const results = [];
 for (const p of probes) {
@@ -194,6 +191,14 @@ const sameAsFake =
   realResults.every((r) => r.status === fakeResult.status && r.code === fakeResult.code);
 const expired = realResults.some((r) => /expired|token/i.test(r.msg || ''));
 
+// 鉴权已过、但模型被拒：403 Model.AccessDenied —— Key 是好的，只是这个空间/账号
+// 没有该模型的调用权限（新业务空间常见：没做模型授权、没开通模型服务、没额度）。
+const deniedProbe = realResults.find(
+  (r) => r.status === 403 && /accessdenied|access denied/i.test(`${r.code} ${r.msg}`)
+);
+// Key 被正确绑定到了别的空间：说明 Base URL 写错了空间 ID。
+const workspaceMismatch = realResults.some((r) => /workspace endpoint access denied/i.test(r.msg || ''));
+
 if (okResult) {
   const endpoint = okResult.url.replace(/\/chat\/completions$/, '');
   line('✅ 通了！');
@@ -202,6 +207,19 @@ if (okResult) {
   line('   → 把 EXPO_PUBLIC_AI_BASE_URL 改成上面的 Base URL、model 改成上面的模型名即可。');
 } else if (allNet) {
   line('❌ 全部无响应 → 网络/DNS 问题（或本机代理拦截）。');
+} else if (deniedProbe && !sameAsFake) {
+  line('🔑 Key 鉴权通过（不再是 401），卡在模型权限：403 Model.AccessDenied。');
+  if (workspaceMismatch) {
+    line('   ⚠️ 另有地址报 "Workspace endpoint access denied" → 那把 Base URL 不是这个 Key 所属的空间。');
+    line('   → 用控制台该 Key 旁边给出的 Base URL，不要手抄空间 ID。');
+  }
+  line('   → Key 本身有效，但当前业务空间/账号没有该模型的调用权限，需要去控制台放开：');
+  line('     百炼控制台 → 该业务空间 → 模型管理 / 模型授权 → 添加并授权：');
+  line('       qwen-plus              （生成故事）');
+  line('       qwen3-tts-flash        （语音合成 / 预置音色）');
+  line('       qwen-audio-3.0-asr-flash（语音转文字）');
+  line('     同时确认账号已开通百炼「按量付费」且未欠费（免费额度用尽也会 403）。');
+  line('   → 放开后复测：node scripts/diag-ai.mjs');
 } else if (sameAsFake) {
   line('❌ 真 Key 的报错与假 Key 完全一致 → 这把 Key 在当前所有站点都不被承认。');
   if (expired) {
