@@ -16,7 +16,7 @@
 
 import axios from 'axios';
 import { AI_CONFIG } from './ai';
-import { chatCompletionsUrl } from './endpoints';
+import { chatCompletionsUrl, originSource, configuredWorkspaceId, type OriginSource } from './endpoints';
 
 export interface AiProbe {
   /** 展示用名称，如「通用国际站」 */
@@ -51,6 +51,10 @@ export interface AiDiagResult {
   keyStandard: boolean;
   keyKind: AiKeyKind;
   baseUrl: string;
+  /** 地址来源：env=环境变量 / env-corrected=填的地址空间与 WORKSPACE_ID 不一致、已自动纠正 / workspace=由空间 ID 推导 / none=都没配 */
+  originSource: OriginSource;
+  /** 配置的业务空间 ID（空=没配） */
+  workspaceId: string;
   model: string;
   probes: AiProbe[];
   verdict: AiVerdict;
@@ -127,6 +131,8 @@ export async function runAiDiagnosis(): Promise<AiDiagResult> {
     keyStandard,
     keyKind,
     baseUrl,
+    originSource: originSource(),
+    workspaceId: configuredWorkspaceId(),
     model: AI_CONFIG.model,
     probes: [],
     verdict: 'unknown',

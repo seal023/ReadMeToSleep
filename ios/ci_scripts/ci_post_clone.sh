@@ -89,8 +89,23 @@ echo "=== Secret check done ==="
 # 直接拼会变成双份路径）。与 services/endpoints.ts 的规则保持一致。
 ORIGIN_IN="${EXPO_PUBLIC_AI_BASE_URL:-}"
 ORIGIN_HOST=$(printf '%s' "$ORIGIN_IN" | sed -E 's#^[A-Za-z]+://##; s#[/?#].*$##' | tr -d '[:space:]')
-if [ -z "$ORIGIN_HOST" ]; then
-  ORIGIN_HOST="ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com"
+
+# ★ 自愈（与 services/endpoints.ts 同规则）：Base URL 里的空间 ID 必须与
+#   EXPO_PUBLIC_VOICE_WORKSPACE_ID 一致，否则 Key 会 403 access_denied。
+#   Base URL 缺失时直接用 workspace ID 推导，绝不回退到某个写死的旧空间。
+WS_IN="${EXPO_PUBLIC_VOICE_WORKSPACE_ID:-}"
+WS_IN=$(printf '%s' "$WS_IN" | tr -d '[:space:]')
+ORIGIN_WS=$(printf '%s' "$ORIGIN_HOST" | sed -E 's#^(ws-[a-z0-9]+)\..*#\1#')
+if [ -z "$ORIGIN_HOST" ] && [ -n "$WS_IN" ]; then
+  ORIGIN_HOST="${WS_IN}.ap-southeast-1.maas.aliyuncs.com"
+  echo "AI_PROBE: base url missing -> derived from workspace id"
+elif [ -n "$ORIGIN_HOST" ] && [ -n "$WS_IN" ] && [ "$ORIGIN_WS" != "$WS_IN" ]; then
+  REGION=$(printf '%s' "$ORIGIN_HOST" | sed -E 's#^ws-[a-z0-9]+\.([a-z0-9-]+)\.maas\.aliyuncs\.com$#\1#')
+  case "$REGION" in
+    *.*|"") REGION="ap-southeast-1" ;;
+  esac
+  echo "AI_PROBE: WARNING base url workspace ($ORIGIN_WS) != workspace id ($WS_IN) -> self-healed to $WS_IN"
+  ORIGIN_HOST="${WS_IN}.${REGION}.maas.aliyuncs.com"
 fi
 AI_ORIGIN="https://${ORIGIN_HOST}"
 echo "AI_PROBE: base=${AI_ORIGIN} (raw=${ORIGIN_IN:-empty})"

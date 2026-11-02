@@ -26,8 +26,8 @@ import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession } from '../../services/clonedVoicePlayback';
-import { transcribeAudio } from '../../services/voiceClone';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { transcribeAudio, PRESET_VOICES } from '../../services/voiceClone';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -118,6 +118,8 @@ export default function StoryPlayScreen() {
   const [progress, setProgress] = useState(0);
   // v79：声音选择改为常显大按钮，不再需要展开/收起状态
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0]?.id ?? '');
+  // v80 #3：正在播的到底是谁的声音？——显示当前生效的音色名（未克隆=云端预置音色）
+  const [voiceIsCloned, setVoiceIsCloned] = useState(false);
   const [qaIndex, setQaIndex] = useState(0);
   const [qaFeedback, setQaFeedback] = useState('');
   const [childQuestion, setChildQuestion] = useState('');
@@ -526,6 +528,27 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
+  // 当前声线是否有「真人克隆」可用（决定音色标签显示"克隆声音"还是"云端预置音色"）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!selectedVoice || selectedVoice === 'system') {
+        if (!cancelled) setVoiceIsCloned(false);
+        return;
+      }
+      let ok = false;
+      try {
+        ok = await hasClonedVoice(selectedVoice);
+      } catch {
+        ok = false;
+      }
+      if (!cancelled) setVoiceIsCloned(ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVoice]);
+
   // 播放按钮呼吸脉冲：isPlaying 时循环放大/收缩，直观提示「正在播放」
   useEffect(() => {
     if (isPlaying) {
@@ -698,8 +721,13 @@ export default function StoryPlayScreen() {
     }
   };
 
-  const handlePlay = async () => {
+  /**
+   * @param voiceOverride 指定用哪个声线起播。播放中换声时传入新声线，
+   *        避免依赖 setSelectedVoice 的异步 state（同一 tick 里读到的还是旧值）。
+   */
+  const handlePlay = async (voiceOverride?: string) => {
     if (!story) return;
+    const voice = voiceOverride ?? selectedVoice;
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
@@ -770,7 +798,7 @@ export default function StoryPlayScreen() {
         return;
       }
 
-      const used = await playStory(storyText, selectedVoice, displayLang, onEnded);
+      const used = await playStory(storyText, voice, displayLang, onEnded);
       if (token !== playTokenRef.current) return;
       setUsingClonedVoice(used);
       clonedPlayingRef.current = used;
@@ -803,6 +831,18 @@ export default function StoryPlayScreen() {
             ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
             : Math.max(storyText.length * 210, 10000));
       safetyTimerRef.current = setTimeout(onEnded, safeDur + 45000);
+      // v80 #4：上面这个安全网按「估算时长 + 45s」，真出问题时孩子要对着静止页面干等 45 秒。
+      // 起播 1.2s 后音频真实时长就已知了，此时把安全网收紧到「剩余时长 + 8s」。
+      if (used) {
+        setTimeout(() => {
+          if (token !== playTokenRef.current) return;
+          const real = getClonedDuration();
+          if (real <= 1) return;
+          const remain = Math.max(0, real - getClonedPosition());
+          if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+          safetyTimerRef.current = setTimeout(onEnded, remain * 1000 + 8000);
+        }, 1200);
+      }
       startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
     } finally {
       if (token === playTokenRef.current) {
@@ -810,6 +850,37 @@ export default function StoryPlayScreen() {
       }
       startingRef.current = false;
     }
+  };
+
+  /**
+   * v80 #2：播放中换声**立即生效**。
+   * ---------------------------------------------------------------------------
+   * 原来这里只 `setSelectedVoice(id)`，正在播的那段音频不会重起，
+   * 于是必须「停止 / 暂停 → 再点播放」才换得过来，孩子的感受就是"点了没反应"。
+   * 现在：记住当前播放位置 → 用新声线从同一位置重新起播，进度无缝衔接。
+   */
+  const pickVoice = (id: string) => {
+    if (!id || id === selectedVoice) return;
+    const wasPlaying = isPlaying;
+    const pos = getClonedPosition();
+    setSelectedVoice(id);
+    void saveVoiceSetting(id); // 记住选择，下次进故事页直接沿用
+    if (!wasPlaying) return;
+
+    resumeAtRef.current = pos > 3 ? pos : 0;
+    setResumeSec(resumeAtRef.current > 0 ? Math.floor(resumeAtRef.current) : 0);
+    // 作废旧那一路的播放回调：否则旧音频的「播完」会把界面推到完成页
+    playTokenRef.current++;
+    startingRef.current = false;
+    stopStory();
+    setIsPlaying(false);
+    setPreparing(false);
+    if (progressInterval.current) clearInterval(progressInterval.current);
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    // 稍等一拍再起播；用 override 传声线，不依赖 setState 是否已刷新
+    setTimeout(() => {
+      void handlePlay(id);
+    }, 80);
   };
 
   const handlePause = () => {
@@ -1298,7 +1369,7 @@ export default function StoryPlayScreen() {
           <Animated.View style={{ transform: [{ scale: playPulse }] }}>
             <TouchableOpacity
               style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-              onPress={isPlaying ? handlePause : handlePlay}
+              onPress={() => (isPlaying ? handlePause() : handlePlay())}
               activeOpacity={0.9}
             >
               <Text style={styles.playIcon}>{isPlaying ? '⏸️' : '▶️'}</Text>
@@ -1355,7 +1426,7 @@ export default function StoryPlayScreen() {
                 <TouchableOpacity
                   key={v.id}
                   style={[styles.voiceChip, active && styles.voiceChipActive]}
-                  onPress={() => setSelectedVoice(v.id)}
+                  onPress={() => pickVoice(v.id)}
                   activeOpacity={0.85}
                 >
                   <ClayIcon name="mic" size={22} />
@@ -1366,6 +1437,24 @@ export default function StoryPlayScreen() {
               );
             })}
           </View>
+          {/*
+            v80 #3：孩子/家长都不知道「现在这个好听的声音是谁」。
+            这里直接标出版权音色名 + 角色（未克隆时用的是百炼云端预置音色），
+            已克隆则明确写「XX 的克隆声音」。
+          */}
+          {(() => {
+            const presetKey = presetTargetFor(selectedVoice);
+            const preset = presetKey ? PRESET_VOICES[presetKey] : undefined;
+            const roleLabel = t(`settings.voice.${selectedVoice}`);
+            const text = voiceIsCloned
+              ? uiLang === 'en'
+                ? `🎙 Now in ${roleLabel}'s cloned voice`
+                : `🎙 现在是「${roleLabel}」的克隆声音`
+              : uiLang === 'en'
+              ? `🔊 Voice: ${preset?.voice ?? 'system'}${preset?.labelEn ? ` · ${preset.labelEn}` : ''}`
+              : `🔊 现在是 ${preset?.voice ?? '系统'}（${preset?.label ?? '系统音'}）的声音`;
+            return <Text style={styles.voiceNow}>{text}</Text>;
+          })()}
         </View>
 
         <View style={styles.raccoCorner}>
@@ -1858,6 +1947,8 @@ const styles = StyleSheet.create({
   voiceChipActive: { backgroundColor: '#F7A072', borderColor: '#F7A072' },
   voiceChipText: { fontSize: 15, color: '#3D3229', fontWeight: '600' },
   voiceChipTextActive: { color: '#FFFFFF' },
+  // v80 #3：当前实际发音的音色名（"现在是 Cherry（大姐姐）的声音"）
+  voiceNow: { fontSize: 13, color: '#8A6D5B', marginTop: 10, lineHeight: 18 },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
   completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 24 },

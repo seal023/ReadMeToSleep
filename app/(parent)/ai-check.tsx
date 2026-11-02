@@ -89,6 +89,16 @@ export default function AiCheckScreen() {
                 <Text style={styles.warn}>{t('aicheck.keyNonStandard')}</Text>
               )}
               <Row label={t('aicheck.baseUrl')} value={result.baseUrl} small />
+              <Row
+                label={t('aicheck.originSource')}
+                value={t(`aicheck.origin.${result.originSource}`)}
+                highlight={result.originSource === 'env-corrected' || result.originSource === 'none'}
+              />
+              <Row
+                label={t('aicheck.workspaceId')}
+                value={result.workspaceId || t('aicheck.workspaceAbsent')}
+                highlight={!result.workspaceId}
+              />
               <Row label={t('aicheck.model')} value={result.model} />
             </View>
 

@@ -2,14 +2,16 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../types';
 import { Alert } from 'react-native';
-import { endpointOrigin } from './endpoints';
+import { endpointOrigin, originSource } from './endpoints';
 
 /**
  * AI 服务层 —— 阿里云百炼（DashScope OpenAI 兼容模式）
  *
- * 端点已在 2026-09-01 实测通过：
- *   POST https://ws-6f52kltpls7886bp.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions
+ * 端点已在 2026-11-02 用全新业务空间实测通过：
+ *   POST https://{WorkspaceId}.{region}.maas.aliyuncs.com/compatible-mode/v1/chat/completions
  *   model = qwen-plus，返回标准 OpenAI chat.completion 结构。
+ *   （域名里的 WorkspaceId 必须与 API Key 所属业务空间一致，否则 403 access_denied；
+ *    详见 services/endpoints.ts 的推导与自愈逻辑。）
  *
  * 设计要点：
  *   1. 全链路 HTTPS，满足 iOS ATS 要求（明文 http 会被系统拦截）。
@@ -38,10 +40,13 @@ const ENV_API_KEY = (process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined) |
 const ENV_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
 
 /**
- * Base URL 容错：百炼控制台给的可能是「只到主机」也可能是「带 /compatible-mode/v1」的
- * 完整串，两种都接受——统一归一成 origin（协议+主机），chat 路径由自己拼，
- * 避免出现 .../compatible-mode/v1/compatible-mode/v1/chat/completions 这种双份路径。
- * 详见 services/endpoints.ts。
+ * Base URL 容错（详见 services/endpoints.ts）：
+ *   1. 控制台给的「只到主机」与「带 /compatible-mode/v1」两种写法都接受，
+ *      统一归一成 origin，再自己拼 chat 路径，避免双份路径 404；
+ *   2. ★ Base URL 缺失时用 EXPO_PUBLIC_VOICE_WORKSPACE_ID 推导专属域名；
+ *   3. ★ Base URL 里的空间与 WORKSPACE_ID 不一致时以 WORKSPACE_ID 为准重建。
+ *      （v80 事故：云端 Base URL 还是旧空间 ws-6f52…，而 Key 属于新空间
+ *        ws-grdk…，于是 403 Workspace endpoint access denied，界面只报「AI 请求失败」。）
  */
 const RESOLVED_ORIGIN = endpointOrigin(ENV_BASE_URL);
 
@@ -141,6 +146,15 @@ async function chat(
     Alert.alert('AI 未配置', 'EXPO_PUBLIC_AI_API_KEY 为空，AI 将降级到本地故事');
     throw new Error('AI_API_KEY_NOT_CONFIGURED');
   }
+  // 端点也没解析出来（既没有 Base URL，也没有 workspace id）：
+  // 明确报错，不要拼出相对路径去请求一个不存在的地址
+  if (!AI_CONFIG.baseUrl) {
+    Alert.alert(
+      'AI 未配置端点',
+      'EXPO_PUBLIC_AI_BASE_URL 与 EXPO_PUBLIC_VOICE_WORKSPACE_ID 都为空，无法确定百炼端点。'
+    );
+    throw new Error('AI_ENDPOINT_NOT_CONFIGURED');
+  }
   let res;
   try {
     res = await axios.post(
@@ -165,17 +179,35 @@ async function chat(
   } catch (err: any) {
     const status = err?.response?.status;
     const data = err?.response?.data;
+    const code = typeof data === 'object' && data ? (data as any)?.code || (data as any)?.error?.code : undefined;
+    const url = `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`;
     console.error('[ai] chat request failed', {
       status,
+      code,
       data: typeof data === 'string' ? data.slice(0, 300) : data,
-      url: `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`,
+      url,
+      originSource: originSource(),
       hasKey: !!AI_CONFIG.apiKey,
       message: err?.message,
     });
+    // 把最常见的两种鉴权失败翻译成人话，避免家长/测试者对着 403 猜
+    let hint = '';
+    if (status === 403 && code === 'access_denied') {
+      hint =
+        '\n\n👉 这是「Key 与端点不属于同一个业务空间」：' +
+        'Key 是新的，但请求打到了旧空间的域名。' +
+        '本版已做自动纠正（以 EXPO_PUBLIC_VOICE_WORKSPACE_ID 为准重建域名），' +
+        '若仍报此错，请核对该变量是否为当前空间的 ID。';
+    } else if (status === 403) {
+      hint = '\n\n👉 业务空间未授权该模型，去控制台「模型权限」里打开 qwen-plus。';
+    } else if (status === 401) {
+      hint = '\n\n👉 Key 无效或已轮换，去百炼控制台重新复制一把。';
+    }
     Alert.alert(
       'AI 请求失败（诊断）',
       `status: ${status ?? '无'}\n` +
-        `url: ${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}\n` +
+        `url: ${url}\n` +
+        `地址来源: ${originSource()}（env=环境变量 / workspace=由空间ID推导）\n` +
         `hasKey: ${!!AI_CONFIG.apiKey}\n` +
         `message: ${err?.message ?? '无'}\n` +
         `data: ${
@@ -184,7 +216,8 @@ async function chat(
             : data
             ? JSON.stringify(data).slice(0, 200)
             : '无'
-        }`
+        }` +
+        hint
     );
     throw err;
   }

@@ -35,7 +35,11 @@ const TTS_BASE_URL = process.env.EXPO_PUBLIC_AI_BASE_URL as string | undefined;
 // 这里统一剥掉路径，后面各端点自己拼固定路径，避免双份路径 404。
 // 未配置时保持 undefined（不要默认成内置主机），以免「尚未配置」的提示消失、
 // 变成拿空 Key 去请求。
-const TTS_ORIGIN = TTS_BASE_URL ? endpointOrigin(TTS_BASE_URL) : undefined;
+// ⚠️ 不要写成 `TTS_BASE_URL ? endpointOrigin(...) : undefined`：
+// v80 实测踩过——构建机上 EXPO_PUBLIC_AI_BASE_URL 没取到（空串），但
+// EXPO_PUBLIC_VOICE_WORKSPACE_ID 是有的，此时 endpointOrigin() 能用 workspace id
+// 推导出正确域名；若在这里提前判空，合成/ASR 会直接「没端点」→ 一路降级到系统音。
+const TTS_ORIGIN = endpointOrigin(TTS_BASE_URL) || undefined;
 const AI_API_KEY = process.env.EXPO_PUBLIC_AI_API_KEY as string | undefined;
 // 合成端点可单独指定：默认与注册共用同一 workspace（克隆音色就注册在那里，必须同
 // workspace 才能找到该音色）。仅在「注册与合成必须分属不同地域 workspace」的特殊场景
@@ -118,11 +122,11 @@ export type CloneTarget = string;
  * 合成时自动映射到对应的百炼音色名（见 resolveVoiceForTarget）。
  * 合成失败会自然返回 false，调用方降级回系统音，不会出现"没声音"。
  */
-export const PRESET_VOICES: Record<string, { voice: string; label: string }> = {
-  'preset:cherry': { voice: 'Cherry', label: '大姐姐' },
-  'preset:serena': { voice: 'Serena', label: '温柔女声' },
-  'preset:ethan': { voice: 'Ethan', label: '大哥哥' },
-  'preset:nini': { voice: 'Nini', label: '邻家姐姐' },
+export const PRESET_VOICES: Record<string, { voice: string; label: string; labelEn: string }> = {
+  'preset:cherry': { voice: 'Cherry', label: '大姐姐', labelEn: 'sunny big sister' },
+  'preset:serena': { voice: 'Serena', label: '温柔女声', labelEn: 'gentle female' },
+  'preset:ethan': { voice: 'Ethan', label: '大哥哥', labelEn: 'warm male' },
+  'preset:nini': { voice: 'Nini', label: '邻家姐姐', labelEn: 'soft female' },
 };
 
 /** 该 target 是否是「预置音色」（不需要克隆、永远可用） */

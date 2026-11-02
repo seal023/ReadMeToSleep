@@ -68,12 +68,33 @@ let endOnce: (() => void) | null = null;
 // 出现过的最大时长：长音频起播/缓冲抖动时 duration 可能瞬间回退，
 // 用它识别「duration 异常回退」从而避免误判结束（Issue 8）。
 let maxDur = 0;
+/**
+ * v80 #4：故事播完后没进「奖杯 / 提问」环节。
+ * ---------------------------------------------------------------------------
+ * 原因：AVPlayer 播完的瞬间 currentTime 可能直接归零或跳变，于是
+ *   `pos >= dur - 0.6` 这条判据永远命不中 → 界面卡在播放页不动，
+ *   只能等调用方那个「估算时长 + 45s」的安全定时器，孩子早就走神了。
+ * 加两重独立兜底：
+ *   ① 硬定时器：时长已知后按「剩余时长 + 2s」挂一次性 timeout，与位置轮询无关；
+ *   ② 播放器自报停止：player.playing 变 false 且已经播过一段 → 连续 2s 视为播完。
+ */
+let hardEndTimer: ReturnType<typeof setTimeout> | null = null;
+let stallTicks = 0;
+
+function clearHardEnd(): void {
+  if (hardEndTimer) {
+    clearTimeout(hardEndTimer);
+    hardEndTimer = null;
+  }
+  stallTicks = 0;
+}
 
 function resetEndWatch(): void {
   if (endWatchTimer) {
     clearInterval(endWatchTimer);
     endWatchTimer = null;
   }
+  clearHardEnd();
   endFired = false;
   endOnce = null;
   maxDur = 0;
@@ -90,6 +111,7 @@ function armEndWatch(onDone?: () => void): void {
       clearInterval(endWatchTimer);
       endWatchTimer = null;
     }
+    clearHardEnd();
     try {
       onDone();
     } catch {
@@ -106,7 +128,29 @@ function armEndWatch(onDone?: () => void): void {
     // 若直接拿「当前很小的 dur」去比 pos 就会误判「已播完」→ 故事没讲完就跳结束。
     // 故跟踪出现过的最大时长，仅当「当前 dur 没有异常回退」且「位置接近真实时长」才判结束。
     if (dur > maxDur) maxDur = dur;
-    if (dur >= maxDur - 0.6 && pos >= dur - 0.6) endOnce?.();
+    // ① 位置到末尾（原有判据）
+    if (dur >= maxDur - 0.6 && pos >= dur - 0.6) {
+      endOnce?.();
+      return;
+    }
+    // ② 硬定时器：时长已知后，按「剩余时长 + 2s」挂一次性 timeout。
+    //    与 currentTime 是否归零无关，是"音频确实播完了"最可靠的兜底。
+    if (!hardEndTimer) {
+      const remainMs = Math.max(0, dur - pos) * 1000;
+      hardEndTimer = setTimeout(() => {
+        endOnce?.();
+      }, remainMs + 2000);
+    }
+    // ③ 播放器自报已停止（部分版本 onEnded 不触发、currentTime 又不可靠）
+    const p = currentPlayer as unknown as { playing?: boolean } | null;
+    if (p && typeof p.playing === 'boolean') {
+      if (!p.playing && pos > 2) {
+        stallTicks += 1;
+        if (stallTicks >= 8) endOnce?.(); // 连续 2 秒停在非开头位置 → 认为已播完
+      } else {
+        stallTicks = 0;
+      }
+    }
   }, 250);
 }
 
