@@ -73,7 +73,7 @@ if (key) {
     isStandard
       ? '✅ 按量付费 Key（sk- + 32 位）'
       : isCoding
-      ? '✅ Coding Plan Key（sk-ws-…）—— 只能配 https://coding.dashscope.aliyuncs.com/v1'
+      ? '✅ sk-ws- Key —— 业务空间专属 或 Coding Plan（实测前缀不能唯一区分，靠端点探测判定）'
       : isTokenPlan
       ? '✅ Token Plan Key（sk-sp-…）—— 只能配 token-plan.cn-beijing.maas.aliyuncs.com'
       : '⚠️ 无法识别（不是 sk- 32 位 / sk-ws- / sk-sp- 任一种）'

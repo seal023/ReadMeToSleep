@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
-import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl, voiceSynthUrl } from './endpoints';
+import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl } from './endpoints';
 import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
 //    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
@@ -67,16 +67,28 @@ function resolveEnrollEndpoint(): string | undefined {
 }
 
 // 合成端点：优先用显式指定的 SYNTH_URL（可指向不同地域 workspace），否则取
-// ENROLL_URL / AI_BASE_URL 的「协议+主机」拼官方合成路径。不复用字符串后缀替换
-// （容易因配置里多一个斜杠/query 而静默失败、合成打到错误端点）。
-function resolveSynthEndpoint(): string | undefined {
+// ENROLL_URL / AI_BASE_URL 的「协议+主机」拼官方路径。
+//
+// ⚠️ 2026-11-02 实测：百炼有两种合成端点，模型不同、路径不同，走错会报
+//    `InvalidParameter: url error, please check url!`（不是 401，极易误判成 Key 问题）：
+//      · qwen3-tts-flash / qwen-tts 等新一代 TTS → /api/v1/services/aigc/multimodal-generation/generation
+//        返回 output.audio.url（.wav 下载地址，需二次 GET）
+//      · 声音复刻（CosyVoice 系，如 qwen-audio-3.0-tts-flash）→ /api/v1/services/audio/tts/SpeechSynthesizer
+//    所以这里返回「候选端点列表」，按 target 类型排序，失败自动换下一个。
+function resolveSynthEndpoints(isPreset: boolean): string[] {
   const src = SYNTH_URL || ENROLL_URL || TTS_ORIGIN;
-  if (!src) return undefined;
-  // 用户已给完整合成端点则直接使用
-  if (/SpeechSynthesizer/i.test(src)) return toHttps(src);
-  // 只取 origin（协议+主机），避免配置里带 /compatible-mode/v1 之类后缀导致路径重复
-  return toHttps(voiceSynthUrl(src));
+  if (!src) return [];
+  // 用户显式给了完整端点则只试那一个，不做猜测
+  if (/SpeechSynthesizer|multimodal-generation/i.test(src)) return [toHttps(src)];
+  const origin = endpointOrigin(src);
+  const synth = toHttps(`${origin}/api/v1/services/audio/tts/SpeechSynthesizer`);
+  const multimodal = toHttps(`${origin}/api/v1/services/aigc/multimodal-generation/generation`);
+  return isPreset ? [multimodal, synth] : [synth, multimodal];
 }
+
+/** 预置音色（Cherry / Serena 等）用的模型：新一代 qwen3-tts，必须配 multimodal-generation 端点 */
+const PRESET_TTS_MODEL =
+  (process.env.EXPO_PUBLIC_TTS_MODEL as string | undefined) || 'qwen3-tts-flash';
 
 // 复刻模型：注册（create_voice 的 target_model）使用的模型。可通过
 // EXPO_PUBLIC_VOICE_TARGET_MODEL 覆盖；默认 qwen-audio-3.0-tts-flash。
@@ -357,82 +369,86 @@ export async function synthesizeWithClonedVoice(
 ): Promise<SynthResult> {
   // 预置音色（'preset:*'）不需要本地克隆记录，直接映射到百炼内置音色名
   const voiceId = await resolveVoiceForTarget(target);
-  const synthEndpoint = resolveSynthEndpoint();
+  const isPreset = isPresetTarget(target);
+  // 预置音色用新一代 qwen3-tts；克隆音色必须用注册时的 target_model（音色绑定在它上面）
+  const model = isPreset ? PRESET_TTS_MODEL : SYNTH_MODEL;
+  const endpoints = resolveSynthEndpoints(isPreset);
   if (!voiceId) return { audio: null, error: ts('vc.svc.notCloned') };
-  if (!synthEndpoint) return { audio: null, error: ts('vc.svc.noEndpoint') };
+  if (endpoints.length === 0) return { audio: null, error: ts('vc.svc.noEndpoint') };
   if (!AI_API_KEY) return { audio: null, error: ts('vc.svc.noKey') };
 
-  try {
-    // 百炼 MaaS 官方示例：鉴权仅靠 URL 子域名里的 workspace + Bearer Key，
-    // 不依赖 X-Workspace-Id；仅当显式配置了才带上，避免发送空 header 引发异常。
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${AI_API_KEY}`,
-    };
-    if (WORKSPACE_ID) headers['X-Workspace-Id'] = WORKSPACE_ID;
+  // 百炼 MaaS 官方示例：鉴权仅靠 URL 子域名里的 workspace + Bearer Key，
+  // 不依赖 X-Workspace-Id；仅当显式配置了才带上，避免发送空 header 引发异常。
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${AI_API_KEY}`,
+  };
+  if (WORKSPACE_ID) headers['X-Workspace-Id'] = WORKSPACE_ID;
 
-    const res = await fetch(synthEndpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: SYNTH_MODEL,
-        input: {
-          text,
-          voice: voiceId,
-          format: 'mp3',
-          sample_rate: 24000,
-        },
-      }),
-    });
-    if (!res.ok) {
-      const bodyText = await res.text().catch(() => '');
-      // 404 / Model not exist：克隆音色绑定在注册时的 target_model 上，合成必须用同一模型，
-      // 且合成端点须与注册同一 workspace。详见下方 hint。
-      const hint =
-        res.status === 404
-          ? `。克隆音色绑定在注册时的 target_model（${CLONE_MODEL}）上，合成必须用同一模型。` +
-            `请确认：(1) EXPO_PUBLIC_VOICE_TARGET_MODEL 与合成 model 一致；` +
-            `(2) EXPO_PUBLIC_VOICE_SYNTH_URL（若设置）指向与注册同一 workspace，` +
-            `否则该 workspace 找不到该音色/模型而报 Model not exist。`
-          : '';
-      return {
-        audio: null,
-        error: `合成请求失败（HTTP ${res.status}）：${bodyText.slice(0, 200)}${hint}`,
-      };
+  // 依次尝试候选端点：模型与端点不匹配时百炼返回 400 url error / 404 Model not exist，
+  // 这类错误换端点就能过；401/403 是权限问题，换端点也没用，直接返回。
+  let lastError = '';
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          input: {
+            text,
+            voice: voiceId,
+            format: 'mp3',
+            sample_rate: 24000,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => '');
+        const hint =
+          res.status === 404
+            ? `。克隆音色绑定在注册时的 target_model（${CLONE_MODEL}）上，合成必须用同一模型。` +
+              `请确认：(1) EXPO_PUBLIC_VOICE_TARGET_MODEL 与合成 model 一致；` +
+              `(2) EXPO_PUBLIC_VOICE_SYNTH_URL（若设置）指向与注册同一 workspace，` +
+              `否则该 workspace 找不到该音色/模型而报 Model not exist。`
+            : res.status === 403
+            ? `。当前业务空间未授权模型「${model}」，需在控制台「模型权限」里打开。`
+            : '';
+        lastError = `合成请求失败（HTTP ${res.status}）：${bodyText.slice(0, 200)}${hint}`;
+        if (res.status === 401 || res.status === 403) return { audio: null, error: lastError };
+        continue;
+      }
+      const data = (await res.json().catch(() => null)) as any;
+      // 非流式：音频以下载地址返回（output.audio.url）；个别配置也可能直接给 base64，一并兼容
+      let audioUrl: string | undefined = data?.output?.audio?.url;
+      if (!audioUrl && typeof data?.output?.audio === 'string') {
+        audioUrl = data.output.audio;
+      }
+      if (!audioUrl) {
+        lastError = `合成成功但响应缺少音频地址：${JSON.stringify(data).slice(0, 300)}`;
+        continue;
+      }
+      // base64 直返：直接解码（极少情况）
+      if (audioUrl.startsWith('data:')) {
+        const b64 = audioUrl.slice(audioUrl.indexOf(',') + 1);
+        return { audio: base64ToUint8(b64).buffer as ArrayBuffer, error: undefined };
+      }
+      // ★ ATS 修复（方案A）：百炼返回的音频下载地址偶发为 http://，iOS
+      //   App Transport Security 会直接拦截（"requires the use of a secure connection"）。
+      //   阿里云 DNS 域名均支持 https，这里强制升级为 https 再下载，无需改原生配置。
+      audioUrl = toHttps(audioUrl);
+      const audioRes = await fetch(audioUrl);
+      if (!audioRes.ok) {
+        lastError = `下载合成音频失败（HTTP ${audioRes.status}）：${audioUrl.slice(0, 160)}`;
+        continue;
+      }
+      return { audio: await audioRes.arrayBuffer(), error: undefined };
+    } catch (err: any) {
+      lastError = `合成异常：${err?.message || String(err)}`;
     }
-    const data = (await res.json().catch(() => null)) as any;
-    // 非流式：音频以下载地址返回（output.audio.url）；个别配置也可能直接给 base64，一并兼容
-    let audioUrl: string | undefined = data?.output?.audio?.url;
-    if (!audioUrl && typeof data?.output?.audio === 'string') {
-      audioUrl = data.output.audio;
-    }
-    if (!audioUrl) {
-      return {
-        audio: null,
-        error: `合成成功但响应缺少音频地址：${JSON.stringify(data).slice(0, 300)}`,
-      };
-    }
-    // base64 直返：直接解码（极少情况）
-    if (audioUrl.startsWith('data:')) {
-      const b64 = audioUrl.slice(audioUrl.indexOf(',') + 1);
-      return { audio: base64ToUint8(b64).buffer as ArrayBuffer, error: undefined };
-    }
-    // ★ ATS 修复（方案A）：百炼返回的音频下载地址偶发为 http://，iOS
-    //   App Transport Security 会直接拦截（"requires the use of a secure connection"）。
-    //   阿里云 DNS 域名均支持 https，这里强制升级为 https 再下载，无需改原生配置。
-    audioUrl = toHttps(audioUrl);
-    const audioRes = await fetch(audioUrl);
-    if (!audioRes.ok) {
-      return { audio: null, error: `下载合成音频失败（HTTP ${audioRes.status}）：${audioUrl.slice(0, 160)}` };
-    }
-    return { audio: await audioRes.arrayBuffer(), error: undefined };
-  } catch (err: any) {
-    // 诊断信息带上实际使用的 voiceId，便于核对与百炼后台已训练音色是否一致
-    return {
-      audio: null,
-      error: `合成异常（voiceId=${voiceId}）：${err?.message || String(err)}`,
-    };
   }
+
+  return { audio: null, error: lastError || '合成失败（未知原因）' };
 }
 
 /**
