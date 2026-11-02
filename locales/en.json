@@ -739,6 +739,7 @@
   "vc.svc.notConfigured": "Voice cloning is not configured yet (VOICE_ENROLL_URL or AI_BASE_URL / AI_API_KEY is missing in the build).",
   "vc.svc.fileTooSmall": "The recording is empty or too short to clone (about {n} bytes). Please record again: quiet room, about 10 cm from the mic, read the prompt clearly for at least 5 seconds.",
   "vc.svc.silent": "The audio was detected as silence. Please record again: quiet room, about 10 cm from the mic, read the prompt clearly for at least 10 seconds.",
+  "vc.svc.asrFailed": "We couldn't hear clear speech in the recording (speech recognition on the server failed). Please record again: quiet room, close to the mic, read continuously for at least 10 seconds without long pauses.",
   "vc.svc.createFail": "Could not create the voice (HTTP {status}): {msg}",
   "vc.svc.noVoiceId": "The voice was created but the server returned no voice ID",
   "vc.svc.training": "Voice submitted and training (a few minutes). It will appear under Mom / Dad / Grandma shortly.",

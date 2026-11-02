@@ -739,6 +739,7 @@
   "vc.svc.notConfigured": "声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL 或 AI_BASE_URL / AI_API_KEY）",
   "vc.svc.fileTooSmall": "录音文件为空或过小，无法克隆（实测约 {n} 字节）。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 5 秒，再提交。",
   "vc.svc.silent": "音频被识别为静音。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒。",
+  "vc.svc.asrFailed": "没能从录音里听清人声（服务端语音识别失败）。请重新录制：安静环境下靠近麦克风，连续朗读 10 秒以上，中间不要长时间停顿。",
   "vc.svc.createFail": "创建音色失败（HTTP {status}）：{msg}",
   "vc.svc.noVoiceId": "创建音色成功，但服务端没有返回音色 ID",
   "vc.svc.training": "音色已提交，正在训练（约几分钟），稍后就能在「妈妈 / 爸爸 / 外婆」里用了",

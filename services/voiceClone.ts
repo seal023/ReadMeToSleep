@@ -293,6 +293,15 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
         msg = ts('vc.svc.silent');
       }
       /**
+       * 授权解决后实测会遇到的下一个失败类型：服务端在复刻前先跑 ASR，
+       * 若录音里没有可识别的连续人声（录太短 / 环境吵 / 只是呼吸杂音），
+       * 会返回 HTTP 500 `InternalError: request asr failed, http code: 400`。
+       * 这条对家长毫无意义，直接翻成人话让他重录。
+       */
+      if (/asr failed|request asr/i.test(msg)) {
+        return { ok: false, message: ts('vc.svc.asrFailed') };
+      }
+      /**
        * v81 反馈 #4：克隆报 HTTP 403「Model access denied」。
        * 这不是接口地址或请求格式的问题（实测预置音色合成 200，说明 Key 与域名都对），
        * 而是这个业务空间**没有授权声音复刻模型**。把真正原因和要开的模型名写到界面上，
