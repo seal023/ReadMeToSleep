@@ -66,14 +66,17 @@ if (key) {
   kv('含引号', /["']/.test(key) ? '⚠️ 有' : '无');
   kv('全 ASCII', /^[\x20-\x7E]+$/.test(key) ? '是' : '⚠️ 否（可能有全角/零宽字符）');
   const isStandard = /^sk-[A-Za-z0-9]{32}$/.test(key);
-  const isWorkspace = /^sk-ws-[A-Za-z0-9._-]{20,}$/.test(key);
+  const isCoding = /^sk-ws-/.test(key);
+  const isTokenPlan = /^sk-sp-/.test(key);
   kv(
     'Key 类型',
     isStandard
-      ? '✅ 传统 Key（sk- + 32 位，任何站点都认）'
-      : isWorkspace
-      ? '✅ 业务空间专属 Key（sk-ws-…，只能配它所属 workspace 的专属域名）'
-      : '⚠️ 无法识别（既不是 35 位传统 Key，也不像 sk-ws- 专属 Key）'
+      ? '✅ 按量付费 Key（sk- + 32 位）'
+      : isCoding
+      ? '✅ Coding Plan Key（sk-ws-…）—— 只能配 https://coding.dashscope.aliyuncs.com/v1'
+      : isTokenPlan
+      ? '✅ Token Plan Key（sk-sp-…）—— 只能配 token-plan.cn-beijing.maas.aliyuncs.com'
+      : '⚠️ 无法识别（不是 sk- 32 位 / sk-ws- / sk-sp- 任一种）'
   );
 }
 
@@ -118,33 +121,40 @@ if (formatOnly) {
 line();
 line('══════════ 3. 真实请求探测 ══════════');
 
-const isWorkspaceKey = /^sk-ws-/.test(key);
+// 百炼有三套互不相通的「Key + Base URL」组合，混用一律 401：
+//   ① 按量付费  sk-…    → https://{WorkspaceId}.{region}.maas.aliyuncs.com  (compatible-mode)
+//   ② Coding Plan sk-ws-… → https://coding.dashscope.aliyuncs.com/v1        (OpenAI 兼容)
+//   ③ Token Plan  sk-sp-… → https://token-plan.cn-beijing.maas.aliyuncs.com
+// 所以按 Key 前缀决定探哪些地址，再配一把假 Key 作对照组。
+const isCodingKey = /^sk-ws-/.test(key);
+const isTokenPlanKey = /^sk-sp-/.test(key);
 
-// sk-ws- 专属 Key 打到通用国际站必然 401（它只认自己 workspace 的专属域名），
-// 探了只会误导，所以这类 Key 不探通用站；再用一把假 Key 做对照组：
-// 若真 Key 的报错与假 Key 完全一致，就说明这把 Key 本身不被承认。
 const probes = [];
-if (!isWorkspaceKey) {
-  probes.push({ label: '通用国际站（只看 Key 所属账号）', base: 'https://dashscope-intl.aliyuncs.com' });
+if (isCodingKey) {
+  probes.push({ label: 'Coding Plan（中国站）', url: 'https://coding.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' });
+  probes.push({ label: 'Coding Plan（国际站）', url: 'https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions', model: 'qwen3.5-plus' });
+} else if (isTokenPlanKey) {
+  probes.push({ label: 'Token Plan', url: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' });
+} else {
+  probes.push({ label: '按量付费·通用国际站', url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' });
 }
-probes.push({ label: '项目实际的 Base URL', base: baseUrl });
-probes.push({ label: '对照组：假 Key（应为 401）', base: baseUrl, fake: true });
+probes.push({ label: '项目配置的 Base URL（按量付费兼容模式）', url: `${baseUrl}/compatible-mode/v1/chat/completions`, model: 'qwen-plus' });
+probes.push({ label: '对照组：假 Key（必然失败）', url: probes[0].url, model: probes[0].model, fake: true });
 
 const FAKE_KEY = 'sk-0123456789abcdef0123456789abcdef';
 
 const results = [];
 for (const p of probes) {
-  const url = `${p.base}/compatible-mode/v1/chat/completions`;
   const probeKey = p.fake ? FAKE_KEY : key;
   const t0 = Date.now();
   let status = null;
   let code = '';
   let msg = '';
   try {
-    const res = await fetch(url, {
+    const res = await fetch(p.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${probeKey}` },
-      body: JSON.stringify({ model: 'qwen-plus', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
+      body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }),
       signal: AbortSignal.timeout(15000),
     });
     status = res.status;
@@ -164,7 +174,8 @@ for (const p of probes) {
   results.push({ ...p, status, code, msg, ms, ok });
   line();
   console.log(`▶ ${p.label}`);
-  kv('URL', url);
+  kv('URL', p.url);
+  kv('model', p.model);
   kv('HTTP', status === null ? '无响应' : `${status}${ok ? ' ✅' : ' ❌'}  (${ms}ms)`);
   if (!ok) {
     if (code) kv('错误码', code);
@@ -176,27 +187,31 @@ line();
 line('══════════ 结论 ══════════');
 const realResults = results.filter((r) => !r.fake);
 const fakeResult = results.find((r) => r.fake);
-const anyOk = realResults.some((r) => r.ok);
-const all401 = realResults.length > 0 && realResults.every((r) => r.status === 401);
+const okResult = realResults.find((r) => r.ok);
 const allNet = realResults.every((r) => r.status === null);
 const sameAsFake =
-  fakeResult && all401 && realResults.every((r) => r.status === fakeResult.status && r.code === fakeResult.code);
+  fakeResult &&
+  realResults.every((r) => r.status === fakeResult.status && r.code === fakeResult.code);
+const expired = realResults.some((r) => /expired|token/i.test(r.msg || ''));
 
-if (anyOk) {
-  line('✅ Key 有效，链路通。');
-  const failed = realResults.filter((r) => !r.ok);
-  if (failed.length) {
-    line(`⚠️ 但有 ${failed.length} 个地址失败 → 该地址与 Key 可能不属于同一个 workspace。`);
-  }
-} else if (sameAsFake) {
-  line('❌ 真 Key 的报错与假 Key 完全一致 → 这把 Key 不被服务端承认。');
-  line('   → 不是地址问题（地址已按要求归一），是 Key 本身：没复制全 / 已被轮换 / 属于别的账号或地域。');
-  line('   → 请到控制台重新复制一次完整 Key，再执行：node scripts/diag-ai.mjs <新Key>');
-} else if (all401) {
-  line('❌ 返回 401，但报错细节与假 Key 不同 → 更可能是 Key 与地址（workspace / 地域）不匹配。');
-  line('   → 确认 Base URL 的 workspace 与地域，和 Key 所属业务空间完全一致。');
+if (okResult) {
+  const endpoint = okResult.url.replace(/\/chat\/completions$/, '');
+  line('✅ 通了！');
+  kv('能用的 Base URL', endpoint);
+  kv('能用的 model', okResult.model);
+  line('   → 把 EXPO_PUBLIC_AI_BASE_URL 改成上面的 Base URL、model 改成上面的模型名即可。');
 } else if (allNet) {
   line('❌ 全部无响应 → 网络/DNS 问题（或本机代理拦截）。');
+} else if (sameAsFake) {
+  line('❌ 真 Key 的报错与假 Key 完全一致 → 这把 Key 在当前所有站点都不被承认。');
+  if (expired) {
+    line('   → 报错明确是 access token 无效/已过期：Key 已被轮换，或所属订阅已到期/未开通。');
+    line('   → 去控制台「我的订阅 / API Key」页，确认订阅状态后再复制 Key。');
+  } else {
+    line('   → Key 本身不可用：没复制全 / 已被轮换 / 属于别的账号。');
+  }
+  line('   → 复测：node scripts/diag-ai.mjs <新Key>');
 } else {
-  line('⚠️ 结果不一致，看上面每个地址的状态码。');
+  line('⚠️ 各地址结果不一致，逐条看上面的状态码。');
+  line('   → 若「项目配置的 Base URL」失败、其它某个地址成功，说明 Key 与配置的 Base URL 不配套。');
 }
