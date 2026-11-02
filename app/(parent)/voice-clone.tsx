@@ -13,17 +13,29 @@ import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayba
 import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting } from '@/services/storage';
 import { voiceDisplayName } from '@/services/voiceCatalog';
 
-// 预设对象；自定义克隆以 key = 'custom:<名称>' 形式存在
+// 固定对象只保留「妈妈 / 爸爸」——这两个是绝大多数家庭的主力声线，一键可选。
+// v84：其余家人（外婆、爷爷、奶奶、外公、小姨…）不再写死，统一走「自定义」，
+// 由家长自己填称呼，避免出现「想克隆爷爷却没有入口、只能顶着外婆的名字用」。
 const PRESET_TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
   { key: 'mom', labelKey: 'vc.mom', icon: '👩' },
   { key: 'dad', labelKey: 'vc.dad', icon: '👨' },
+];
+
+/**
+ * 历史遗留的固定对象：v83 及更早版本把「外婆」做成了固定按钮，
+ * 已经克隆过的设备里存着 key='grandma'。现在不再提供入口，
+ * 但它必须仍能显示成「外婆」而不是一串英文 key。
+ */
+const LEGACY_TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
   { key: 'grandma', labelKey: 'vc.grandma', icon: '👵' },
 ];
 
-/** 把 target key 转成展示名（预设取本地化，自定义去掉 'custom:' 前缀） */
+const LABEL_LOOKUP = [...PRESET_TARGETS, ...LEGACY_TARGETS];
+
+/** 把 target key 转成展示名（固定对象取本地化，自定义去掉 'custom:' 前缀） */
 function targetLabel(key: CloneTarget, t: (k: string) => string): string {
   if (key.startsWith('custom:')) return key.slice('custom:'.length);
-  const preset = PRESET_TARGETS.find((p) => p.key === key);
+  const preset = LABEL_LOOKUP.find((p) => p.key === key);
   return preset ? t(preset.labelKey) : key;
 }
 
@@ -128,15 +140,30 @@ export default function VoiceClonePage() {
   useEffect(() => {
     (async () => {
       const all = await getClonedTargets();
-      const customs = all
-        .filter((k) => k.startsWith('custom:'))
-        .map((k) => ({ key: k, label: k.slice('custom:'.length), icon: '🧑' }));
-      setCustomTargets(customs);
+      const fixed = new Set(PRESET_TARGETS.map((p) => p.key));
+      // 除妈妈/爸爸外，凡本机克隆过的对象都排成一格：
+      //   custom:爷爷 → 显示「爷爷」；历史 grandma → 显示「外婆」。
+      const extras = all
+        .filter((k) => !fixed.has(k))
+        .map((k) => ({
+          key: k,
+          label: k.startsWith('custom:') ? k.slice('custom:'.length) : k,
+          icon: LEGACY_TARGETS.find((l) => l.key === k)?.icon || '🧑',
+        }));
+      setCustomTargets(extras);
     })();
   }, []);
   const confirmCustom = () => {
     const name = customName.trim();
     if (!name) return;
+    // 填了「妈妈 / 爸爸」就别再建一个重名对象，直接选中已有的固定项
+    const dupFixed = PRESET_TARGETS.find((p) => t(p.labelKey) === name);
+    if (dupFixed) {
+      setTarget(dupFixed.key);
+      setCustomName('');
+      setShowCustomInput(false);
+      return;
+    }
     const key = `custom:${name}`;
     setCustomTargets((prev) =>
       prev.some((c) => c.key === key) ? prev : [...prev, { key, label: name, icon: '🧑' }]
