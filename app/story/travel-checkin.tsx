@@ -11,10 +11,11 @@ import {
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
 import { getProgress, saveProgress, getVoiceSetting } from '../../services/storage';
-import { checkCheckInGate } from '../../services/entitlement';
+import { checkCheckInGate, FREE_TOTAL_CHECKIN_LIMIT } from '../../services/entitlement';
 import { getNewBadges, computeRewardExtras, BADGES } from '../../constants/rewards';
 import { playStory } from '../../services/playback';
 import { transcribeAudio } from '../../services/voiceClone';
+import { generateTravelStory } from '../../services/travelStory';
 import Racco from '../../components/common/Racco';
 import { CartoonMap, type MapSpot } from '../../components/ui/CartoonMap';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -235,11 +236,19 @@ function genericTravelStory(name: string, length: TravelLength = 'medium'): { ti
 }
 
 /** 长度档位展示文案（与创作页长度选择一致） */
-const LENGTH_LABELS: Record<TravelLength, { zh: string; en: string; tag: string }> = {
-  short: { zh: '短', en: 'Short', tag: '~5分钟' },
-  medium: { zh: '中', en: 'Medium', tag: '~8分钟' },
-  long: { zh: '长', en: 'Long', tag: '~12分钟' },
+const LENGTH_LABELS: Record<TravelLength, { zh: string; en: string; tagZh: string; tagEn: string }> = {
+  short: { zh: '短', en: 'Short', tagZh: '~4分钟', tagEn: '~4 min' },
+  medium: { zh: '中', en: 'Medium', tagZh: '~10分钟', tagEn: '~10 min' },
+  long: { zh: '长', en: 'Long', tagZh: '~20分钟', tagEn: '~20 min' },
 };
+
+/** 等待时的轮换提示：孩子不识字也靠小浣熊和动效知道「还在做，别走」 */
+const GEN_HINTS = [
+  { zh: '正在收拾小背包，准备出发～', en: 'Packing a little bag, getting ready…' },
+  { zh: '正在数那里的星星…', en: 'Counting the stars over there…' },
+  { zh: '正在把当地的小东西写进故事…', en: 'Tucking local little things into the story…' },
+  { zh: '快好了，先躺好闭上眼睛吧～', en: 'Almost there — lie down and close your eyes…' },
+];
 
 const BADGE_RULES = [
   { count: 1, emoji: '🚩', label: { zh: '首次打卡', en: 'First Check-in' } },
@@ -264,6 +273,8 @@ export default function TravelCheckinScreen() {
   const [query, setQuery] = useState('');
   const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
   const [story, setStory] = useState<{ title: string; content: string } | null>(null);
+  // 本次故事是否退回了本地模板（AI 没写成）——给家长一个明确信号，而不是静默降级
+  const [storyFallback, setStoryFallback] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [badge, setBadge] = useState<{ emoji: string; label: string } | null>(null);
   const [confetti, setConfetti] = useState<{ x: number; color: string; delay: number }[]>([]);
@@ -274,6 +285,15 @@ export default function TravelCheckinScreen() {
   // 故事长度选择（#3：与创作页一致，short/medium/long），默认中
   const [storyLength, setStoryLength] = useState<TravelLength>('medium');
   const { snapshot, refresh, showPaywall } = useEntitlement();
+
+  // 生成中的轮换提示：AI 现场写作要 10~40 秒，静止画面会让孩子以为卡住了
+  const [genHintIdx, setGenHintIdx] = useState(0);
+  useEffect(() => {
+    if (step !== 'generate') return;
+    setGenHintIdx(0);
+    const id = setInterval(() => setGenHintIdx((i) => (i + 1) % GEN_HINTS.length), 3200);
+    return () => clearInterval(id);
+  }, [step]);
 
   // 语音输入：复用 expo-audio 录音 + 百炼 ASR 转写，写入搜索框并自动匹配已有城市
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -391,14 +411,28 @@ export default function TravelCheckinScreen() {
     const loc = selectedLoc;
     setLocation(language === 'en' ? loc.en : `${loc.cn}·${loc.place}`);
     setStep('generate');
-    // Simulate story generation (2s)
-    setTimeout(() => {
-      const s = STORIES[loc.place]
-        ? buildLongTravelStory(loc.place, TRAVEL_HOOKS[loc.place]?.hook, storyLength, loc.place)
-        : genericTravelStory(loc.cn, storyLength);
-      setStory(s);
-      setStep('play');
-    }, 2000);
+
+    // 本地模板先备好：AI 生成失败 / 无网 / 额度耗尽时立刻顶上，保证永远有故事可听
+    const local: { title: string; content: string } = STORIES[loc.place]
+      ? buildLongTravelStory(loc.place, TRAVEL_HOOKS[loc.place]?.hook, storyLength, loc.place)
+      : genericTravelStory(loc.cn, storyLength);
+
+    // 现场生成：每次都不一样，且带当地元素（脊兽、渔火、转经筒…）
+    // 与「最短展示时长」并行，避免瞬间切走让等待看起来像假加载
+    const [ai] = await Promise.all([
+      generateTravelStory({
+        place: loc.place,
+        city: loc.cn,
+        placeEn: loc.en,
+        length: storyLength,
+        language: language === 'zh' ? 'zh' : 'en',
+      }),
+      new Promise<void>((r) => setTimeout(r, 1400)),
+    ]);
+
+    setStoryFallback(!ai);
+    setStory(ai ?? local);
+    setStep('play');
   };
 
   // Play story (真克隆声优先，未克隆则系统音)
@@ -690,7 +724,8 @@ export default function TravelCheckinScreen() {
               })()}
             </ScrollView>
 
-            {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null && (
+            {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null
+              && FREE_TOTAL_CHECKIN_LIMIT < 100 && (
               <Text style={styles.quota}>
                 {language === 'en'
                   ? `${snapshot.checkInsRemaining} check-ins left · Unlimited with membership`
@@ -714,7 +749,7 @@ export default function TravelCheckinScreen() {
                       {language === 'en' ? LENGTH_LABELS[k].en : LENGTH_LABELS[k].zh}
                     </Text>
                     <Text style={[styles.lengthChipSub, storyLength === k && styles.lengthChipSubActive]}>
-                      {LENGTH_LABELS[k].tag}
+                      {language === 'en' ? LENGTH_LABELS[k].tagEn : LENGTH_LABELS[k].tagZh}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -742,9 +777,12 @@ export default function TravelCheckinScreen() {
           <View style={styles.card}>
             <Racco state="thinking" size={100} />
             <Text style={styles.generatingText}>
+              {GEN_HINTS[genHintIdx][language === 'en' ? 'en' : 'zh']}
+            </Text>
+            <Text style={styles.generatingSub}>
               {language === 'en'
-                ? `Creating a story about ${location}...`
-                : `正在为你创作关于${location}的故事...`}
+                ? `Writing a story that only belongs to ${location}…`
+                : `正在为「${location}」写一个只属于这里的故事…`}
             </Text>
             <ActivityIndicator size="small" color="#FF8A65" style={{ marginTop: 12 }} />
           </View>
@@ -754,6 +792,13 @@ export default function TravelCheckinScreen() {
         {step === 'play' && story && (
           <View style={styles.card}>
             <Text style={styles.storyTitle}>{story.title}</Text>
+            {storyFallback && (
+              <Text style={styles.fallbackTag}>
+                {language === 'en'
+                  ? 'Offline story · AI not reachable this time'
+                  : '离线故事 · 这次没连上 AI，先讲一个本地的'}
+              </Text>
+            )}
             <View style={styles.storyBox}>
               <Text style={styles.storyContent}>{story.content}</Text>
             </View>
@@ -950,9 +995,11 @@ const styles = StyleSheet.create({
 
   // Generate
   generatingText: { fontSize: 16, color: '#7A6A5D', textAlign: 'center', marginTop: 16 },
+  generatingSub: { fontSize: 13, color: '#A89887', textAlign: 'center', marginTop: 8, paddingHorizontal: 12 },
 
   // Story
   storyTitle: { fontSize: 22, fontWeight: 'bold', color: '#3D3229', marginBottom: 12, textAlign: 'center' },
+  fallbackTag: { fontSize: 12, color: '#B08968', textAlign: 'center', marginTop: -6, marginBottom: 12 },
   storyBox: {
     backgroundColor: '#FFFDF7', borderRadius: 22, padding: 16, marginBottom: 20,
     borderWidth: 1, borderColor: '#FFE0B2',

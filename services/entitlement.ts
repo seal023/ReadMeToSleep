@@ -21,7 +21,9 @@ import { isPremium, type Plan } from './iap';
 
 // 测试期放开每日上限（999），上架前改回 1
 export const FREE_DAILY_STORY_LIMIT = 999;
-export const FREE_TOTAL_CHECKIN_LIMIT = 3;
+// 旅行打卡改用 AI 现场生成后，故事不再有「只有 15 篇」的上限，只受次数约束。
+// 测试期一并放开（999 ≈ 不限），上架前按商业化口径收紧（如免费 3 次）。
+export const FREE_TOTAL_CHECKIN_LIMIT = 999;
 
 const USAGE_KEY = 'rms_daily_usage';
 
