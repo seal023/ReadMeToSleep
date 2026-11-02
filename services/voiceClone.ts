@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ts } from './i18n';
 import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
 //    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
@@ -178,7 +179,7 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
   if (!endpoint || !AI_API_KEY) {
     return {
       ok: false,
-      message: '声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL 或 AI_BASE_URL / AI_API_KEY）',
+      message: ts('vc.svc.notConfigured'),
     };
   }
   try {
@@ -200,10 +201,7 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
     if ((!infoExists && audioBytes.length === 0) || size < 4096) {
       return {
         ok: false,
-        message:
-          '录音文件为空或过小，无法克隆（实测大小约 ' +
-          size +
-          ' 字节）。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 5 秒，再提交。',
+        message: ts('vc.svc.fileTooSmall').replace('{n}', String(size)),
       };
     }
 
@@ -239,15 +237,19 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
         JSON.stringify(createData).slice(0, 200);
       // 百炼「静音」类错误：音频被识别为无声。给出可操作的重录指引，而非裸报错。
       if (/silent|静音|empty audio|no audio/i.test(msg)) {
-        msg =
-          '音频被识别为静音。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒（百炼声音复刻需足够时长的清晰人声）。';
+        msg = ts('vc.svc.silent');
       }
-      return { ok: false, message: `创建音色失败（HTTP ${createRes.status}）：${msg}` };
+      return {
+        ok: false,
+        message: ts('vc.svc.createFail')
+          .replace('{status}', String(createRes.status))
+          .replace('{msg}', msg),
+      };
     }
 
     const voiceId = createData?.output?.voice_id || createData?.voice_id;
     if (!voiceId) {
-      return { ok: false, message: '创建音色成功但未返回 voice_id' };
+      return { ok: false, message: ts('vc.svc.noVoiceId') };
     }
 
     // 百炼音色创建是异步的：提交后需轮询 query_voice 直到 status === 'OK' 才能用于合成
@@ -272,12 +274,12 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
       return {
         ok: true,
         voiceId: String(voiceId),
-        message: '音色已提交，正在训练（约几分钟），稍后即可在「妈妈/爸爸/外婆」中使用',
+        message: ts('vc.svc.training'),
       };
     }
-    return { ok: true, voiceId: String(voiceId), message: '音色克隆成功！' };
+    return { ok: true, voiceId: String(voiceId), message: ts('vc.svc.success') };
   } catch (err: any) {
-    return { ok: false, message: err?.message || '注册过程出错' };
+    return { ok: false, message: err?.message || ts('vc.svc.enrollError') };
   }
 }
 
@@ -318,9 +320,9 @@ export async function synthesizeWithClonedVoice(
 ): Promise<SynthResult> {
   const voiceId = await getClonedVoiceId(target);
   const synthEndpoint = resolveSynthEndpoint();
-  if (!voiceId) return { audio: null, error: '尚未克隆该音色（voiceId 为空）' };
-  if (!synthEndpoint) return { audio: null, error: '合成端点未配置（VOICE_ENROLL_URL / AI_BASE_URL 缺失）' };
-  if (!AI_API_KEY) return { audio: null, error: '缺少 AI_API_KEY，无法鉴权合成' };
+  if (!voiceId) return { audio: null, error: ts('vc.svc.notCloned') };
+  if (!synthEndpoint) return { audio: null, error: ts('vc.svc.noEndpoint') };
+  if (!AI_API_KEY) return { audio: null, error: ts('vc.svc.noKey') };
 
   try {
     // 百炼 MaaS 官方示例：鉴权仅靠 URL 子域名里的 workspace + Bearer Key，

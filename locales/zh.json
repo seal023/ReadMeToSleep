@@ -686,5 +686,20 @@
   "stats.empty.history": "还没有收听记录",
   "stats.empty.quiz": "孩子还没有答题哦～",
   "stats.empty.qa": "孩子还没有提问哦～",
-  "stats.quiz.line": "正确：{a} · 孩子选了：{b}"
+  "stats.quiz.line": "正确：{a} · 孩子选了：{b}",
+  "login.appleButton": "通过 Apple 登录",
+  "vc.svc.notConfigured": "声音克隆尚未配置（请在 Xcode Cloud 配置 VOICE_ENROLL_URL 或 AI_BASE_URL / AI_API_KEY）",
+  "vc.svc.fileTooSmall": "录音文件为空或过小，无法克隆（实测约 {n} 字节）。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 5 秒，再提交。",
+  "vc.svc.silent": "音频被识别为静音。请重新录制：在安静环境、距离麦克风约 10cm，清晰朗读引导段落至少 10 秒。",
+  "vc.svc.createFail": "创建音色失败（HTTP {status}）：{msg}",
+  "vc.svc.noVoiceId": "创建音色成功，但服务端没有返回音色 ID",
+  "vc.svc.training": "音色已提交，正在训练（约几分钟），稍后就能在「妈妈 / 爸爸 / 外婆」里用了",
+  "vc.svc.success": "音色克隆成功！",
+  "vc.svc.enrollError": "克隆过程中出错了，请稍后重试",
+  "vc.svc.notCloned": "还没有克隆这个音色",
+  "vc.svc.noEndpoint": "克隆服务未配置，暂时无法合成",
+  "vc.svc.noKey": "缺少鉴权信息，无法合成",
+  "vc.diag.emptyAudio": "合成返回了空音频",
+  "vc.diag.synthFail": "合成失败",
+  "vc.diag.fileGone": "录音文件已不在设备上（可能重装过 App）"
 }

@@ -29,7 +29,6 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
@@ -178,16 +177,34 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {/* Apple 登录：全页唯一的主操作，做成大胶囊 */}
+          {/* Apple 登录：全页唯一的主操作，做成大胶囊。
+              ⚠️ 这里**不能**用 expo-apple-authentication 的原生 AppleAuthenticationButton：
+                 它的按钮文案由 **系统语言** 决定（Apple SDK 内部本地化），
+                 跟 App 内的语言开关无关，于是「英文界面 + 中文系统」就会出现
+                 中文的「通过 Apple 登录」，v77 用户截图反馈的正是这一处。
+                 改为自绘黑色胶囊 + 系统字体里的  字形（U+F8FF，即官方 Apple 标志），
+                 文案走 t()，两种语言都对；视觉上与 Apple 官方黑色按钮一致。 */}
           {appleAvailable ? (
             <View style={styles.appleShadow}>
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={APPLE_BTN_RADIUS}
-                style={styles.appleBtn}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.appleBtn,
+                  pressed && { opacity: 0.86, transform: [{ scale: 0.99 }] },
+                ]}
                 onPress={handleApple}
-              />
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={t('login.appleButton')}
+              >
+                {busy ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Text style={styles.appleLogo}>{'\uF8FF'}</Text>
+                    <Text style={styles.appleLabel}>{t('login.appleButton')}</Text>
+                  </>
+                )}
+              </Pressable>
             </View>
           ) : (
             <View style={styles.warnCard}>
@@ -388,7 +405,19 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 6,
   },
-  appleBtn: { width: '100%', height: APPLE_BTN_HEIGHT },
+  appleBtn: {
+    width: '100%',
+    height: APPLE_BTN_HEIGHT,
+    borderRadius: APPLE_BTN_RADIUS,
+    backgroundColor: '#000000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  //  U+F8FF：iOS 系统字体里就是 Apple 标志本身，白色
+  appleLogo: { fontSize: 30, color: '#FFFFFF' },
+  appleLabel: { fontSize: 22, color: '#FFFFFF', fontWeight: '600', letterSpacing: 0.2 },
   orText: {
     fontSize: FONT_SIZE.caption,
     color: COLORS.textSub,

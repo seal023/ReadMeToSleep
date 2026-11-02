@@ -1,4 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { ts } from './i18n';
 // SDK 57 起顶层 expo-file-system 的旧 API（cacheDirectory / writeAsStringAsync）已移除，
 // 新 API 的 File / Paths / Directory 直接从包根导入即可（`/next` 子路径已不在 exports 映射里）。
 import { Directory, File, Paths } from 'expo-file-system';
@@ -171,7 +172,7 @@ async function ensureSynthFile(
   const task = (async () => {
     const { audio, error } = await synthesizeWithClonedVoice(text, target);
     if (error) return { ok: false, error };
-    if (!audio) return { ok: false, error: '合成返回空音频' };
+    if (!audio) return { ok: false, error: ts('vc.diag.emptyAudio') };
     writeBytesToCache(fileName, audio);
     return { ok: true };
   })();
@@ -343,7 +344,7 @@ export async function playClonedAudio(
     // 合成期间可能已有更新的旁白请求进来，若已被取代则放弃，不覆盖新声
     if (abortCheck && !abortCheck()) return false;
     if (!res.ok) {
-      lastCloneError = res.error || '合成失败';
+      lastCloneError = res.error || ts('vc.diag.synthFail');
       console.warn('[clonedPlayback] synth failed:', lastCloneError);
       return false;
     }
@@ -505,7 +506,7 @@ export function resolveLocalAudioUri(uri: string): string | null {
 export async function playLocalFile(uri: string, onDone?: () => void): Promise<boolean> {
   const resolved = resolveLocalAudioUri(uri);
   if (!resolved) {
-    lastCloneError = '录音文件已不存在（可能因重装 App 丢失）';
+    lastCloneError = ts('vc.diag.fileGone');
     return false;
   }
   stopClonedAudio();

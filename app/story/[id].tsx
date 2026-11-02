@@ -1208,7 +1208,7 @@ export default function StoryPlayScreen() {
   }
 
   if (phase === 'playing') {
-    const currentVoice = VOICES.find((v) => v.id === selectedVoice);
+    // 声线名不再取 VOICES 里的中文字面量（英文模式下会露出中文），改用 i18n 键
     const progressWidth = `${progress}%` as DimensionValue;
     
     return (
@@ -1323,7 +1323,9 @@ export default function StoryPlayScreen() {
         ) : null}
 
         <View style={styles.voiceRow}>
-          <Text style={styles.voiceLabel}>🔊 {currentVoice?.name ?? t('story.voice.default')}</Text>
+          <Text style={styles.voiceLabel}>
+            🔊 {selectedVoice ? t(`settings.voice.${selectedVoice}`) : t('story.voice.default')}
+          </Text>
           <TouchableOpacity onPress={() => setShowVoicePicker(!showVoicePicker)}>
             <Text style={styles.voiceToggle}>{showVoicePicker ? t('story.voice.collapse') : t('story.voice.switch')}</Text>
           </TouchableOpacity>
@@ -1336,7 +1338,7 @@ export default function StoryPlayScreen() {
                 style={v.id === selectedVoice ? styles.voiceOptionActive : styles.voiceOption}
                 onPress={() => { setSelectedVoice(v.id); setShowVoicePicker(false); }}
               >
-                <Text style={styles.voiceOptionText}>{v.name}</Text>
+                <Text style={styles.voiceOptionText}>{t(`settings.voice.${v.id}`)}</Text>
               </TouchableOpacity>
             ))}
           </View>

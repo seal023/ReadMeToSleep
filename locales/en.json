@@ -686,5 +686,20 @@
   "stats.empty.history": "No listening history yet",
   "stats.empty.quiz": "No quiz answers yet",
   "stats.empty.qa": "No questions yet",
-  "stats.quiz.line": "Correct: {a} · Chosen: {b}"
+  "stats.quiz.line": "Correct: {a} · Chosen: {b}",
+  "login.appleButton": "Sign in with Apple",
+  "vc.svc.notConfigured": "Voice cloning is not configured yet (VOICE_ENROLL_URL or AI_BASE_URL / AI_API_KEY is missing in the build).",
+  "vc.svc.fileTooSmall": "The recording is empty or too short to clone (about {n} bytes). Please record again: quiet room, about 10 cm from the mic, read the prompt clearly for at least 5 seconds.",
+  "vc.svc.silent": "The audio was detected as silence. Please record again: quiet room, about 10 cm from the mic, read the prompt clearly for at least 10 seconds.",
+  "vc.svc.createFail": "Could not create the voice (HTTP {status}): {msg}",
+  "vc.svc.noVoiceId": "The voice was created but the server returned no voice ID",
+  "vc.svc.training": "Voice submitted and training (a few minutes). It will appear under Mom / Dad / Grandma shortly.",
+  "vc.svc.success": "Voice cloned!",
+  "vc.svc.enrollError": "Something went wrong while cloning. Please try again.",
+  "vc.svc.notCloned": "This voice has not been cloned yet",
+  "vc.svc.noEndpoint": "Cloning service is not configured, so synthesis is unavailable",
+  "vc.svc.noKey": "Missing credentials, cannot synthesize",
+  "vc.diag.emptyAudio": "Synthesis returned empty audio",
+  "vc.diag.synthFail": "Synthesis failed",
+  "vc.diag.fileGone": "The recording is no longer on this device (app may have been reinstalled)"
 }

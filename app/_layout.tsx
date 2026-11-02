@@ -17,6 +17,16 @@ import { invalidateAudioMode } from '../services/tts';
 import { reassertAudioSession } from '../services/clonedVoicePlayback';
 import { ensurePhraseWarmup } from '../services/phraseCache';
 
+/**
+ * inactive → background 的间隔门槛（毫秒）。
+ * 小于它：判为锁屏 / 关机（系统瞬间收走 App）→ 不说再见。
+ * 大于它：判为按 Home / 上滑 / 切到别的 App → 说再见。
+ * 实测锁屏常 < 60ms，主动返回桌面通常 300ms 以上，取 200ms 落在中间偏保守一侧
+ * （宁可漏说一句再见，也不要在孩子睡着时冒出一句告别）。
+ * 万一某机型判错，只改这一个数字即可，不用动别处。
+ */
+const LOCK_GAP_MS = 200;
+
 /** 按机器本地时钟分四段问候，避免大晚上还播报"早上好" */
 function getGreetingKey(): string {
   const h = new Date().getHours();
@@ -34,6 +44,24 @@ function GreetingOnOpen() {
   const { t, language, hydrated } = useLanguage();
   const lastSpoke = useRef(0);
   const lastBye = useRef(0);
+  /**
+   * 「锁屏」与「离开 App」的区分（2026-11-02，v77 反馈 #2）
+   *
+   * 需求：用户主动退出 App（按 Home / 上滑 / 切到别的 App）时说一句「再见」；
+   *      锁屏或关机时**不说**。
+   *
+   * 难点：iOS 不向 JS 暴露「屏幕是否锁定」，锁屏和按 Home 的 AppState 序列
+   *      完全一样（active → inactive → background），仅凭状态无法分辨。
+   *
+   * 但两者的**耗时**差别很大：按侧边键锁屏时，系统收走 App 是同一瞬间完成的，
+   * inactive → background 间隔一般只有几十毫秒；而按 Home / 上滑返回桌面时，
+   * 界面要先播完「回家」动画，App 才真正进入后台，通常 200ms 以上。
+   * 因此用「inactive 停留时长」作判据：短于 LOCK_GAP_MS 视为锁屏/关机（不说话），
+   * 长于它视为用户主动离开（说再见）。
+   *
+   * 关机（滑关机条）根本不会给 App 出声的机会，天然满足「关机不说」。
+   */
+  const inactiveAt = useRef(0);
 
   // 锁屏告别必须「立刻出声」：切后台后再去读 AsyncStorage、或等网络合成音频，会被 iOS 拖到
   // 十几秒后才响（后台网络被降速/挂起）。所以在前台时就把告别所需的一切预热到 ref：
@@ -114,15 +142,23 @@ function GreetingOnOpen() {
         // iOS 锁屏时会收回 AVAudioSession，回到前台若不经 setAudioModeAsync 重新激活，
         // 之后所有 expo-speech 都是「静默失败」——用户听到的就是
         //「故事听到一半锁屏，回来以后很多提示音都没有了」。
+        inactiveAt.current = 0;
         invalidateAudioMode();
         void reassertAudioSession();
         speak('hello');
+      } else if (s === 'inactive') {
+        // 只记录时刻，不做事：控制中心下拉、来电横幅也会走这里但不会进后台
+        inactiveAt.current = Date.now();
       } else if (s === 'background') {
         // 修复 #2：切后台/锁屏时立即停掉所有朗读（故事 / 克隆声 / 系统音），
         // 否则故事会一直念到自然结束。speak('bye') 内部也会 stopStory，
         // 但这里先无条件停一次，确保即使用户快速重复锁屏被节流、bye 没播，故事也停。
         stopStory();
-        speak('bye'); // 锁屏/切后台时说「再见xxx」
+        // 锁屏 / 关机：系统几乎零延迟收走 App，inactive 只停留几十毫秒 → 不说再见。
+        // 主动退出（Home / 上滑 / 切 App）：要等「回家」动画播完才进后台 → 说再见。
+        const gap = inactiveAt.current ? Date.now() - inactiveAt.current : 0;
+        inactiveAt.current = 0;
+        if (gap >= LOCK_GAP_MS) speak('bye');
       }
     });
     return () => {
