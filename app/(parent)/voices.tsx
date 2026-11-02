@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -29,19 +29,31 @@ export default function VoiceSettings() {
   const [options, setOptions] = useState<VoiceOption[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const [s, p, list] = await Promise.all([
-        getVoiceSetting(),
-        getPromptVoiceSetting(),
-        listAvailableVoices(),
-      ]);
-      setStoryVoice(s);
-      setPromptVoice(p);
-      setOptions(list);
-      setLoaded(true);
-    })();
-  }, []);
+  /**
+   * 每次进入本页都重新读一遍清单。
+   * 用 useFocusEffect 而不是 useEffect：家长常常「先来这页看有什么声音 → 去克隆 → 返回」，
+   * 若只在挂载时读一次，刚克隆好的声音不会立刻出现，看着像没保存成功。
+   */
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        const [s, p, list] = await Promise.all([
+          getVoiceSetting(),
+          getPromptVoiceSetting(),
+          listAvailableVoices(),
+        ]);
+        if (!alive) return;
+        setStoryVoice(s);
+        setPromptVoice(p);
+        setOptions(list);
+        setLoaded(true);
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
 
   /** 试听：一句话让孩子/家长直接听出差别（用当前点的那个声音，不改设置） */
   const preview = useCallback(

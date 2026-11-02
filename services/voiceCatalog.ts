@@ -1,5 +1,5 @@
 import { hasClonedVoice } from './clonedVoicePlayback';
-import type { CloneTarget } from './voiceClone';
+import { getClonedTargets, type CloneTarget } from './voiceClone';
 
 /**
  * 全 App 统一的「可选声音」清单
@@ -52,6 +52,16 @@ export const SYSTEM_VOICE_OPTION: VoiceOption = {
 /** 默认声音：内置大姐姐，中英文一致、没有机器味 */
 export const DEFAULT_VOICE = 'preset:cherry';
 
+/** 三个「固定亲属」克隆对象的展示信息；自定义对象（custom:<名称>）走名称本身 */
+const CLONE_META: Record<string, { zh: string; en: string; emoji: string }> = {
+  mom: { zh: '妈妈的声音', en: "Mom's voice", emoji: '👩' },
+  dad: { zh: '爸爸的声音', en: "Dad's voice", emoji: '👨' },
+  grandma: { zh: '外婆的声音', en: "Grandma's voice", emoji: '👵' },
+};
+
+/** 固定亲属在清单里的排列顺序 */
+const CLONE_META_ORDER = ['mom', 'dad', 'grandma'];
+
 /** 未配置 / 配置非法时的兜底：一定是可用的一条 */
 export function normalizeVoiceId(id: string | undefined | null): string {
   const v = (id || '').trim();
@@ -73,13 +83,8 @@ export function voiceDisplayName(id: string, language: 'zh' | 'en'): string {
     if (preset) return preset.nameZh;
   }
   if (id.startsWith('custom:')) return id.slice('custom:'.length);
-  const cloneNames: Record<string, [string, string]> = {
-    mom: ['妈妈的声音', "Mom's voice"],
-    dad: ['爸爸的声音', "Dad's voice"],
-    grandma: ['外婆的声音', "Grandma's voice"],
-  };
-  const hit = cloneNames[id];
-  if (hit) return language === 'en' ? hit[1] : hit[0];
+  const hit = CLONE_META[id];
+  if (hit) return language === 'en' ? hit.en : hit.zh;
   return id;
 }
 
@@ -99,18 +104,40 @@ export async function isVoiceReady(id: string): Promise<boolean> {
 /**
  * 家长端「声音设置」用的完整清单：内置样本 + 手机系统语音 + 本机已克隆的亲人。
  * 只有真正克隆成功的亲人音色才会出现，避免选了却不出声。
+ *
+ * v84 修正：原先这里只写死 mom/dad/grandma 三个，而克隆页其实还支持
+ * 「自定义」对象（存成 `custom:<名称>`）。结果用自定义名字克隆出来的声音
+ * 永远不会出现在声音设置里，用户会以为克隆没保存。
+ * 改为枚举本机所有 `rms_voice_clone_*` key（getClonedTargets），逐个确认
+ * 确实拿到 voice_id 后再加入清单，自定义名字也随之自动出现。
  */
 export async function listAvailableVoices(): Promise<VoiceOption[]> {
-  const cloned: VoiceOption[] = [];
-  const cloneMeta: { id: CloneTarget; zh: string; en: string; emoji: string }[] = [
-    { id: 'mom', zh: '妈妈的声音', en: "Mom's voice", emoji: '👩' },
-    { id: 'dad', zh: '爸爸的声音', en: "Dad's voice", emoji: '👨' },
-    { id: 'grandma', zh: '外婆的声音', en: "Grandma's voice", emoji: '👵' },
-  ];
-  for (const meta of cloneMeta) {
-    if (await isVoiceReady(meta.id)) {
-      cloned.push({ id: meta.id, kind: 'clone', nameZh: meta.zh, nameEn: meta.en, emoji: meta.emoji });
-    }
+  let targets: string[] = [];
+  try {
+    targets = await getClonedTargets();
+  } catch {
+    targets = [];
   }
+
+  const available = new Set<string>();
+  for (const t of targets) {
+    if (await isVoiceReady(t)) available.add(t);
+  }
+
+  // 固定顺序：妈妈 → 爸爸 → 外婆 → 其余自定义按名字排序，避免每次进页面顺序乱跳
+  const ordered = [
+    ...CLONE_META_ORDER.filter((k) => available.has(k)),
+    ...[...available].filter((k) => !CLONE_META_ORDER.includes(k)).sort(),
+  ];
+
+  const cloned: VoiceOption[] = ordered.map((id) => {
+    const meta = CLONE_META[id];
+    if (meta) {
+      return { id, kind: 'clone', nameZh: meta.zh, nameEn: meta.en, emoji: meta.emoji };
+    }
+    const label = id.startsWith('custom:') ? id.slice('custom:'.length) : id;
+    return { id, kind: 'clone', nameZh: label, nameEn: label, emoji: '🧑' };
+  });
+
   return [...PRESET_VOICE_OPTIONS, SYSTEM_VOICE_OPTION, ...cloned];
 }
