@@ -48,6 +48,7 @@ export default function ParentHub() {
     // 配色页在根级路由（孩子端设置页也能直接进），这里只是同一个页面的家长入口
     { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },
     { icon: '💌', title: t('parentHub.card.comments.title'), desc: t('parentHub.card.comments.desc'), href: '/(parent)/parent-comments' },
+    { icon: '🔍', title: t('parentHub.card.aiCheck.title'), desc: t('parentHub.card.aiCheck.desc'), href: '/(parent)/ai-check' },
     { icon: '🧪', title: t('parentHub.card.testing.title'), desc: t('parentHub.card.testing.desc'), href: '/(parent)/reward-test' },
     { icon: '🚪', title: t('parentHub.card.exit.title'), desc: t('parentHub.card.exit.desc'), action: () => {
       Alert.alert(t('parentHub.exitTitle'), t('parentHub.exitMsg'), [

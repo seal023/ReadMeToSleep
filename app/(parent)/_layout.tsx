@@ -13,6 +13,7 @@ export default function ParentLayout() {
       <Stack.Screen name="sleep-timer" />
       <Stack.Screen name="parent-comments" />
       <Stack.Screen name="statistics" />
+      <Stack.Screen name="ai-check" />
       <Stack.Screen name="reward-test" />
       {/* 配色页已移到根级路由 app/theme.tsx（孩子端可直接进），家长模式不再注册 */}
     </Stack>
