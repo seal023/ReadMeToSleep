@@ -23,6 +23,23 @@ import type { CloneTarget } from './voiceClone';
  * voiceId 为 'system' 时用系统音；其它值（mom/dad/grandma/自定义 custom:*）
  * 若已克隆则优先用其真克隆声，否则降级系统音。
  */
+/**
+ * 未克隆时，各声线回退到哪个百炼预置音色（比 iOS 本地 TTS 自然得多）。
+ * v79：iOS 中文 TTS 只有「婷婷」，机械感重；这里用云端预置音色做默认声音。
+ * 合成失败会自动落到系统音，不会没声音。
+ */
+const PRESET_FALLBACK: Record<string, string> = {
+  system: 'preset:cherry', // 默认：阳光大姐姐
+  mom: 'preset:serena', // 温柔女声
+  dad: 'preset:ethan', // 阳光男声
+  grandma: 'preset:nini', // 邻家温柔女声（偏成熟）
+};
+
+/** 某个声线在「未克隆」时该用哪个预置音色（供调用方提前预热，点播放即秒出） */
+export function presetTargetFor(voiceId: string | undefined): string | undefined {
+  return PRESET_FALLBACK[voiceId || 'system'];
+}
+
 export async function playStory(
   text: string,
   voiceId: string,
@@ -36,7 +53,13 @@ export async function playStory(
       if (ok) return true;
     }
   }
-  // 降级：系统音（含 mom/dad/grandma 的 pitch/rate 微调）
+  // 未克隆（或克隆合成失败）：先用云端预置音色讲，听感接近真人
+  const preset = PRESET_FALLBACK[voiceId || 'system'];
+  if (preset) {
+    const ok = await playClonedAudio(text, preset, onDone);
+    if (ok) return true;
+  }
+  // 最后兜底：系统音（含 mom/dad/grandma 的 pitch/rate 微调）
   textToSpeech(text, voiceId, language, onDone);
   return false;
 }

@@ -21,7 +21,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
 import { VOICES } from '../../services/tts';
-import { playStory, stopStory, speakWithBestVoice, speakPhrase } from '../../services/playback';
+import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
@@ -30,6 +30,7 @@ import { transcribeAudio } from '../../services/voiceClone';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
+import { ClayIcon } from '../../components/ui/ClayIcon';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { getLevel, getNewBadges, computeRewardExtras, type BadgeRule, type LevelRule } from '../../constants/rewards';
@@ -115,8 +116,8 @@ export default function StoryPlayScreen() {
   const [story, setStory] = useState<Story | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  // v79：声音选择改为常显大按钮，不再需要展开/收起状态
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0]?.id ?? '');
-  const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [qaIndex, setQaIndex] = useState(0);
   const [qaFeedback, setQaFeedback] = useState('');
   const [childQuestion, setChildQuestion] = useState('');
@@ -226,6 +227,8 @@ export default function StoryPlayScreen() {
   }, [story]);
 
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** 本次播放真正开始的时刻（用于识别「被系统收回音频会话后立刻回调播完」的假结束） */
+  const playingSinceRef = useRef(0);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 提问环节「按住说话、松开停止」的真实录音（expo-audio，与声音克隆页同款）
@@ -541,13 +544,17 @@ export default function StoryPlayScreen() {
   // 仅在选中亲属声线且已克隆、且不是本地录音时预热。
   useEffect(() => {
     if (!story || story.audioUri) return;
-    if (!selectedVoice || selectedVoice === 'system') return;
     if (!storyText) return;
     let cancelled = false;
     (async () => {
-      if (!(await hasClonedVoice(selectedVoice))) return;
-      if (cancelled) return;
-      prewarmClonedAudio(storyText, selectedVoice);
+      // 已克隆 → 预热克隆声；未克隆（含「系统默认」）→ 预热云端预置音色，
+      // 这样点播放时多半已经合成好，不用干等（v79：默认声音改成云端大姐姐音色）
+      const target =
+        selectedVoice && (await hasClonedVoice(selectedVoice))
+          ? selectedVoice
+          : presetTargetFor(selectedVoice);
+      if (!target || cancelled) return;
+      prewarmClonedAudio(storyText, target);
     })();
     return () => {
       cancelled = true;
@@ -708,6 +715,7 @@ export default function StoryPlayScreen() {
     // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
     setIsPlaying(true);
     setPreparing(true);
+    playingSinceRef.current = Date.now();
 
     try {
       // 睡眠定时：读取家长设置，启动倒计时会话（到点自动淡出停止 + 晚安锁屏）
@@ -721,6 +729,20 @@ export default function StoryPlayScreen() {
       const onEnded = () => {
         if (token !== playTokenRef.current) return;
         if (endFiredRef.current) return;
+        /**
+         * v79 修复：切到别的 App / 锁屏时，iOS 会收回音频会话，
+         * 播放器（尤其云端合成音）常常立刻回调「播完了」——
+         * 于是界面被误推到「讲完啦」，回到前台再点播放就直接进提问环节。
+         * 用「实际播了多久」兜底：从头播却不到 2.5 秒就结束的，一律判定为被打断，
+         * 停在播放页不动，让用户回来还能接着听。
+         */
+        const playedMs = Date.now() - playingSinceRef.current;
+        if (playedMs < 2500 && resumeAtRef.current <= 0) {
+          startingRef.current = false;
+          setPreparing(false);
+          setIsPlaying(false);
+          return;
+        }
         endFiredRef.current = true;
         handleStoryEnded();
       };
@@ -1322,27 +1344,29 @@ export default function StoryPlayScreen() {
           </View>
         ) : null}
 
-        <View style={styles.voiceRow}>
-          <Text style={styles.voiceLabel}>
-            🔊 {selectedVoice ? t(`settings.voice.${selectedVoice}`) : t('story.voice.default')}
-          </Text>
-          <TouchableOpacity onPress={() => setShowVoicePicker(!showVoicePicker)}>
-            <Text style={styles.voiceToggle}>{showVoicePicker ? t('story.voice.collapse') : t('story.voice.switch')}</Text>
-          </TouchableOpacity>
-        </View>
-        {showVoicePicker && (
-          <View style={styles.voicePicker}>
-            {VOICES.map((v) => (
-              <TouchableOpacity
-                key={v.id}
-                style={v.id === selectedVoice ? styles.voiceOptionActive : styles.voiceOption}
-                onPress={() => { setSelectedVoice(v.id); setShowVoicePicker(false); }}
-              >
-                <Text style={styles.voiceOptionText}>{t(`settings.voice.${v.id}`)}</Text>
-              </TouchableOpacity>
-            ))}
+        {/* 想让谁来讲？孩子自己点 —— v79：从「小字切换」改成常显的大按钮，
+            不识字的孩子也能看懂「这里有得选」 */}
+        <View style={styles.voiceBlock}>
+          <Text style={styles.voicePickLabel}>{t('story.voice.pick')}</Text>
+          <View style={styles.voiceChips}>
+            {VOICES.map((v) => {
+              const active = v.id === selectedVoice;
+              return (
+                <TouchableOpacity
+                  key={v.id}
+                  style={[styles.voiceChip, active && styles.voiceChipActive]}
+                  onPress={() => setSelectedVoice(v.id)}
+                  activeOpacity={0.85}
+                >
+                  <ClayIcon name="mic" size={22} />
+                  <Text style={[styles.voiceChipText, active && styles.voiceChipTextActive]}>
+                    {t(`settings.voice.${v.id}`)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        )}
+        </View>
 
         <View style={styles.raccoCorner}>
           <Racco state="talking" size={60} />
@@ -1376,6 +1400,7 @@ export default function StoryPlayScreen() {
         <RewardAnimation
           visible={!levelUp && !!newBadge}
           emoji={newBadge?.emoji ?? '🏅'}
+          clayIcon="badge"
           title={t('reward.newBadge')}
           subtitle={newBadge?.name ?? ''}
           desc={newBadge?.desc}
@@ -1439,6 +1464,7 @@ export default function StoryPlayScreen() {
               <View style={styles.optionsWrap}>
                 {q.options.map((opt, i) => (
                   <TouchableOpacity key={i} style={styles.optionCard} onPress={() => handleChoiceAnswer(i)}>
+                    <ClayIcon name="button" size={40} style={styles.optionClay} />
                     <Text style={styles.optionText}>{opt}</Text>
                   </TouchableOpacity>
                 ))}
@@ -1471,7 +1497,11 @@ export default function StoryPlayScreen() {
                     style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
                     onPress={toggleQaRecordRound1}
                   >
-                    <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
+                    {isRecording ? (
+                      <Text style={styles.micSecText}>{qaRecSec}s</Text>
+                    ) : (
+                      <ClayIcon name="mic" size={54} />
+                    )}
                     <Text style={styles.micLabel}>
                       {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
                     </Text>
@@ -1564,7 +1594,11 @@ export default function StoryPlayScreen() {
         style={[isRecording ? styles.micFabActive : styles.micFab, { transform: [{ scale: micPulse }] }]}
         onPress={toggleQaRecordRound2}
       >
-        <Text style={styles.micIcon}>{isRecording ? `${qaRecSec}s` : '🎤'}</Text>
+        {isRecording ? (
+                      <Text style={styles.micSecText}>{qaRecSec}s</Text>
+                    ) : (
+                      <ClayIcon name="mic" size={54} />
+                    )}
         <Text style={styles.micLabel}>
           {isRecording ? t('story.qa.tapToStop') : t('story.qa.tapToTalk')}
         </Text>
@@ -1804,6 +1838,26 @@ const styles = StyleSheet.create({
   voiceOption: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 24, backgroundColor: '#FFF' },
   voiceOptionActive: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 24, backgroundColor: '#F7A072' },
   voiceOptionText: { fontSize: 13, color: '#3D3229' },
+
+  /* 孩子端「想让谁来讲」：常显大按钮，选中态用品牌橙 + 白字 */
+  voiceBlock: { marginTop: 14, paddingHorizontal: 4 },
+  voicePickLabel: { fontSize: 14, color: '#3D3229', fontWeight: '700', marginBottom: 8 },
+  voiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  voiceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 26,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#FFE0B2',
+    elevation: 1,
+  },
+  voiceChipActive: { backgroundColor: '#F7A072', borderColor: '#F7A072' },
+  voiceChipText: { fontSize: 15, color: '#3D3229', fontWeight: '600' },
+  voiceChipTextActive: { color: '#FFFFFF' },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
   completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 24 },
@@ -1811,30 +1865,38 @@ const styles = StyleSheet.create({
   qaRoundTitle: { fontSize: 20, fontWeight: 'bold', color: '#3D3229', textAlign: 'center', marginTop: 20, marginBottom: 16 },
   qaQuestion: { fontSize: 18, color: '#3D3229', textAlign: 'center', marginBottom: 24, lineHeight: 28 },
   optionsWrap: { gap: 16, paddingHorizontal: 20 },
+  // v79：选项按钮加大（孩子手指好点），左侧配 3D 粘土圆凳做视觉锚点
   optionCard: {
-    backgroundColor: '#FFF', borderRadius: 24, paddingVertical: 24, paddingHorizontal: 20,
-    alignItems: 'center', elevation: 2, borderWidth: 1, borderColor: '#FFE0B2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFF', borderRadius: 26, paddingVertical: 30, paddingHorizontal: 22,
+    elevation: 3, borderWidth: 2, borderColor: '#FFE0B2',
   },
-  optionText: { fontSize: 18, color: '#3D3229', fontWeight: '600' },
+  optionClay: { marginTop: 2 },
+  optionText: { flex: 1, fontSize: 19, color: '#3D3229', fontWeight: '600', lineHeight: 27 },
   voiceRecordWrap: { alignItems: 'center', marginTop: 10 },
   // 右下角悬浮大圆钮：方便右手按住说话（替代原先顶部居中）
   micFab: {
-    position: 'absolute', bottom: 28, right: 24, width: 88, height: 88, borderRadius: 44,
-    backgroundColor: '#9B7EDE', justifyContent: 'center', alignItems: 'center', elevation: 6,
-    zIndex: 20, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    position: 'absolute', bottom: 24, right: 20, width: 112, height: 112, borderRadius: 56,
+    backgroundColor: '#FFF6EE', justifyContent: 'center', alignItems: 'center', elevation: 8,
+    borderWidth: 3, borderColor: '#FFD9C0',
+    zIndex: 20, shadowColor: '#C98B6B', shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 5 },
   },
   micFabActive: {
-    position: 'absolute', bottom: 28, right: 24, width: 88, height: 88, borderRadius: 44,
-    backgroundColor: '#651FFF', justifyContent: 'center', alignItems: 'center', elevation: 6,
-    zIndex: 20, shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    position: 'absolute', bottom: 24, right: 20, width: 112, height: 112, borderRadius: 56,
+    backgroundColor: '#F7A072', justifyContent: 'center', alignItems: 'center', elevation: 8,
+    borderWidth: 3, borderColor: '#EF8B57',
+    zIndex: 20, shadowColor: '#C98B6B', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 5 },
   },
   // 麦克风外圈脉冲光环（录音时随 micPulse 呼吸），让不识字的孩子也能看到「在录」
   micRing: {
-    position: 'absolute', bottom: 20, right: 16, width: 104, height: 104, borderRadius: 52,
-    borderWidth: 3, borderColor: 'rgba(124,77,255,0.45)', zIndex: 19,
+    position: 'absolute', bottom: 16, right: 12, width: 128, height: 128, borderRadius: 64,
+    borderWidth: 3, borderColor: 'rgba(247,160,114,0.5)', zIndex: 19,
   },
   micIcon: { fontSize: 32 },
-  micLabel: { fontSize: 12, color: '#FFF', marginTop: 4 },
+  micSecText: { fontSize: 26, fontWeight: '800', color: '#FFFFFF' },
+  micLabel: { fontSize: 12, color: '#7A5B47', marginTop: 4, fontWeight: '700' },
 
   // ── 录音完成后的「确认」区（2026-11-01）──────────────────────────
   // 孩子录完先停在这里：能听回自己的声音、能重录，点大按钮才进下一题。

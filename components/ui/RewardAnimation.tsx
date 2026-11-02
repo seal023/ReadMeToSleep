@@ -19,12 +19,15 @@ import {
   Dimensions,
 } from 'react-native';
 import { COLORS, RADIUS, SPACING, FONT_SIZE, SHADOW } from '@/constants/theme';
+import { ClayIcon, type ClayIconName } from '@/components/ui/ClayIcon';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
 export interface RewardAnimationProps {
-  /** 勋章 emoji */
+  /** 勋章 emoji（当 clayIcon 未指定时使用） */
   emoji: string;
+  /** 3D 粘土徽章贴图：指定后用图代替 emoji，质感与全 App 一致 */
+  clayIcon?: ClayIconName;
   /** 主标题，如「升级啦！」 */
   title: string;
   /** 副标题，如等级名 */
@@ -49,6 +52,7 @@ const SPARKS = Array.from({ length: 12 }, (_, i) => {
 
 export function RewardAnimation({
   emoji,
+  clayIcon,
   title,
   subtitle,
   desc,
@@ -225,7 +229,11 @@ export function RewardAnimation({
                 { transform: [{ scale: haloScale }], opacity: haloOpacity },
               ]}
             />
-            <Text style={styles.badgeEmoji}>{emoji}</Text>
+            {clayIcon ? (
+              <ClayIcon name={clayIcon} size={132} />
+            ) : (
+              <Text style={styles.badgeEmoji}>{emoji}</Text>
+            )}
           </Animated.View>
 
           <Animated.View style={{ opacity: titleOpacity }}>

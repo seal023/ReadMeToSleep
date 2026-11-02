@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
@@ -156,7 +157,7 @@ export default function SettingsScreen() {
       {/* 需求 3 占位：语音引导开关（真实语音识别待接入 STT） */}
       <View style={styles.card}>
         <View style={styles.cardLeft}>
-          <Text style={styles.cardIcon}>🎤</Text>
+          <ClayIcon name="mic" size={28} />
           <View style={styles.cardTextWrap}>
             <Text style={styles.cardText}>{t('settings.voiceGuide.title')}</Text>
             <Text style={styles.cardSub}>{t('settings.voiceGuide.hint')}</Text>
@@ -173,7 +174,8 @@ export default function SettingsScreen() {
         <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
 
-      {/* 账号入口：会员权益与缴费凭证都归属这个账号，必须在设置页一级可见 */}
+      {/* 账号入口：会员权益与缴费凭证都归属这个账号，必须在设置页一级可见。
+          v79：卡片标题固定显示「我的账号」，账号明细进详情页再展开（避免首页直接暴露邮箱）。 */}
       <TouchableOpacity
         style={styles.card}
         onPress={() => router.push(isSignedIn ? '/(parent)/account' : '/auth/login')}
@@ -182,13 +184,25 @@ export default function SettingsScreen() {
           <Text style={styles.cardIcon}>{isSignedIn ? '👤' : '🔑'}</Text>
           <View style={styles.cardTextWrap}>
             <Text style={styles.cardText}>
-          {isSignedIn ? displayName : t('settings.account.signIn')}
-        </Text>
+              {isSignedIn ? t('settings.account.title') : t('settings.account.signIn')}
+            </Text>
             <Text style={styles.cardSub}>
               {isSignedIn
-                ? accountEmail || t('settings.account.appleBound')
+                ? displayName || accountEmail || t('settings.account.appleBound')
                 : t('settings.account.hint')}
             </Text>
+          </View>
+        </View>
+        <Text style={styles.arrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* 声音克隆二级入口：首页有常驻大卡，但设置页也必须有一处，避免用户找不到 */}
+      <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)/voice-clone')}>
+        <View style={styles.cardLeft}>
+          <ClayIcon name="mic" size={30} />
+          <View style={styles.cardTextWrap}>
+            <Text style={styles.cardText}>{t('settings.cloneEntry.title')}</Text>
+            <Text style={styles.cardSub}>{t('settings.cloneEntry.hint')}</Text>
           </View>
         </View>
         <Text style={styles.arrow}>›</Text>

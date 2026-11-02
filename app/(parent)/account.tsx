@@ -6,8 +6,8 @@
  *    否则审核会被拒。删除走服务端的 delete_me() 函数（见 Supabase 配置说明）。
  */
 
-import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
@@ -16,6 +16,7 @@ import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/th
 import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/hooks/useLanguage';
+import { getAccountNickname, setAccountNickname } from '@/services/storage';
 
 export default function AccountScreen() {
   const router = useRouter();
@@ -30,6 +31,19 @@ export default function AccountScreen() {
     deleteAccount,
   } = useAuth();
   const [busy, setBusy] = useState(false);
+  // 显示名称：用户可以自己改称呼；系统给的姓名/邮箱仍是账号的唯一标识
+  const [nickname, setNickname] = useState('');
+  const [nickSaveTip, setNickSaveTip] = useState(false);
+
+  useEffect(() => {
+    getAccountNickname().then(setNickname);
+  }, []);
+
+  const handleSaveNickname = useCallback(async () => {
+    await setAccountNickname(nickname);
+    setNickSaveTip(true);
+    setTimeout(() => setNickSaveTip(false), 1800);
+  }, [nickname]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(t('account.signOutAsk'), t('account.signOutMsg'), [
@@ -104,9 +118,30 @@ export default function AccountScreen() {
             <View style={styles.profileCard}>
               <Text style={styles.avatar}>👤</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{displayName}</Text>
+                <Text style={styles.name}>{nickname.trim() || displayName}</Text>
                 <Text style={styles.meta}>{email || t('account.appleNoEmail')}</Text>
+                <Text style={styles.metaHint}>{t('account.accountId')}</Text>
               </View>
+            </View>
+
+            {/* 显示名称：自己起一个称呼，不影响账号标识（会员归属仍认系统账号） */}
+            <View style={styles.nickCard}>
+              <Text style={styles.tipTitle}>{t('account.nicknameTitle')}</Text>
+              <TextInput
+                style={styles.nickInput}
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder={displayName}
+                placeholderTextColor="#9B8F86"
+                maxLength={16}
+                autoCapitalize="none"
+              />
+              <Text style={styles.tipBody}>{t('account.nicknameHint')}</Text>
+              <TouchableOpacity style={styles.nickSaveBtn} onPress={handleSaveNickname} activeOpacity={0.85}>
+                <Text style={styles.nickSaveText}>
+                  {nickSaveTip ? t('account.nicknameSaved') : t('account.nicknameSave')}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.tipCard}>
@@ -201,6 +236,35 @@ const styles = StyleSheet.create({
   avatar: { fontSize: 40, marginRight: SPACING.md },
   name: { fontSize: FONT_SIZE.section, color: COLORS.text, fontFamily: FONT.rounded },
   meta: { fontSize: FONT_SIZE.caption, color: COLORS.textSub, marginTop: 4 },
+  metaHint: { fontSize: 11, color: '#A79A90', marginTop: 2 },
+
+  nickCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
+    ...SHADOW.card,
+  },
+  nickInput: {
+    marginTop: SPACING.sm,
+    backgroundColor: '#FFF8F2',
+    borderRadius: RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.purpleLight,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    fontSize: FONT_SIZE.body,
+    color: COLORS.text,
+  },
+  nickSaveBtn: {
+    marginTop: SPACING.md,
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.purple,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+  },
+  nickSaveText: { color: '#FFFFFF', fontSize: FONT_SIZE.caption, fontWeight: '800' },
 
   tipCard: {
     backgroundColor: 'rgba(255,255,255,0.9)',

@@ -59,6 +59,8 @@ const KEYS = {
   SLEEP_TIMER_MINUTES: 'rms_sleep_timer_minutes',
   SLEEP_LOCK_ENABLED: 'rms_sleep_lock_enabled',
   STORY_POSITIONS: 'rms_story_positions',
+  /** 账号显示名（用户自己改的称呼；系统给的 Apple 名/邮箱才是唯一账号标识） */
+  ACCOUNT_NICKNAME: 'rms_account_nickname',
 };
 
 export interface ParentComment {
@@ -256,6 +258,24 @@ export async function getChildName(): Promise<string> {
 
 export async function setChildName(name: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.CHILD_NAME, name.trim());
+}
+
+/**
+ * 账号显示名（用户在「我的账号」里自己改的称呼）。
+ *
+ * 说明：真正用来识别账号的是系统给的那一个（Apple 返回的姓名或邮箱前缀，
+ * 见 useAuth.displayName），这里只是「我想被怎么叫」的本地偏好，
+ * 所以存本地即可，不写进云端 metadata —— 换设备重新登录会回到系统名。
+ */
+export async function getAccountNickname(): Promise<string> {
+  const val = await AsyncStorage.getItem(KEYS.ACCOUNT_NICKNAME);
+  return val || '';
+}
+
+export async function setAccountNickname(name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (trimmed) await AsyncStorage.setItem(KEYS.ACCOUNT_NICKNAME, trimmed);
+  else await AsyncStorage.removeItem(KEYS.ACCOUNT_NICKNAME);
 }
 
 /** 家长给孩子写的悄悄话（按故事 id 存） */

@@ -121,30 +121,34 @@ export default function CreateScreen() {
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.raccoWrap}>
-        {generating && (
-          <>
-            <Animated.View
-              style={[
-                styles.genRing,
-                {
-                  transform: [
-                    { rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-                  ],
-                },
-              ]}
-            />
-            <Animated.Text style={[styles.genSpark, { top: -4, left: -6, opacity: twinkleAnim }]}>✨</Animated.Text>
-            <Animated.Text style={[styles.genSpark, { top: 10, right: -12, opacity: twinkleAnim }]}>⭐</Animated.Text>
-            <Animated.Text style={[styles.genSpark, { bottom: 2, left: -16, opacity: twinkleAnim }]}>🌟</Animated.Text>
-            <Animated.Text style={[styles.genSpark, { bottom: 8, right: -6, opacity: twinkleAnim }]}>💫</Animated.Text>
-          </>
-        )}
-        <Racco
-          state={generating ? 'thinking' : raccoState}
-          size={120}
-          showSpeechBubble
-          speechText={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : ''}
-        />
+        {/* v79 修复：光环/星星原先绝对定位在「占满整行」的容器里，会飘到左上角且显得巨大。
+            现在包一层与浣熊等宽的定尺容器，环只绕在头顶，直径也从 130 收到 78。 */}
+        <View style={styles.genWrap}>
+          {generating && (
+            <>
+              <Animated.View
+                style={[
+                  styles.genRing,
+                  {
+                    transform: [
+                      { rotate: spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+                    ],
+                  },
+                ]}
+              />
+              <Animated.Text style={[styles.genSpark, { top: 2, left: -4, opacity: twinkleAnim }]}>✨</Animated.Text>
+              <Animated.Text style={[styles.genSpark, { top: 12, right: -4, opacity: twinkleAnim }]}>⭐</Animated.Text>
+              <Animated.Text style={[styles.genSpark, { bottom: 10, left: -6, opacity: twinkleAnim }]}>🌟</Animated.Text>
+              <Animated.Text style={[styles.genSpark, { bottom: 16, right: 0, opacity: twinkleAnim }]}>💫</Animated.Text>
+            </>
+          )}
+          <Racco
+            state={generating ? 'thinking' : raccoState}
+            size={120}
+            showSpeechBubble
+            speechText={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : ''}
+          />
+        </View>
       </View>
 
       <Text style={styles.title}>{t('create.title')}</Text>
@@ -240,19 +244,25 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
-  // 生成页旋转光环 + 魔法闪烁（环绕在 120 的小浣熊外，仅略大一圈，避免过大压迫感）
+  /** 与浣熊等宽的定尺容器：光环与星星都相对它定位，才不会飘到屏幕左上角 */
+  genWrap: {
+    width: 120,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // 生成页旋转光环 + 魔法闪烁（只绕在浣熊头顶一圈，直径收小避免压迫）
   genRing: {
     position: 'absolute',
-    top: -5,
-    left: -5,
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    borderWidth: 4,
+    top: 0,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 3,
     borderColor: 'rgba(183,148,244,0.25)',
     borderTopColor: '#B794F4',
   },
-  genSpark: { position: 'absolute', fontSize: 22 },
+  genSpark: { position: 'absolute', fontSize: 16 },
   title: { fontSize: 24, color: '#3D3229', textAlign: 'center', marginBottom: 20, fontWeight: '700' },
   card: {
     flexDirection: 'row',

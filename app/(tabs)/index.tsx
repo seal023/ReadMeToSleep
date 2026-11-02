@@ -18,6 +18,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
+import { getClonedTargets } from '../../services/voiceClone';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
 import type { RaccoState } from '../../types';
 
@@ -48,7 +49,9 @@ export default function HomeTab() {
   const [onboardVisible, setOnboardVisible] = useState(false);
   const [onboardText, setOnboardText] = useState('');
   // 声音克隆是产品灵魂（北极星卖点），首页常驻入口，永远突出、不消失。
-  const [cloneCardVisible, setCloneCardVisible] = useState(true);
+  // v79 修复：原先用本地 state 控制显隐，点过「稍后」或进过一次克隆页后本次会话就永久消失，
+  // 切语言再回首页更让人以为入口没了。现改为「常驻渲染」，只按是否已克隆切换文案。
+  const [hasCloned, setHasCloned] = useState(false);
 
   // #6 同步：首页「最近故事」原本恒显示空态，现从真实数据填充（AI 故事 + 旅行打卡）
   type RecentItem = { key: string; title: string; sub: string; kind: 'ai' | 'travel'; route: string };
@@ -132,6 +135,14 @@ export default function HomeTab() {
       getChildName().then((n) => {
         if (alive) setChildName(n);
       });
+      // 克隆入口文案：已克隆 → 「已绑定家人的声音 · 更换」
+      getClonedTargets()
+        .then((targets) => {
+          if (alive) setHasCloned(Array.isArray(targets) && targets.length > 0);
+        })
+        .catch(() => {
+          if (alive) setHasCloned(false);
+        });
       return () => {
         alive = false;
       };
@@ -158,10 +169,6 @@ export default function HomeTab() {
       .replace(/，\{name\}！|，\{title\}！/, '！')
       .replace(/, \{name\}!|, \{title\}!/, '!');
   })();
-
-  const dismissCloneBanner = () => {
-    setCloneCardVisible(false);
-  };
 
   // 首启昵称引导：保存昵称并关闭引导（昵称用于首页亲切称呼 + 语音问候）
   const finishOnboard = async () => {
@@ -207,29 +214,30 @@ export default function HomeTab() {
         <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
       </ElasticPressable>
 
-      {/* 声音克隆：产品灵魂，首页常驻、永远突出（北极星卖点） */}
-      {cloneCardVisible && (
-        <View style={styles.cloneBanner}>
-          <View style={styles.cloneBannerTextWrap}>
-            <Text style={styles.cloneBannerTitle}>🎙️ {t('home.cloneBanner.title')}</Text>
-            <Text style={styles.cloneBannerDesc}>{t('home.cloneBanner.desc')}</Text>
+      {/* 声音克隆：产品灵魂，常驻渲染、永不消失（v79：去掉可收起的临时状态） */}
+      <View style={styles.cloneBanner}>
+        <View style={styles.cloneBannerTextWrap}>
+          <View style={styles.cloneBannerTitleRow}>
+            <ClayIcon name="mic" size={34} />
+            <Text style={styles.cloneBannerTitle}>
+              {hasCloned ? t('home.cloneBanner.doneTitle') : t('home.cloneBanner.title')}
+            </Text>
           </View>
-          <View style={styles.cloneBannerActions}>
-            <TouchableOpacity
-              style={styles.cloneBannerCta}
-              onPress={() => {
-                setCloneCardVisible(false);
-                router.push('/(parent)/voice-clone');
-              }}
-            >
-              <Text style={styles.cloneBannerCtaText}>{t('home.cloneBanner.cta')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cloneBannerLater} onPress={dismissCloneBanner}>
-              <Text style={styles.cloneBannerLaterText}>{t('home.cloneBanner.later')}</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.cloneBannerDesc}>
+            {hasCloned ? t('home.cloneBanner.doneDesc') : t('home.cloneBanner.desc')}
+          </Text>
         </View>
-      )}
+        <View style={styles.cloneBannerActions}>
+          <TouchableOpacity
+            style={styles.cloneBannerCta}
+            onPress={() => router.push('/(parent)/voice-clone')}
+          >
+            <Text style={styles.cloneBannerCtaText}>
+              {hasCloned ? t('home.cloneBanner.manage') : t('home.cloneBanner.cta')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* 需求 3 占位：语音引导卡片（开启语音引导时显示） */}
       {guideVisible && (
@@ -470,13 +478,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
-  cloneBannerLater: {
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-  },
-  cloneBannerLaterText: {
-    fontSize: 13,
-    color: '#8FA6C8',
+  cloneBannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
 
   recCard: {

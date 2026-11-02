@@ -88,6 +88,36 @@ const CLONE_PREFIX = 'rms';
 // 预设：'mom' | 'dad' | 'grandma'；自定义克隆对象以 'custom:<名称>' 形式存储
 export type CloneTarget = string;
 
+/**
+ * 百炼内置音色（不需要克隆，直接用名字合成）。
+ * ---------------------------------------------------------------------------
+ * v79 新增：iOS 本地 TTS（expo-speech）中文只有「婷婷」一个音色，
+ * 机械感很重，孩子听着不像"人"。这里改用百炼 qwen-tts 的预置音色，
+ * 走与克隆声完全相同的合成/落盘/播放链路，只是 voice 参数换成预置名。
+ *
+ * 用法：把 'preset:cherry' 这类字符串当 CloneTarget 传给 playClonedAudio，
+ * 合成时自动映射到对应的百炼音色名（见 resolveVoiceForTarget）。
+ * 合成失败会自然返回 false，调用方降级回系统音，不会出现"没声音"。
+ */
+export const PRESET_VOICES: Record<string, { voice: string; label: string }> = {
+  'preset:cherry': { voice: 'Cherry', label: '大姐姐' },
+  'preset:serena': { voice: 'Serena', label: '温柔女声' },
+  'preset:ethan': { voice: 'Ethan', label: '大哥哥' },
+  'preset:nini': { voice: 'Nini', label: '邻家姐姐' },
+};
+
+/** 该 target 是否是「预置音色」（不需要克隆、永远可用） */
+export function isPresetTarget(target: CloneTarget): boolean {
+  return !!PRESET_VOICES[target];
+}
+
+/** 取某个 target 实际要合成用的音色名：预置音色直接返回内置名，其余读本地克隆结果 */
+async function resolveVoiceForTarget(target: CloneTarget): Promise<string | undefined> {
+  const preset = PRESET_VOICES[target];
+  if (preset) return preset.voice;
+  return getClonedVoiceId(target);
+}
+
 const STORAGE_KEY = (target: CloneTarget) => `rms_voice_clone_${target}`;
 
 export interface VoiceCloneResult {
@@ -318,7 +348,8 @@ export async function synthesizeWithClonedVoice(
   text: string,
   target: CloneTarget
 ): Promise<SynthResult> {
-  const voiceId = await getClonedVoiceId(target);
+  // 预置音色（'preset:*'）不需要本地克隆记录，直接映射到百炼内置音色名
+  const voiceId = await resolveVoiceForTarget(target);
   const synthEndpoint = resolveSynthEndpoint();
   if (!voiceId) return { audio: null, error: ts('vc.svc.notCloned') };
   if (!synthEndpoint) return { audio: null, error: ts('vc.svc.noEndpoint') };

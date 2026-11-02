@@ -26,6 +26,10 @@ export const CLAY_ICONS = {
   tent: require('../assets/clay/item_tent.png'),
   trophy: require('../assets/clay/reward_trophy.png'),
 
+  /* 问答 / 奖励（2026-11-02 新增；item_mic 已换成新的复古麦克风） */
+  button: require('../assets/clay/item_button.png'),
+  badge: require('../assets/clay/reward_badge.png'),
+
   /* 装饰 */
   moon: require('../assets/clay/deco_moon.png'),
   starBig: require('../assets/clay/deco_star_big.png'),

@@ -22,6 +22,7 @@ import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayba
 import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ClayIcon } from '../../components/ui/ClayIcon';
 import Racco from '@/components/common/Racco';
 import { COLORS, FONT } from '@/constants/theme';
 import type { Story, Language } from '../../types';
@@ -300,7 +301,7 @@ export default function RecordScreen() {
         <View style={styles.actions}>
           {!recording && step === 'record' && (
             <TouchableOpacity style={styles.bigBtn} onPress={startRecording}>
-              <Text style={styles.bigBtnText}>🎤</Text>
+              <ClayIcon name="mic" size={62} />
               <Text style={styles.btnLabel}>{t('record.start')}</Text>
             </TouchableOpacity>
           )}
