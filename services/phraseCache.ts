@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import zh from '../locales/zh.json';
 import en from '../locales/en.json';
-import { getChildName, getVoiceSetting } from './storage';
+import { getChildName, getPromptVoiceSetting } from './storage';
 import {
   prewarmPhraseBatch,
   clearClonedCacheForTarget,
@@ -102,16 +102,18 @@ export function clearClonedPhraseCache(target: CloneTarget): void {
 let appWarmTriggered = false;
 /**
  * App 打开（语言 hydrate 后）触发「一次」全量预热。
- * 覆盖两种情形：① 克隆较早、缓存被系统清理；② 用户从未重新克隆但希望提示音是克隆声。
- * 同进程内仅跑一次，避免重复；重新克隆时由 clear+warm 单独触发，不受影响。
+ * 覆盖两种情形：① 早前预热过、缓存被系统清理；② 用户换了提示音声线。
+ * 同进程内仅跑一次，避免重复；重新克隆 / 改设置时由 clear+warm 单独触发，不受影响。
  */
 export async function ensurePhraseWarmup(): Promise<void> {
   if (appWarmTriggered) return;
   appWarmTriggered = true;
   try {
-    const voice = await getVoiceSetting();
+    // v81：提示音声线与故事声线独立，这里只预热「提示音」要用的那个声线
+    const voice = await getPromptVoiceSetting();
     if (!voice || voice === 'system') return;
-    if (!(await hasClonedVoice(voice))) return;
+    // 内置样本音色无需克隆、恒定可用；克隆音色要确认真的克隆过
+    if (!voice.startsWith('preset:') && !(await hasClonedVoice(voice))) return;
     await warmClonedPhrases(voice);
   } catch {
     /* 忽略 */

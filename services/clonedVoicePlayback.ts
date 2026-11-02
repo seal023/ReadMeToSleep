@@ -80,6 +80,28 @@ let maxDur = 0;
  */
 let hardEndTimer: ReturnType<typeof setTimeout> | null = null;
 let stallTicks = 0;
+/**
+ * v81 #1：「点播放直接进入提问环节」的根因就在这里。
+ * ---------------------------------------------------------------------------
+ * 上一版加的「播放器自报已停止」判据（!playing && pos > 2，连续 2s → 判播完）
+ * 在两种完全正常的场景下都会误命中：
+ *   · 断点续播 seek 到 45s 后，AVPlayer 会短暂 playing=false（缓冲/跳转中），
+ *     而 pos 已经在 45 秒，远超 pos>2 —— 2 秒后就直接判「故事讲完了」；
+ *   · 起播瞬间 player.playing 仍为 false（还没真正开始），currtime 又已被 seek 过。
+ * 于是第一遍点播放、屏幕立刻变成「故事讲完啦」，而第二遍因为走缓存起播快、
+ * 位置没被 seek，就"看起来正常"。
+ *
+ * 修正：判停必须同时满足
+ *   ① 本次播放**确实出过声**（sawPlaying：player.playing 变为 true 过）；
+ *   ② 位置**真的推进过**（maxPos 明显大于起播位置）；
+ *   ③ 当前不在末尾附近（末尾由位置判据 ① 负责）。
+ * 三者缺一，宁可交给「硬定时器」兜底，也绝不提前结束故事。
+ */
+let sawPlaying = false;
+let maxPos = 0;
+let startPos = 0;
+/** 上一拍的位置：用于识别「用户往回拖了」，据此重挂硬定时器 */
+let lastPos = 0;
 
 function clearHardEnd(): void {
   if (hardEndTimer) {
@@ -87,6 +109,10 @@ function clearHardEnd(): void {
     hardEndTimer = null;
   }
   stallTicks = 0;
+  sawPlaying = false;
+  maxPos = 0;
+  startPos = 0;
+  lastPos = 0;
 }
 
 function resetEndWatch(): void {
@@ -128,6 +154,19 @@ function armEndWatch(onDone?: () => void): void {
     // 若直接拿「当前很小的 dur」去比 pos 就会误判「已播完」→ 故事没讲完就跳结束。
     // 故跟踪出现过的最大时长，仅当「当前 dur 没有异常回退」且「位置接近真实时长」才判结束。
     if (dur > maxDur) maxDur = dur;
+    // 记录起播位置与推进情况（断点续播时起播位置就是 seek 到的秒数）
+    if (startPos === 0 && pos > 0) startPos = pos;
+    if (pos > maxPos) maxPos = pos;
+    // 往回拖（±15s 后退 / 拖进度条）：原来的硬定时器已经不对了，清掉让它按新位置重挂，
+    // 否则「往回拖一段接着听」会在原来那个时间点被强行掐断。
+    if (pos < lastPos - 2) {
+      if (hardEndTimer) {
+        clearTimeout(hardEndTimer);
+        hardEndTimer = null;
+      }
+      stallTicks = 0;
+    }
+    lastPos = pos;
     // ① 位置到末尾（原有判据）
     if (dur >= maxDur - 0.6 && pos >= dur - 0.6) {
       endOnce?.();
@@ -141,12 +180,18 @@ function armEndWatch(onDone?: () => void): void {
         endOnce?.();
       }, remainMs + 2000);
     }
-    // ③ 播放器自报已停止（部分版本 onEnded 不触发、currentTime 又不可靠）
+    // ③ 播放器自报已停止
+    //    v81 修正：必须「真的出过声」+「位置真的往前走过」才允许判停，
+    //    否则 seek 后的缓冲停顿会被当成播完（见上方 sawPlaying 注释）。
     const p = currentPlayer as unknown as { playing?: boolean } | null;
     if (p && typeof p.playing === 'boolean') {
-      if (!p.playing && pos > 2) {
+      if (p.playing) sawPlaying = true;
+      const advanced = maxPos > startPos + 1.5;
+      // 末尾附近交给判据 ①，这里只管「中途停住」；且停顿点要明显离结尾还有距离
+      const midStream = pos < dur - 3;
+      if (!p.playing && sawPlaying && advanced && midStream) {
         stallTicks += 1;
-        if (stallTicks >= 8) endOnce?.(); // 连续 2 秒停在非开头位置 → 认为已播完
+        if (stallTicks >= 12) endOnce?.(); // 连续 3 秒停在非开头位置 → 认为已播完
       } else {
         stallTicks = 0;
       }

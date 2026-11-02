@@ -744,5 +744,15 @@
   "vc.svc.noKey": "Missing credentials, cannot synthesize",
   "vc.diag.emptyAudio": "Synthesis returned empty audio",
   "vc.diag.synthFail": "Synthesis failed",
-  "vc.diag.fileGone": "The recording is no longer on this device (app may have been reinstalled)"
+  "vc.diag.fileGone": "The recording is no longer on this device (app may have been reinstalled)",
+  "vc.svc.modelDenied": "The voice-cloning model {model} is not authorized in this workspace. Open Bailian console → Workspace → Model permissions, enable {model}, then retry. (The key and endpoint are fine; only this authorization is missing.)",
+  "voices.title": "Voice settings",
+  "voices.desc": "Pick separate voices for prompts and for story reading. Changes apply immediately, and tapping a voice previews it.",
+  "voices.sectionPrompt": "Prompts (questions, praise, status)",
+  "voices.promptDesc": "Used for every spoken prompt, praise and AI answer your child hears.",
+  "voices.sectionStory": "Story reading",
+  "voices.storyDesc": "Used when reading the story itself.",
+  "voices.tip": "Phone voice works offline and always speaks, but sounds robotic. Built-in voices sound more natural: the first use synthesizes once, then it is cached on this device.",
+  "parentHub.card.voiceSettings.title": "Voice settings",
+  "parentHub.card.voiceSettings.desc": "Separate prompt / story voices, with preview"
 }

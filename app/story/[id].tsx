@@ -20,13 +20,13 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { useLanguage } from '../../hooks/useLanguage';
-import { VOICES } from '../../services/tts';
 import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession } from '../../services/clonedVoicePlayback';
-import { transcribeAudio, PRESET_VOICES } from '../../services/voiceClone';
+import { transcribeAudio } from '../../services/voiceClone';
+import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
@@ -117,7 +117,9 @@ export default function StoryPlayScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   // v79：声音选择改为常显大按钮，不再需要展开/收起状态
-  const [selectedVoice, setSelectedVoice] = useState(VOICES[0]?.id ?? '');
+  // v81：可选声音统一从 voiceCatalog 取（内置样本 + 手机语音 + 真正克隆过的亲人）
+  const [selectedVoice, setSelectedVoice] = useState('preset:cherry');
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>(PRESET_VOICE_OPTIONS);
   // v80 #3：正在播的到底是谁的声音？——显示当前生效的音色名（未克隆=云端预置音色）
   const [voiceIsCloned, setVoiceIsCloned] = useState(false);
   const [qaIndex, setQaIndex] = useState(0);
@@ -506,27 +508,32 @@ export default function StoryPlayScreen() {
     }, []),
   );
 
-  // 默认声线：优先用全局设置；若全局是 system 但已克隆某位亲属，则默认用该克隆声
+  // 默认声线：只认「故事朗读声线」设置（v81 起与提示音分开，默认内置大姐姐）。
+  // 不再自动改选某个已克隆亲人——那会让用户以为自己选的声音被"偷偷换掉"。
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const saved = await getVoiceSetting();
       if (cancelled) return;
-      if (saved && saved !== 'system') {
-        setSelectedVoice(saved);
-        return;
-      }
-      for (const t of ['mom', 'dad', 'grandma'] as const) {
-        if (await hasClonedVoice(t)) {
-          if (!cancelled) setSelectedVoice(t);
-          return;
-        }
-      }
+      setSelectedVoice(normalizeVoiceId(saved));
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // 可选声音清单：进入页面刷新一次（克隆成功后回到本页即可看到新音色）
+  useEffect(() => {
+    let cancelled = false;
+    listAvailableVoices()
+      .then((list) => {
+        if (!cancelled) setVoiceOptions(list);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVoice]);
 
   // 当前声线是否有「真人克隆」可用（决定音色标签显示"克隆声音"还是"云端预置音色"）
   useEffect(() => {
@@ -763,9 +770,17 @@ export default function StoryPlayScreen() {
          * 于是界面被误推到「讲完啦」，回到前台再点播放就直接进提问环节。
          * 用「实际播了多久」兜底：从头播却不到 2.5 秒就结束的，一律判定为被打断，
          * 停在播放页不动，让用户回来还能接着听。
+         *
+         * v81 修正：原来还附加了「且没有断点」的条件，结果**有断点**的故事
+         * （seek 到 45 秒后缓冲、player.playing 短暂为 false）会被误判成播完，
+         * 表现就是「第一遍点播放，屏幕直接变成故事讲完啦」。
+         * 现在改为看「是不是真的到末尾」：离结尾还远就一律忽略这次结束信号。
          */
         const playedMs = Date.now() - playingSinceRef.current;
-        if (playedMs < 2500 && resumeAtRef.current <= 0) {
+        const endDur = getClonedDuration();
+        const endPos = getClonedPosition();
+        const nearEnd = endDur > 1 && endPos >= endDur - 3;
+        if (playedMs < 3000 && !nearEnd) {
           startingRef.current = false;
           setPreparing(false);
           setIsPlaying(false);
@@ -1140,8 +1155,9 @@ export default function StoryPlayScreen() {
     // 避免孩子问完要等好几秒 AI 才回、还以为没反应
     speakPhrase('thinking', displayLang);
     try {
-      // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题
-      const answer = await askQuestion(storyText, childQuestion);
+      // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题，
+      // 第三个是界面语言——强制 AI 用同一语言作答（v81：英文提问曾被答成中文）
+      const answer = await askQuestion(storyText, childQuestion, displayLang);
       const finalAnswer = answer && answer.trim() ? answer : t('story.qa.unknown');
       // 记录第2轮自由提问，供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
@@ -1420,7 +1436,7 @@ export default function StoryPlayScreen() {
         <View style={styles.voiceBlock}>
           <Text style={styles.voicePickLabel}>{t('story.voice.pick')}</Text>
           <View style={styles.voiceChips}>
-            {VOICES.map((v) => {
+            {voiceOptions.map((v) => {
               const active = v.id === selectedVoice;
               return (
                 <TouchableOpacity
@@ -1431,30 +1447,29 @@ export default function StoryPlayScreen() {
                 >
                   <ClayIcon name="mic" size={22} />
                   <Text style={[styles.voiceChipText, active && styles.voiceChipTextActive]}>
-                    {t(`settings.voice.${v.id}`)}
+                    {v.emoji} {uiLang === 'en' ? v.nameEn : v.nameZh}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
           {/*
-            v80 #3：孩子/家长都不知道「现在这个好听的声音是谁」。
-            这里直接标出版权音色名 + 角色（未克隆时用的是百炼云端预置音色），
-            已克隆则明确写「XX 的克隆声音」。
+            v80 #3 / v81 #2：孩子和家长都要一眼知道「现在是谁在说话」。
+            选内置样本 → 显示样本名；选克隆 → 显示「XX 的克隆声音」；选手机语音 → 明说离线。
           */}
-          {(() => {
-            const presetKey = presetTargetFor(selectedVoice);
-            const preset = presetKey ? PRESET_VOICES[presetKey] : undefined;
-            const roleLabel = t(`settings.voice.${selectedVoice}`);
-            const text = voiceIsCloned
+          <Text style={styles.voiceNow}>
+            {selectedVoice === 'system'
               ? uiLang === 'en'
-                ? `🎙 Now in ${roleLabel}'s cloned voice`
-                : `🎙 现在是「${roleLabel}」的克隆声音`
+                ? '📱 Phone voice: offline, sounds robotic'
+                : '📱 现在是手机自带语音（离线，声音偏机械）'
+              : voiceIsCloned
+              ? uiLang === 'en'
+                ? `🎙 Now playing in ${voiceDisplayName(selectedVoice, 'en')}`
+                : `🎙 现在是「${voiceDisplayName(selectedVoice, 'zh')}」在讲`
               : uiLang === 'en'
-              ? `🔊 Voice: ${preset?.voice ?? 'system'}${preset?.labelEn ? ` · ${preset.labelEn}` : ''}`
-              : `🔊 现在是 ${preset?.voice ?? '系统'}（${preset?.label ?? '系统音'}）的声音`;
-            return <Text style={styles.voiceNow}>{text}</Text>;
-          })()}
+              ? `🔊 Now playing: ${voiceDisplayName(selectedVoice, 'en')}`
+              : `🔊 现在是 ${voiceDisplayName(selectedVoice, 'zh')} 在讲`}
+          </Text>
         </View>
 
         <View style={styles.raccoCorner}>

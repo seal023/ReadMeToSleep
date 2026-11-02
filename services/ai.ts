@@ -532,33 +532,49 @@ async function enforceSensitiveWords(
  * @param context  故事正文
  * @param question 孩子提出的问题
  */
-export async function askQuestion(context: string, question: string): Promise<string> {
+/**
+ * 回答孩子在听完故事后的自由提问。
+ * @param language 当前界面语言。v81 修复：原来让模型「跟着孩子提问的语言走」，
+ *   结果英文界面提问、故事正文是中文时，模型会按故事语言用中文回答；
+ *   现在强制用界面语言作答（孩子听到的语音、看到的文字必须一致）。
+ */
+export async function askQuestion(
+  context: string,
+  question: string,
+  language: 'zh' | 'en' = 'zh',
+): Promise<string> {
+  const isZh = language === 'zh';
   if (!question?.trim()) {
-    return '你想问什么呢？';
+    return isZh ? '你想问什么呢？' : 'What would you like to ask?';
   }
 
   const allowed = await consumeQuota('qa');
   if (!allowed) {
-    return '今天的问题有点多啦，我们明天再聊好不好？先乖乖睡觉吧～';
+    return isZh
+      ? '今天的问题有点多啦，我们明天再聊好不好？先乖乖睡觉吧～'
+      : "That's a lot of questions for today! Let's talk more tomorrow. Time to sleep now.";
   }
 
+  const langName = isZh ? '简体中文' : 'English';
   const system = [
     '你是儿童故事助手"小浣熊"，正在陪 3-8 岁的孩子听完睡前故事后聊天。',
     '【回答要求】',
-    '- 使用与孩子提问相同的语言，简洁温柔，2-4 句话，总长度不超过 80 字。',
+    `- 无论孩子用什么语言提问，一律使用${langName}回答，不得混用其他语言。`,
+    `- 如果孩子的提问与故事无关，也用${langName}温柔地回应，并把话题带回故事或睡觉。`,
+    '- 简洁温柔，2-4 句话，总长度不超过 80 字（英文不超过 60 词）。',
     '- 只围绕故事内容回答；故事里没提到的，就温柔地说不知道，不要编造。',
     '- 语气亲切，可以用简单的比喻。不得出现恐怖、暴力内容。',
     '- 不要提及你是 AI、模型或程序。',
     '',
-    `【故事内容】\n${(context || '（暂无故事内容）').slice(0, 3000)}`,
+    `【故事内容】\n${(context || '').slice(0, 3000)}`,
   ].join('\n');
 
   try {
     const answer = await chat(system, question.trim(), 0.7);
-    return answer || '嗯，这个问题我还不太清楚呢～';
+    return answer || (isZh ? '嗯，这个问题我还不太清楚呢～' : "Hmm, I'm not quite sure about that one.");
   } catch (err: any) {
     console.warn('[ai] askQuestion failed:', err?.message ?? err);
-    return '嗯，这个问题我还不太清楚呢～';
+    return isZh ? '嗯，这个问题我还不太清楚呢～' : "Hmm, I'm not quite sure about that one.";
   }
 }
 

@@ -744,5 +744,15 @@
   "vc.svc.noKey": "缺少鉴权信息，无法合成",
   "vc.diag.emptyAudio": "合成返回了空音频",
   "vc.diag.synthFail": "合成失败",
-  "vc.diag.fileGone": "录音文件已不在设备上（可能重装过 App）"
+  "vc.diag.fileGone": "录音文件已不在设备上（可能重装过 App）",
+  "vc.svc.modelDenied": "声音复刻模型 {model} 还没在这个业务空间授权。请到百炼控制台 → 业务空间 → 模型权限，把 {model} 打开为「已授权」后重试。（Key 和接口地址都是对的，只差这一步授权）",
+  "voices.title": "声音设置",
+  "voices.desc": "「提示音」和「故事朗读」可以分别选声音，改完立刻生效，点一下就能试听。",
+  "voices.sectionPrompt": "提示音（提问 / 鼓励 / 状态播报）",
+  "voices.promptDesc": "孩子听到的各种提示语、鼓励、AI 回答都用这个声音。",
+  "voices.sectionStory": "故事朗读",
+  "voices.storyDesc": "念故事正文时用这个声音。",
+  "voices.tip": "「手机系统语音」不用联网、一定能出声，但听感偏机械；内置样本音色更自然，第一次使用需要联网合成一次，之后缓存在本机。",
+  "parentHub.card.voiceSettings.title": "声音设置",
+  "parentHub.card.voiceSettings.desc": "提示音与故事朗读分开选，可试听"
 }

@@ -8,6 +8,7 @@ export default function ParentLayout() {
       <Stack.Screen name="sensitive-words" />
       <Stack.Screen name="child-recordings" />
       <Stack.Screen name="voice-clone" />
+      <Stack.Screen name="voices" />
       <Stack.Screen name="subscription" />
       <Stack.Screen name="account" />
       <Stack.Screen name="sleep-timer" />

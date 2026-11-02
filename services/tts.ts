@@ -41,7 +41,14 @@ export async function ensureAudioMode(): Promise<void> {
   // 1.5 秒内重复说话不重复设置（避免一句话里多次调用），但绝不"一辈子只设一次"
   if (Date.now() - lastModeAt < 1500) return;
   try {
-    await setAudioModeAsync({ playsInSilentMode: true });
+    /**
+     * v81 #3：必须显式 allowsRecording: false。
+     * 提问环节为了录音会把会话切成 playAndRecord，录音停止后若只设置
+     * playsInSilentMode，会话仍停在 playAndRecord —— 此时播放会走「听筒」
+     * 而不是扬声器，听感就是「AI 回答没有语音 / 声音小得像没响」。
+     * 这里每次说话前都把录音态关掉，保证一定从扬声器出来。
+     */
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
     lastModeAt = Date.now();
   } catch (err) {
     lastModeAt = 0;

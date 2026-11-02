@@ -4,67 +4,58 @@ import {
   stopClonedAudio,
   hasClonedVoice,
 } from './clonedVoicePlayback';
-import { getVoiceSetting } from './storage';
+import { getPromptVoiceSetting } from './storage';
+import { DEFAULT_VOICE, normalizeVoiceId } from './voiceCatalog';
 import { pickPhrase, type PhraseCategory } from './phraseBank';
 import type { CloneTarget } from './voiceClone';
 
 /**
- * 统一故事播放入口（P0：让真克隆声真正发声）
+ * 统一播放入口（v81 重构：提示音与故事朗读彻底分开）
  * ---------------------------------------------------------------------------
- * 优先级：
- *   1) 若所选声音是某位亲属（妈妈/爸爸/外婆）且已克隆 → 用其真克隆声播放；
- *   2) 否则降级到系统音（expo-speech，pitch/rate 微调）。
- * 调用方无需关心背后是哪条链路。
+ * 语义从此变得「选项即结果」，不再有隐藏的声线映射：
+ *   'system'      → 手机自带离线语音（expo-speech）
+ *   'preset:xxx'  → 云端内置样本音色（中英文一致，无机器味）
+ *   'mom'/'dad'…  → 家长克隆的真人音色
+ *
+ * 云端合成失败 / 未克隆时，按「换内置样本 → 落系统语音」两级兜底，
+ * 保证任何情况下都有声音（离线也能讲）。
  */
 
-/**
- * 播放故事。返回是否使用了真克隆声（便于 UI 提示）。
- * 注意：本函数「发起即返回」，进度条由调用方按字数估算驱动（见 [id].tsx）。
- * voiceId 为 'system' 时用系统音；其它值（mom/dad/grandma/自定义 custom:*）
- * 若已克隆则优先用其真克隆声，否则降级系统音。
- */
-/**
- * 未克隆时，各声线回退到哪个百炼预置音色（比 iOS 本地 TTS 自然得多）。
- * v79：iOS 中文 TTS 只有「婷婷」，机械感重；这里用云端预置音色做默认声音。
- * 合成失败会自动落到系统音，不会没声音。
- */
-const PRESET_FALLBACK: Record<string, string> = {
-  system: 'preset:cherry', // 默认：阳光大姐姐
-  mom: 'preset:serena', // 温柔女声
-  dad: 'preset:ethan', // 阳光男声
-  grandma: 'preset:nini', // 邻家温柔女声（偏成熟）
-};
-
-/** 某个声线在「未克隆」时该用哪个预置音色（供调用方提前预热，点播放即秒出） */
-export function presetTargetFor(voiceId: string | undefined): string | undefined {
-  return PRESET_FALLBACK[voiceId || 'system'];
+/** 某个声线在云端不可用时的兜底链（供预热与播放共用） */
+function voiceCandidates(voiceId: string | undefined): string[] {
+  const id = normalizeVoiceId(voiceId);
+  if (id === 'system') return []; // 系统语音不需要云端，直接本地合成
+  const list = [id];
+  if (id !== DEFAULT_VOICE) list.push(DEFAULT_VOICE); // 兜底换回默认样本音色
+  return list;
 }
 
+/** 该声线需要预先合成的目标（供调用方预热，点播放即秒出） */
+export function presetTargetFor(voiceId: string | undefined): string | undefined {
+  const id = normalizeVoiceId(voiceId);
+  return id === 'system' ? DEFAULT_VOICE : id;
+}
+
+/**
+ * 播放故事。返回是否用上了「云端音频」（true 时调用方可用真实播放位置驱动进度条）。
+ * 注意：本函数「发起即返回」，进度条由调用方按字数估算驱动（见 [id].tsx）。
+ */
 export async function playStory(
   text: string,
   voiceId: string,
   language: 'zh' | 'en' = 'zh',
   onDone?: () => void,
 ): Promise<boolean> {
-  if (voiceId && voiceId !== 'system') {
-    const target = voiceId as CloneTarget;
-    if (await hasClonedVoice(target)) {
-      const ok = await playClonedAudio(text, target, onDone);
-      if (ok) return true;
-    }
-  }
-  // 未克隆（或克隆合成失败）：先用云端预置音色讲，听感接近真人
-  const preset = PRESET_FALLBACK[voiceId || 'system'];
-  if (preset) {
-    const ok = await playClonedAudio(text, preset, onDone);
+  for (const target of voiceCandidates(voiceId)) {
+    const ok = await playClonedAudio(text, target as CloneTarget, onDone);
     if (ok) return true;
   }
-  // 最后兜底：系统音（含 mom/dad/grandma 的 pitch/rate 微调）
-  textToSpeech(text, voiceId, language, onDone);
+  // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
+  textToSpeech(text, 'system', language, onDone);
   return false;
 }
 
-/** 停止一切播放（克隆声 + 系统音） */
+/** 停止一切播放（云端音频 + 系统音） */
 export function stopStory(): void {
   stopClonedAudio();
   stopSpeech();
@@ -81,12 +72,21 @@ export function stopStory(): void {
  * - 无论长短提示，都优先用克隆声，且「同一文本 + 同一音色只合成一次」并落盘缓存：
  *   命中缓存后下次播放零延迟、零重复 token（秒出）；仅首次使用会现合成一次；
  *   克隆成功后已静默预热高频短句，使常见提示（你好/再见/答对/晚安…）几乎总是命中缓存；
- * - 未克隆 / 克隆合成失败时降级到系统音（expo-speech），保证一定有声音。
+/**
+ * 说一句「提示语」（提问、鼓励、状态播报、AI 回答等）。
+ * 用「提示音声线」发音——v81 起它与故事朗读声线是两个独立设置，
+ * 默认都是内置大姐姐（中英文一致），家长可在家长端分别更改。
  *
- * @param opts.urgent    （已废弃）曾用于强制系统音；现所有提示统一走克隆声优先逻辑，
- *                       该字段保留仅为兼容旧调用点，不再影响行为。
+ * 行为：
+ * - 任何一次调用都会先打断上一段（云端音频 + 系统音），保证「动作/界面切换时旧声立刻停、
+ *   新声立刻响」，解决多个提示音叠加/串台的问题；
+ * - 并发安全：云端合成期间若来了更新的请求，旧的那次合成完会放弃播放，不覆盖新声；
+ * - 同一文本 + 同一音色只合成一次并落盘缓存：命中后秒出、零重复 token；
+ * - 云端不可用（离线 / 未授权 / 未克隆）时逐级降级，最终一定落到手机自带语音，保证有声音。
+ *
+ * @param opts.urgent    （已废弃）保留仅为兼容旧调用点，不再影响行为。
  * @param opts.interrupt false=不打断上一段（极少用）；默认 true
- * @param opts.voiceId   指定声线；缺省则读全局声音设置
+ * @param opts.voiceId   指定声线；缺省则读「提示音声线」设置
  */
 let speakSeq = 0;
 export interface SpeakOptions {
@@ -119,20 +119,24 @@ export async function speakWithBestVoice(
   let voice = opts.voiceId;
   if (!voice) {
     try {
-      voice = await getVoiceSetting();
+      // v81：提示音读「提示音声线」，与故事朗读声线彻底分开。
+      // 之前这里读的是故事声线，于是「家长把故事换成妈妈的声音」会连带把
+      // 所有提示音也换成克隆声，中英文界面表现还不一致。
+      voice = await getPromptVoiceSetting();
     } catch {
       voice = undefined;
     }
   }
+  const target = normalizeVoiceId(voice);
 
-  // 快通道（锁屏告别等）：只认本地已缓存的克隆音频，不做任何存储查询 / 网络合成。
+  // 快通道（锁屏告别等）：只认本地已缓存的音频，不做任何存储查询 / 网络合成。
   // 未命中就当场用系统音（本地合成，几乎瞬时），保证「再见了 xxx」不再等十几秒。
   if (opts.cacheOnly) {
-    if (voice && voice !== 'system') {
+    if (target !== 'system') {
       try {
         const ok = await playClonedAudio(
           content,
-          voice as CloneTarget,
+          target as CloneTarget,
           () => opts.onDone?.(),
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
@@ -145,18 +149,21 @@ export async function speakWithBestVoice(
     }
     // 同样要校验：这期间可能已经有更新的请求（比如锁屏告别）抢走了播报权
     if (mySeq !== speakSeq) return false;
-    textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
+    textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
     return false;
   }
 
-  // 统一走克隆声：命中本地缓存则秒出、零 token；未命中则首次现合成一次并落盘缓存。
-  // 克隆声不可用时（未克隆 / 合成失败）自然落到下方系统音降级。
-  if (voice && voice !== 'system') {
+  // 云端音频（内置样本 / 克隆声）：命中本地缓存则秒出、零 token；未命中则现合成一次并落盘。
+  // 选中「手机系统语音」时直接跳过这一步，走本地离线合成。
+  for (const cand of voiceCandidates(target)) {
     try {
-      if (await hasClonedVoice(voice)) {
+      // 内置样本音色不需要克隆，直接可用；只有「亲人克隆声」才要确认真的克隆过。
+      // （之前这里统一用 hasClonedVoice 判断，preset 会被判成"没克隆"而直接被跳过。）
+      const ready = cand.startsWith('preset:') || (await hasClonedVoice(cand));
+      if (ready) {
         const ok = await playClonedAudio(
           content,
-          voice as CloneTarget,
+          cand as CloneTarget,
           () => opts.onDone?.(),
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
@@ -170,7 +177,7 @@ export async function speakWithBestVoice(
         if (mySeq !== speakSeq) return false;
       }
     } catch {
-      /* 克隆声失败，继续降级系统音 */
+      /* 该候选不可用，继续下一个 */
     }
   }
   // ★ 只有「最新一次」请求才有资格落回系统音。
@@ -182,7 +189,7 @@ export async function speakWithBestVoice(
   //   它并不知道自己已经被取代，于是又用系统音补喊了一句「晚上好」——两句话叠在一起。
   // 加这道守卫后，被取代的请求到此为止，静默退出。
   if (mySeq !== speakSeq) return false;
-  textToSpeech(content, voice || 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
+  textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
   return false;
 }
 

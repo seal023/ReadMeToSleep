@@ -11,7 +11,7 @@ import { useFonts } from 'expo-font';
 import { ZCOOLKuaiLe_400Regular } from '@expo-google-fonts/zcool-kuaile';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
-import { getChildName, getVoiceSetting } from '../services/storage';
+import { getChildName, getPromptVoiceSetting } from '../services/storage';
 import { speakWithBestVoice, stopStory } from '../services/playback';
 import { invalidateAudioMode } from '../services/tts';
 import { reassertAudioSession } from '../services/clonedVoicePlayback';
@@ -81,7 +81,8 @@ function GreetingOnOpen() {
       const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
       agreedRef.current = agreed === 'agreed';
       privacyReadyRef.current = true;
-      const [name, voice] = await Promise.all([getChildName(), getVoiceSetting()]);
+      // v81：问候 / 告别属于「提示音」，读提示音声线（与故事朗读声线独立）
+      const [name, voice] = await Promise.all([getChildName(), getPromptVoiceSetting()]);
       nameRef.current = name || '';
       voiceRef.current = voice;
     } catch {

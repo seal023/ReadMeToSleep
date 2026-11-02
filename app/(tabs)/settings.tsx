@@ -7,8 +7,8 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
-import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, saveVoiceSetting, getChildName, setChildName } from '../../services/storage';
-import { getClonedTargets } from '../../services/voiceClone';
+import { getVoiceGuidance, setVoiceGuidance, getVoiceSetting, getChildName, setChildName } from '../../services/storage';
+import { voiceDisplayName, normalizeVoiceId } from '../../services/voiceCatalog';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 /** 便于在真机上确认装的是哪一个包（app.json → expo.version + 原生 build number） */
@@ -22,8 +22,7 @@ export default function SettingsScreen() {
   // 账号：让家长在设置页一级就能看见"会员记在哪个账号上"
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
-  const [currentVoice, setCurrentVoice] = useState('system');
-  const [cloned, setCloned] = useState<Record<string, boolean>>({});
+  const [currentVoice, setCurrentVoice] = useState('preset:cherry');
   const [childName, setChildNameState] = useState('');
 
   useEffect(() => {
@@ -31,15 +30,8 @@ export default function SettingsScreen() {
   }, []);
 
   useEffect(() => {
-    getVoiceSetting().then((v) => v && setCurrentVoice(v));
+    getVoiceSetting().then((v) => v && setCurrentVoice(normalizeVoiceId(v)));
     (async () => {
-      const targets = await getClonedTargets();
-      const map: Record<string, boolean> = {};
-      for (const t of targets) map[t] = true;
-      for (const t of ['mom', 'dad', 'grandma'] as const) {
-        if (!(t in map)) map[t] = false;
-      }
-      setCloned(map);
       setChildNameState(await getChildName());
     })();
   }, []);
@@ -57,33 +49,16 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const selectVoice = async (voiceId: string) => {
-    setCurrentVoice(voiceId);
-    await saveVoiceSetting(voiceId);
-  };
-
+  /**
+   * v81：声音选择从「弹窗里选 4 个亲属」改为进入统一的「声音设置」页。
+   * 那里把「提示音」和「故事朗读」分开列，并会把内置样本音色一起列出来——
+   * 原来只有 系统/妈妈/爸爸/外婆 四项，没克隆过的人选谁都是同一把机器音。
+   */
   const showVoiceOptions = () => {
-    const optionFor = (id: string, label: string) => {
-      const mark = cloned[id] ? ` ✓${t('settings.voice.cloned')}` : '';
-      return { text: label + mark, onPress: () => selectVoice(id) };
-    };
-    const customNames = Object.keys(cloned).filter((k) => k.startsWith('custom:'));
-    Alert.alert(t('settings.voice.title'), t('settings.voice.hint'), [
-      optionFor('system', t('settings.voice.system')),
-      optionFor('mom', t('settings.voice.mom')),
-      optionFor('dad', t('settings.voice.dad')),
-      optionFor('grandma', t('settings.voice.grandma')),
-      ...customNames.map((k) => optionFor(k, k.slice('custom:'.length))),
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
+    router.push('/(parent)/voices');
   };
 
-  const currentVoiceLabel =
-    currentVoice === 'system'
-      ? t('settings.voice.system')
-      : currentVoice.startsWith('custom:')
-        ? currentVoice.slice('custom:'.length)
-        : t(`settings.voice.${currentVoice}` as 'settings.voice.mom');
+  const currentVoiceLabel = voiceDisplayName(currentVoice, language === 'en' ? 'en' : 'zh');
 
   return (
     <CartoonScreen gradient="day" decor>

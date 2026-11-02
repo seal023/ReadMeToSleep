@@ -41,6 +41,7 @@ export default function ParentHub() {
     { icon: '🛡️', title: t('parentHub.card.sensitive.title'), desc: t('parentHub.card.sensitive.desc'), href: '/(parent)/sensitive-words' },
     { icon: '😴', title: t('parentHub.card.sleep.title'), desc: t('parentHub.card.sleep.desc'), href: '/(parent)/sleep-timer' },
     { icon: '🎤', title: t('parentHub.card.recordings.title'), desc: t('parentHub.card.recordings.desc'), href: '/(parent)/child-recordings' },
+    { icon: '🎚️', title: t('parentHub.card.voiceSettings.title'), desc: t('parentHub.card.voiceSettings.desc'), href: '/(parent)/voices' },
     { icon: '🔊', title: t('parentHub.card.voice.title'), desc: t('parentHub.card.voice.desc'), href: '/(parent)/voice-clone' },
     { icon: '💳', title: t('parentHub.card.subscription.title'), desc: t('parentHub.card.subscription.desc'), href: '/(parent)/subscription' },
     { icon: '👤', title: t('parentHub.card.account.title'), desc: t('parentHub.card.account.desc'), href: '/(parent)/account' },

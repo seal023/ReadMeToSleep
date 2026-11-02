@@ -292,6 +292,18 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
       if (/silent|静音|empty audio|no audio/i.test(msg)) {
         msg = ts('vc.svc.silent');
       }
+      /**
+       * v81 反馈 #4：克隆报 HTTP 403「Model access denied」。
+       * 这不是接口地址或请求格式的问题（实测预置音色合成 200，说明 Key 与域名都对），
+       * 而是这个业务空间**没有授权声音复刻模型**。把真正原因和要开的模型名写到界面上，
+       * 家长拿着这句话就能去控制台把它打开，不用再猜。
+       */
+      if (createRes.status === 403 || /Model\.?AccessDenied|Model access denied/i.test(msg)) {
+        return {
+          ok: false,
+          message: ts('vc.svc.modelDenied').replace('{model}', CLONE_MODEL),
+        };
+      }
       return {
         ok: false,
         message: ts('vc.svc.createFail')

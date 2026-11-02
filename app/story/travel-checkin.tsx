@@ -451,7 +451,7 @@ export default function TravelCheckinScreen() {
           resolve();
         };
         const timer = setTimeout(finish, Math.max(20000, story.content.length * 280));
-        playStory(story.content, saved || 'system', lang, () => {
+        playStory(story.content, saved, lang, () => {
           clearTimeout(timer);
           finish();
         }).catch(() => {

@@ -51,6 +51,8 @@ const KEYS = {
   SENSITIVE_WORDS: 'rms_sensitive_words',
   PARENT_PIN: 'rms_parent_pin',
   VOICE: 'rms_voice',
+  /** 提示音声线（与故事声线独立，v81 新增） */
+  PROMPT_VOICE: 'rms_prompt_voice',
   PARENT_COMMENTS: 'rms_parent_comments',
   VOICE_GUIDANCE: 'rms_voice_guidance',
   CHILD_NAME: 'rms_child_name',
@@ -235,9 +237,31 @@ export async function saveVoiceSetting(voiceId: string): Promise<void> {
   await AsyncStorage.setItem(KEYS.VOICE, voiceId);
 }
 
+/**
+ * 故事朗读声线
+ * ---------------------------------------------------------------------------
+ * v81：提示音与故事朗读拆成两个独立设置（见下方 PROMPT_VOICE）。
+ * 默认值从 'system' 改为内置大姐姐 'preset:cherry'——
+ * iOS 中文离线语音只有「婷婷」一个，机械感重；内置音色中英文都能用、听感自然。
+ * 家长端可随时改回手机系统语音或换成自己克隆的声音。
+ */
+export const DEFAULT_STORY_VOICE = 'preset:cherry';
+export const DEFAULT_PROMPT_VOICE = 'preset:cherry';
+
 export async function getVoiceSetting(): Promise<string> {
   const val = await AsyncStorage.getItem(KEYS.VOICE);
-  return val || 'system';
+  // 老版本可能存过空串，统一兜到默认声音，避免上层拿到空值后静默降级
+  return val && val.trim() ? val : DEFAULT_STORY_VOICE;
+}
+
+/** 提示音声线（提问、鼓励、状态播报等短句）：与故事声线互相独立 */
+export async function savePromptVoiceSetting(voiceId: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.PROMPT_VOICE, voiceId);
+}
+
+export async function getPromptVoiceSetting(): Promise<string> {
+  const val = await AsyncStorage.getItem(KEYS.PROMPT_VOICE);
+  return val && val.trim() ? val : DEFAULT_PROMPT_VOICE;
 }
 
 /** 语音引导（开机提问）开关：默认关闭 */
