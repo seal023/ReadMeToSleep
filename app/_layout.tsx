@@ -11,7 +11,7 @@ import { useFonts } from 'expo-font';
 import { ZCOOLKuaiLe_400Regular } from '@expo-google-fonts/zcool-kuaile';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
-import { getChildName, getPromptVoiceSetting } from '../services/storage';
+import { getChildName, getPromptVoiceSetting, getVoiceSetting, migrateVoiceDefaultsOnce } from '../services/storage';
 import { speakWithBestVoice, stopStory } from '../services/playback';
 import { invalidateAudioMode } from '../services/tts';
 import { reassertAudioSession } from '../services/clonedVoicePlayback';
@@ -222,13 +222,18 @@ export default function RootLayout() {
   useEffect(() => {
     let cancelled = false;
     const hydrate = async () => {
-      const lang = await AsyncStorage.getItem('rms_language');
-      const voice = await AsyncStorage.getItem('rms_voice');
-      const parentMode = await AsyncStorage.getItem('rms_parent_mode');
+      // v82：先把旧版本「克隆成功即自动写入」的克隆声线清回默认内置大姐姐（只跑一次），
+      // 否则老设备升级后会看到「默认说是大姐姐、实际念故事还是妈妈的声音」。
+      await migrateVoiceDefaultsOnce();
+      const [lang, voice, parentMode] = await Promise.all([
+        AsyncStorage.getItem('rms_language'),
+        getVoiceSetting(), // 已含默认值兜底，恒为有效声线
+        AsyncStorage.getItem('rms_parent_mode'),
+      ]);
       const s = useAppStore.getState();
       if (!cancelled) {
         if (lang) s.setLanguage(lang as 'zh' | 'en');
-        if (voice) s.setCurrentVoice(voice);
+        s.setCurrentVoice(voice);
         if (parentMode !== null) s.setIsParentMode(parentMode === 'true');
       }
     };

@@ -10,7 +10,8 @@ import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
 import { warmClonedPhrases, clearClonedPhraseCache } from '@/services/phraseCache';
 import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayback';
-import { saveVoiceSetting } from '@/services/storage';
+import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting } from '@/services/storage';
+import { voiceDisplayName } from '@/services/voiceCatalog';
 
 // 预设对象；自定义克隆以 key = 'custom:<名称>' 形式存在
 const PRESET_TARGETS: { key: CloneTarget; labelKey: string; icon: string }[] = [
@@ -46,7 +47,8 @@ const CLONE_PHRASE_KEYS = [
 const CLONE_PHRASE_INTERVAL_MS = 3600;
 
 export default function VoiceClonePage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const uiLang: 'zh' | 'en' = language === 'en' ? 'en' : 'zh';
   const [target, setTarget] = useState<CloneTarget>('mom');
   const [step, setStep] = useState<'select' | 'recording' | 'preview' | 'done'>('select');
   const [duration, setDuration] = useState(0);
@@ -60,6 +62,8 @@ export default function VoiceClonePage() {
   const [previewing, setPreviewing] = useState(false);
   const [cloneMsg, setCloneMsg] = useState<string | null>(null);
   const [cloneResult, setCloneResult] = useState<VoiceCloneResult | null>(null);
+  // v82：克隆成功后要把「朗读声已换、提示音没换」讲清楚，并允许一键把提示音也换成它
+  const [promptVoiceId, setPromptVoiceId] = useState('preset:cherry');
   // 克隆等待期间底部轮播的诙谐句子
   const [clonePhraseIdx, setClonePhraseIdx] = useState(0);
   const clonePhraseFade = useRef(new Animated.Value(1)).current;
@@ -244,6 +248,12 @@ export default function VoiceClonePage() {
       // 克隆成功：自动把当前故事声音设为该亲属/自定义对象，让孩子立刻听到真人声
       if (res.ok) {
         await saveVoiceSetting(target);
+        // 记下当前提示音，成功页要如实告诉家长「提示音用的是哪个、没跟着变」
+        try {
+          setPromptVoiceId(await getPromptVoiceSetting());
+        } catch {
+          /* 读取失败按默认展示 */
+        }
         // 重新克隆同一对象 → 清掉旧音色缓存，避免旧音频残留 / 误用
         clearClonedPhraseCache(target);
         // 静默预合成一批高频短句（你好/再见/答对/晚安…）到本地缓存，
@@ -254,6 +264,20 @@ export default function VoiceClonePage() {
       setCloneResult({ ok: false, message: t('vc.noFile') });
     }
     setStep('done');
+  };
+
+  /**
+   * v82：把「提示音」也换成刚克隆的声音。
+   * 默认不动提示音（保持内置大姐姐，中英文界面一致、朗读与播报不会突然换人），
+   * 但家长想让孩子连提问声都是自己的，这里一键搞定，不用再翻设置页。
+   */
+  const handleUseForPrompt = async () => {
+    try {
+      await savePromptVoiceSetting(target);
+      setPromptVoiceId(target);
+    } catch {
+      /* 写失败时保持原样，家长仍可去「声音设置」里改 */
+    }
   };
 
   const formatTime = (s: number) => {
@@ -415,7 +439,32 @@ export default function VoiceClonePage() {
           {!cloning && cloneResult?.ok && (
             <>
               <Text style={styles.successSub}>{t('vc.successSubOk')}</Text>
-              <Text style={styles.successSub}>{t('vc.enabledNow').replace('{name}', targetLabel(target, t))}</Text>
+
+              {/*
+                v82：把「哪条声线换成了谁」逐条写清楚。
+                之前只有一句「已为你启用 X 的声音」，家长点试听听到的却是提示音
+                （仍是大姐姐），很容易判定成「克隆没生效 / 声音又乱了」。
+              */}
+              <View style={styles.voiceSplitCard}>
+                <Text style={styles.voiceSplitRow}>
+                  {`📖 ${t('vc.storyVoiceNow').replace('{name}', voiceDisplayName(target, uiLang))}`}
+                </Text>
+                <Text style={styles.voiceSplitRow}>
+                  {`🔔 ${t('vc.promptVoiceNow').replace('{name}', voiceDisplayName(promptVoiceId, uiLang))}`}
+                </Text>
+              </View>
+
+              <Text style={styles.voiceSplitHint}>{t('vc.voiceSplitHint')}</Text>
+
+              {/* 提示音仍不是刚克隆的声音 → 给一键同设入口，免去翻设置页 */}
+              {promptVoiceId !== target && (
+                <TouchableOpacity style={styles.linkBtn} onPress={handleUseForPrompt} activeOpacity={0.85}>
+                  <Text style={styles.linkBtnText}>
+                    {t('vc.useForPrompt').replace('{name}', voiceDisplayName(target, uiLang))}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               <View style={{ marginTop: 14 }}>
                 <TouchableOpacity
                   style={[styles.previewBtn, previewing && styles.previewBtnDisabled]}
@@ -483,6 +532,18 @@ const styles = StyleSheet.create({
   successCard: { backgroundColor: '#fff', borderRadius: 22, padding: 32, alignItems: 'center', marginTop: 20 },
   successText: { fontSize: 22, fontWeight: 'bold', color: '#5FC3A4', marginTop: 8 },
   successSub: { fontSize: 14, color: '#A8988A', marginTop: 4 },
+  /** v82：成功页「朗读 / 提示音各用谁」的对照小卡 */
+  voiceSplitCard: {
+    width: '100%', backgroundColor: '#F7F3EC', borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 14, marginTop: 14,
+  },
+  voiceSplitRow: { fontSize: 14, color: '#3D3229', lineHeight: 24 },
+  voiceSplitHint: { fontSize: 12, color: '#A8988A', lineHeight: 18, marginTop: 8, textAlign: 'center' },
+  linkBtn: {
+    marginTop: 12, paddingVertical: 10, paddingHorizontal: 18,
+    borderRadius: 16, borderWidth: 1.5, borderColor: '#9B7EDE',
+  },
+  linkBtnText: { fontSize: 13, color: '#9B7EDE', fontWeight: '600' },
   doneActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 20, gap: 12 },
   retryBtn: { backgroundColor: '#F2827F', borderRadius: 26, paddingVertical: 12, paddingHorizontal: 24 },
   retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },

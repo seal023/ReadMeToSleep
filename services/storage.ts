@@ -63,6 +63,8 @@ const KEYS = {
   STORY_POSITIONS: 'rms_story_positions',
   /** 账号显示名（用户自己改的称呼；系统给的 Apple 名/邮箱才是唯一账号标识） */
   ACCOUNT_NICKNAME: 'rms_account_nickname',
+  /** v82 一次性迁移标记：见 migrateVoiceDefaultsOnce */
+  VOICE_DEFAULTS_V82: 'rms_voice_defaults_v82',
 };
 
 export interface ParentComment {
@@ -262,6 +264,35 @@ export async function savePromptVoiceSetting(voiceId: string): Promise<void> {
 export async function getPromptVoiceSetting(): Promise<string> {
   const val = await AsyncStorage.getItem(KEYS.PROMPT_VOICE);
   return val && val.trim() ? val : DEFAULT_PROMPT_VOICE;
+}
+
+/**
+ * v82 一次性迁移：把「旧版本自动写入」的克隆声线清回默认
+ * ---------------------------------------------------------------------------
+ * 背景：v81 之前，只要克隆成功就会自动 `saveVoiceSetting(亲属key)`，把**故事朗读声**
+ * 直接写成 'mom' / 'dad' / 'grandma'。家长并没有主动选过，但值被持久化了。
+ * 于是老设备升到 v82 后，会出现「说是默认大姐姐，实际念故事还是妈妈的声音」，
+ * 极易被误判为「声音体系没统一」。
+ *
+ * 规则（只在升级后第一次启动跑一次，之后用户的一切选择都会被尊重）：
+ *   · rms_voice 若是克隆音色（非 preset: / 非 system）→ 删掉，回落默认内置大姐姐。
+ *   · 提示音 rms_prompt_voice 是 v81 新增键，本来就没有历史值，不做处理。
+ *
+ * 注意：本函数只在启动时调用，v82 内用户克隆后自动写入的声线**不会**被它清掉
+ * （迁移标记已置位，不会重复执行）。
+ */
+export async function migrateVoiceDefaultsOnce(): Promise<void> {
+  try {
+    const done = await AsyncStorage.getItem(KEYS.VOICE_DEFAULTS_V82);
+    if (done === '1') return;
+    const storyVoice = await AsyncStorage.getItem(KEYS.VOICE);
+    const v = (storyVoice || '').trim();
+    const isClone = !!v && v !== 'system' && !v.startsWith('preset:');
+    if (isClone) await AsyncStorage.removeItem(KEYS.VOICE);
+    await AsyncStorage.setItem(KEYS.VOICE_DEFAULTS_V82, '1');
+  } catch {
+    /* 迁移失败不阻塞启动，下次启动会再试 */
+  }
 }
 
 /** 语音引导（开机提问）开关：默认关闭 */
