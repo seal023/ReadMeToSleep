@@ -38,6 +38,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   stories: [],
   progress: {
     listenedStories: [],
+    listenLog: [],
     checkIns: [],
     badges: [],
     streakDays: 0,
