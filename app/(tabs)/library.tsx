@@ -57,7 +57,63 @@ interface StoryItem {
   tags: string[];
   duration: number;
   source: string;
+  /** 长度桶：short=经典短篇，5-10 / 15-20=长篇档位 */
+  bucket: 'short' | '5-10' | '15-20';
+  /** 是否具备英文正文（英文界面/英文筛选下可用） */
+  hasEn: boolean;
 }
+
+// 经典故事（id 以 classic- 开头）：统一归入「短篇」桶；英文可见性按 CLASSIC_EN_IDS
+const classicItems: StoryItem[] = (storiesIndex as Array<{
+  id: string; title: { zh: string; en: string }; tags: string[]; duration: number; source: string;
+}>).map((s) => ({
+  id: s.id,
+  title: s.title,
+  tags: s.tags,
+  duration: s.duration,
+  source: s.source,
+  bucket: 'short' as const,
+  hasEn: CLASSIC_EN_IDS.has(s.id),
+}));
+
+// 长篇原创故事（无版权）：按 lengthMin 归入对应桶，全部具备英文
+const longItems: StoryItem[] = (longIndex as Array<{
+  id: string; title: { zh: string; en: string }; tags: string[]; duration: number; source: string; lengthMin: string;
+}>).map((s) => ({
+  id: s.id,
+  title: s.title,
+  tags: s.tags,
+  duration: s.duration,
+  source: s.source,
+  bucket: (s.lengthMin === '15-20' ? '15-20' : '5-10') as '5-10' | '15-20',
+  hasEn: true,
+}));
+
+// 故事库 = 经典短篇 + 长篇原创，统一作为「经典」Tab 的数据源
+const CLASSIC_LIBRARY: StoryItem[] = [...classicItems, ...longItems];
+
+// 长度档筛选选项（全部 / 短篇 / 5-10 / 15-20）
+const LENGTH_FILTERS: { key: 'all' | 'short' | '5-10' | '15-20'; labelKey: string }[] = [
+  { key: 'all', labelKey: 'library.all' },
+  { key: 'short', labelKey: 'library.len.short' },
+  { key: '5-10', labelKey: 'library.len.5-10' },
+  { key: '15-20', labelKey: 'library.len.15-20' },
+];
+
+// 语言筛选选项（全部 / 中文 / 英文）
+const LANG_FILTERS: { key: 'all' | 'zh' | 'en'; labelKey: string }[] = [
+  { key: 'all', labelKey: 'library.all' },
+  { key: 'zh', labelKey: 'library.lang.zh' },
+  { key: 'en', labelKey: 'library.lang.en' },
+];
+
+// 排序选项
+const SORT_KEYS: { key: 'recommend' | 'durationAsc' | 'durationDesc' | 'name'; labelKey: string }[] = [
+  { key: 'recommend', labelKey: 'library.sort.recommend' },
+  { key: 'durationAsc', labelKey: 'library.sort.durationAsc' },
+  { key: 'durationDesc', labelKey: 'library.sort.durationDesc' },
+  { key: 'name', labelKey: 'library.sort.name' },
+];
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -65,6 +121,10 @@ export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('classic');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // 长度 / 语言 / 排序 三个整理维度
+  const [lengthFilter, setLengthFilter] = useState<'all' | 'short' | '5-10' | '15-20'>('all');
+  const [langFilter, setLangFilter] = useState<'all' | 'zh' | 'en'>('all');
+  const [sortKey, setSortKey] = useState<'recommend' | 'durationAsc' | 'durationDesc' | 'name'>('recommend');
   // #6 同步：AI / 旅行两个标签原来恒返回 []（与「我的故事」对不上）。
   // 现从存储真实加载，与「我的故事」(created=ai_generated / checkins) 同源。
   const [aiStories, setAiStories] = useState<Story[]>([]);
@@ -92,25 +152,57 @@ export default function LibraryScreen() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     if (activeTab === 'classic') {
-      let list = storiesIndex as StoryItem[];
-      // 英文模式：经典故事库仅有部分具备英文正文，过滤到只有英文的故事，
-      // 保证「英文界面下故事必须是英文」（不含英文的故事不会以中文出现在英文列表）
-      if (language === 'en') list = list.filter((s) => CLASSIC_EN_IDS.has(s.id));
+      let list = CLASSIC_LIBRARY;
+      // 长度筛选
+      if (lengthFilter !== 'all') list = list.filter((s) => s.bucket === lengthFilter);
+      // 类型筛选
       if (activeTag) list = list.filter((s) => s.tags.includes(activeTag));
-      if (q) list = list.filter((s) => s.title.zh.toLowerCase().includes(q) || s.title.en.toLowerCase().includes(q));
-      return list;
+      // 语言筛选 + 生效语言：en 只显示有英文的故事；zh 显示全部；all 沿用全局语言
+      let effLang: 'zh' | 'en' = language;
+      if (langFilter === 'en') {
+        list = list.filter((s) => s.hasEn);
+        effLang = 'en';
+      } else if (langFilter === 'zh') {
+        effLang = 'zh';
+      } else if (language === 'en') {
+        list = list.filter((s) => s.hasEn);
+      }
+      // 搜索：标题中英 + 标签
+      if (q) {
+        list = list.filter(
+          (s) =>
+            s.title.zh.toLowerCase().includes(q) ||
+            s.title.en.toLowerCase().includes(q) ||
+            s.tags.some((tg) => tg.toLowerCase().includes(q)),
+        );
+      }
+      // 排序
+      const sorted = [...list];
+      if (sortKey === 'durationAsc') sorted.sort((a, b) => a.duration - b.duration);
+      else if (sortKey === 'durationDesc') sorted.sort((a, b) => b.duration - a.duration);
+      else if (sortKey === 'name') {
+        const pick = (s: StoryItem) => (effLang === 'en' ? s.title.en : s.title.zh);
+        sorted.sort((a, b) => pick(a).localeCompare(pick(b), effLang === 'en' ? 'en' : 'zh'));
+      }
+      return { list: sorted, effLang };
     }
+
     if (activeTab === 'ai') {
       let list = aiStories;
       if (q) list = list.filter((s) => (s.title || '').toLowerCase().includes(q));
-      return list;
+      return { list, effLang: language };
     }
     // travel：与「我的故事 → 旅行打卡」同一数据源
     let list = travelCheckins;
     if (q) list = list.filter((c) => c.location.toLowerCase().includes(q));
-    return list;
-  }, [activeTab, activeTag, search, language, aiStories, travelCheckins]);
+    return { list, effLang: language };
+  }, [activeTab, activeTag, search, language, lengthFilter, langFilter, sortKey, aiStories, travelCheckins]);
+
+  const classicResult = activeTab === 'classic' ? (filtered as { list: StoryItem[]; effLang: 'zh' | 'en' }) : null;
+  const effLang: 'zh' | 'en' = classicResult ? classicResult.effLang : language;
+  const classicList: StoryItem[] = classicResult ? classicResult.list : [];
 
   const fmtDuration = (sec: number) => `${Math.floor(sec / 60)} ${t('common.minute')}`;
 
@@ -131,7 +223,7 @@ export default function LibraryScreen() {
       </View>
       <View style={styles.cardCenter}>
         <Text style={styles.cardTitle} numberOfLines={1}>
-          {language === 'zh' ? item.title.zh : item.title.en}
+          {effLang === 'zh' ? item.title.zh : item.title.en}
         </Text>
         <View style={styles.tagRow}>
           {item.tags.map(tag => (
@@ -192,6 +284,11 @@ export default function LibraryScreen() {
     </TouchableOpacity>
   );
 
+  const aiResult = activeTab === 'ai' ? (filtered as { list: Story[]; effLang: 'zh' | 'en' }) : null;
+  const travelResult = activeTab === 'travel' ? (filtered as { list: Progress['checkIns']; effLang: 'zh' | 'en' }) : null;
+  const listData: any[] =
+    activeTab === 'classic' ? classicList : activeTab === 'ai' ? (aiResult?.list ?? []) : (travelResult?.list ?? []);
+
   const renderItem = ({ item }: { item: any }) => {
     if (activeTab === 'classic') return renderClassic({ item: item as StoryItem });
     if (activeTab === 'ai') return renderAi({ item: item as Story });
@@ -235,37 +332,82 @@ export default function LibraryScreen() {
       </View>
 
       {activeTab === 'classic' && (
-        <View style={styles.tagBarWrap}>
-          <TouchableOpacity
-            style={!activeTag ? styles.tagChipActive : styles.tagChip}
-            onPress={() => setActiveTag(null)}
-          >
-            <Text style={!activeTag ? styles.tagChipTextActive : styles.tagChipText}>
-              {t('library.all')}
-            </Text>
-          </TouchableOpacity>
-          {TAGS.map(tag => (
+        <>
+          {/* 长度档筛选 */}
+          <View style={styles.tagBarWrap}>
+            {LENGTH_FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={lengthFilter === f.key ? styles.tagChipActive : styles.tagChip}
+                onPress={() => setLengthFilter(f.key)}
+              >
+                <Text style={lengthFilter === f.key ? styles.tagChipTextActive : styles.tagChipText}>
+                  {t(f.labelKey)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 类型筛选 */}
+          <View style={styles.tagBarWrap}>
             <TouchableOpacity
-              key={tag.zh}
-              style={activeTag === tag.zh ? styles.tagChipActive : styles.tagChip}
-              onPress={() => setActiveTag(activeTag === tag.zh ? null : tag.zh)}
+              style={!activeTag ? styles.tagChipActive : styles.tagChip}
+              onPress={() => setActiveTag(null)}
             >
-              <Text style={activeTag === tag.zh ? styles.tagChipTextActive : styles.tagChipText}>
-                {tag.emoji} {t(tag.key)}
+              <Text style={!activeTag ? styles.tagChipTextActive : styles.tagChipText}>
+                {t('library.all')}
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
+            {TAGS.map(tag => (
+              <TouchableOpacity
+                key={tag.zh}
+                style={activeTag === tag.zh ? styles.tagChipActive : styles.tagChip}
+                onPress={() => setActiveTag(activeTag === tag.zh ? null : tag.zh)}
+              >
+                <Text style={activeTag === tag.zh ? styles.tagChipTextActive : styles.tagChipText}>
+                  {tag.emoji} {t(tag.key)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* 语言 + 排序 */}
+          <View style={styles.tagBarWrap}>
+            {LANG_FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={langFilter === f.key ? styles.tagChipActive : styles.tagChip}
+                onPress={() => setLangFilter(f.key)}
+              >
+                <Text style={langFilter === f.key ? styles.tagChipTextActive : styles.tagChipText}>
+                  {t(f.labelKey)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <View style={styles.filterDivider} />
+            {SORT_KEYS.map((s) => (
+              <TouchableOpacity
+                key={s.key}
+                style={sortKey === s.key ? styles.tagChipActive : styles.tagChip}
+                onPress={() => setSortKey(s.key)}
+              >
+                <Text style={sortKey === s.key ? styles.tagChipTextActive : styles.tagChipText}>
+                  {t(s.labelKey)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
       )}
 
       <FlatList
-        data={filtered as any}
+        data={listData}
         keyExtractor={(item, index) => {
           const it = item as any;
           return it?.id ?? `${it?.location ?? 'x'}_${it?.date ?? index}`;
         }}
         renderItem={renderItem}
-        contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
+        contentContainerStyle={listData.length ? styles.list : styles.emptyList}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>📚</Text>
@@ -317,6 +459,7 @@ const styles = StyleSheet.create({
   },
   tagChipText: { fontSize: 13, color: '#3D3229', fontWeight: '600' },
   tagChipTextActive: { fontSize: 13, color: '#fff', fontWeight: '600' },
+  filterDivider: { width: 1, height: 22, backgroundColor: '#E8D5B5', marginHorizontal: 8, marginVertical: 4 },
   list: { paddingHorizontal: 12, paddingTop: 8 },
   card: {
     flexDirection: 'row', alignItems: 'center',

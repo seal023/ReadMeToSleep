@@ -10,6 +10,9 @@ import en1 from '../data/classic-stories/en/1-25.json';
 import en2 from '../data/classic-stories/en/26-50.json';
 import en3 from '../data/classic-stories/en/51-75.json';
 import en4 from '../data/classic-stories/en/76-100.json';
+// 长篇原创故事（无版权）：分卷离线随包分发，结构含 content(中文) + contentEn(英文) + title.{zh,en}
+import long510 from '../data/classic-stories/long/5-10.json';
+import long1520 from '../data/classic-stories/long/15-20.json';
 
 interface ClassicStoryRaw {
   id: string;
@@ -36,6 +39,22 @@ const EN_STORIES_DATA: Array<{ id: string; title?: { zh: string; en: string }; c
   ...(en2 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
   ...(en3 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
   ...(en4 as Array<{ id: string; title?: { zh: string; en: string }; content?: string }>),
+];
+
+/** 长篇原创故事（无版权）：合并两卷，全部具备中英双语正文 */
+interface LongStoryRaw {
+  id: string;
+  title: { zh: string; en: string };
+  content: string;
+  contentEn: string;
+  tags: string[];
+  duration: number;
+  source: string;
+  lengthMin: string;
+}
+const LONG_STORIES_DATA: LongStoryRaw[] = [
+  ...(long510 as LongStoryRaw[]),
+  ...(long1520 as LongStoryRaw[]),
 ];
 const EN_MAP: Record<string, { id: string; title?: { zh: string; en: string }; content?: string }> = {};
 for (const e of EN_STORIES_DATA) EN_MAP[e.id] = e;
@@ -144,6 +163,24 @@ export async function getStory(id: string): Promise<Story | null> {
       type: 'classic' as const,
       tags: classicStory.tags || [],
       duration: classicStory.duration || 0,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  // 长篇原创故事（无版权）：id 形如 long-510-001 / long-1520-001，全部具备中英双语正文
+  const longStory = LONG_STORIES_DATA.find(s => s.id === id);
+  if (longStory) {
+    return {
+      id: longStory.id,
+      title: longStory.title.zh,
+      titleEn: longStory.title.en,
+      content: longStory.content,
+      contentEn: longStory.contentEn,
+      language: 'zh' as const,
+      languages: ['zh', 'en'] as Language[],
+      type: 'classic' as const,
+      tags: longStory.tags || [],
+      duration: longStory.duration || 0,
       createdAt: new Date().toISOString(),
     };
   }
