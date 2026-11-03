@@ -12,6 +12,8 @@ import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
+// 长篇原创故事轻量索引（id/标题/标签/时长/来源/长度档），不含正文
+import longIndex from '../../data/classic-stories/long/index.json';
 import { CLASSIC_EN_IDS, getStories, getProgress } from '../../services/storage';
 import type { Story, Progress } from '../../types';
 
