@@ -1,0 +1,842 @@
+[
+  {
+    "id": "long-510-001",
+    "title": {
+      "zh": "窸窣松针小毯子",
+      "en": "The Whispering Pine Blanket"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 656,
+    "source": "格林童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-002",
+    "title": {
+      "zh": "大海深处的蓝缓轻语",
+      "en": "The Ocean’s Slow Blue Hush"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 659,
+    "source": "安徒生童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-003",
+    "title": {
+      "zh": "雪绒峰与绵云",
+      "en": "The Snow-Soft Peak and the Woolly Cloud"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 662,
+    "source": "王尔德童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-004",
+    "title": {
+      "zh": "蜂蜜糖霜炉灶",
+      "en": "The Honey-Glaze Hearth"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 644,
+    "source": "法国经典",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-005",
+    "title": {
+      "zh": "图书馆梯子上的午夜露珠",
+      "en": "The Midnight Dew on Library Ladders"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 647,
+    "source": "英国民间",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-006",
+    "title": {
+      "zh": "野花草地的轻步舞",
+      "en": "The Meadow’s Soft-Step Dance"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 644,
+    "source": "一千零一夜",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-007",
+    "title": {
+      "zh": "小铜火车与暖风隧道",
+      "en": "The Little Copper Train and the Warm Wind Tunnel"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 624,
+    "source": "中国民间故事",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-008",
+    "title": {
+      "zh": "盐粒般柔软的灯塔与羊毛卷般的海浪",
+      "en": "The Salt-Soft Lighthouse and the Rolling Wool Waves"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 623,
+    "source": "中国古代神话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-009",
+    "title": {
+      "zh": "格兰尼玩具阁楼里的尘埃微光舞",
+      "en": "The Dust-Mote Dance in Granny’s Toy Attic"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 628,
+    "source": "伊索寓言",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-010",
+    "title": {
+      "zh": "湿漉漉的花园和慢啜饮的小蜗牛",
+      "en": "The Damp-Down Garden and the Slow-Sip Snail"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 651,
+    "source": "睡前原创",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-011",
+    "title": {
+      "zh": "那座喝下午茶的云中城堡",
+      "en": "The Castle in the Clouds That Sipped Tea"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 646,
+    "source": "格林童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-012",
+    "title": {
+      "zh": "芦苇轻轻摇摆的河岸",
+      "en": "The Riverbank Where Reeds Sway Slow"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 520,
+    "source": "安徒生童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-013",
+    "title": {
+      "zh": "余烬微光茶壶与羊毛软椅",
+      "en": "The Ember-Glow Kettle and the Wool-Soft Chair"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 620,
+    "source": "王尔德童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-014",
+    "title": {
+      "zh": "黄铜望远镜与静谧穹顶",
+      "en": "The Brass Telescope and the Quiet Sky Dome"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 649,
+    "source": "法国经典",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-015",
+    "title": {
+      "zh": "嗡嗡蜂巢的琥珀时光",
+      "en": "The Humming Hive’s Amber Hour"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 629,
+    "source": "英国民间",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-016",
+    "title": {
+      "zh": "哼着鹅卵石歌的瀑布",
+      "en": "The Waterfall That Hummed a Pebble Song"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 620,
+    "source": "一千零一夜",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-017",
+    "title": {
+      "zh": "木头帆船与暖暖的咸风",
+      "en": "The Wooden Sailboat and the Warm Salt Breeze"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 632,
+    "source": "中国民间故事",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-018",
+    "title": {
+      "zh": "南瓜田的琥珀静默",
+      "en": "The Pumpkin Patch’s Amber Hush"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 648,
+    "source": "中国古代神话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-019",
+    "title": {
+      "zh": "黄昏时自己上发条的音乐盒",
+      "en": "The Music Box That Wound Itself at Dusk"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 640,
+    "source": "伊索寓言",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-020",
+    "title": {
+      "zh": "捧着暮光的纸灯笼",
+      "en": "The Paper Lanterns That Held the Evening Light"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 620,
+    "source": "睡前原创",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-021",
+    "title": {
+      "zh": "树根下柔软的洞穴，獾宝宝们安睡的地方",
+      "en": "The Root-Soft Hollow Where Badgers Tuck In"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 648,
+    "source": "格林童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-022",
+    "title": {
+      "zh": "琥珀色热气球与缓缓飘荡的草地",
+      "en": "The Amber Balloon and the Slow-Drifting Meadow"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 654,
+    "source": "安徒生童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-023",
+    "title": {
+      "zh": "风筝节里彩带缓缓呼吸",
+      "en": "The Kite Festival Where Ribbons Breathe Slow"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 634,
+    "source": "王尔德童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-024",
+    "title": {
+      "zh": "滴水轻柔的苔藓洞穴",
+      "en": "The Moss-Soft Cave Where Water Drips Slow"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 646,
+    "source": "法国经典",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-025",
+    "title": {
+      "zh": "荆棘编织的小窝与微光篝火",
+      "en": "The Bramble-Weave Nook and the Flicker-Fire Glow"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 636,
+    "source": "英国民间",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-026",
+    "title": {
+      "zh": "深蓝海洋的轻柔起伏",
+      "en": "The Deep Blue Ocean’s Gentle Roll"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 587,
+    "source": "一千零一夜",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-027",
+    "title": {
+      "zh": "雪山的暖羊毛围巾",
+      "en": "The Snowy Mountain’s Warm Wool Scarf"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 654,
+    "source": "中国民间故事",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-028",
+    "title": {
+      "zh": "肉桂香烤箱与面团软凳",
+      "en": "The Cinnamon-Scented Oven and the Dough-Soft Bench"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 638,
+    "source": "中国古代神话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-029",
+    "title": {
+      "zh": "书本轻喘的静谧楼梯",
+      "en": "The Quiet Staircase Where Books Breathe Slow"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 658,
+    "source": "伊索寓言",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-030",
+    "title": {
+      "zh": "蒲公英飘荡与金盏花静默",
+      "en": "The Buttercup Hush and the Dandelion Drift"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 645,
+    "source": "睡前原创",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-031",
+    "title": {
+      "zh": "运载温暖穿山而行的小火车",
+      "en": "The Little Train Who Carried Warmth Between Hills"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 664,
+    "source": "格林童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-032",
+    "title": {
+      "zh": "琥珀镜片与大海的平稳呼吸",
+      "en": "The Amber Lens and the Sea’s Steady Breath"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 607,
+    "source": "安徒生童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-033",
+    "title": {
+      "zh": "祖母玩具阁楼里的尘埃微光之舞",
+      "en": "The Dust-Mote Dance in Grandmother's Toy Attic"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 644,
+    "source": "王尔德童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-034",
+    "title": {
+      "zh": "雨后滑亮的小径和松鼠闪亮的橡果",
+      "en": "The Rain-Slicked Path and the Squirrel’s Shiny Acorn"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 631,
+    "source": "法国经典",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-035",
+    "title": {
+      "zh": "长出棉花般柔软楼梯的云中城堡",
+      "en": "The Cloud-Castle That Grew Cotton-Soft Stairs"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 603,
+    "source": "英国民间",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-036",
+    "title": {
+      "zh": "柳丝轻挽柔光的河岸",
+      "en": "The Riverbank Where Willow Threads Catch Gentle Light"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 639,
+    "source": "一千零一夜",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-037",
+    "title": {
+      "zh": "壁炉的轻柔嗡鸣与羊毛毯之夜",
+      "en": "The Hearth’s Quiet Hum and the Wool-Blanket Night"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 655,
+    "source": "中国民间故事",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-038",
+    "title": {
+      "zh": "铜穹顶与温柔的天空守望",
+      "en": "The Copper Dome and the Gentle Sky Watch"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 675,
+    "source": "中国古代神话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-039",
+    "title": {
+      "zh": "暖阳驻留的嗡嗡蜂巢",
+      "en": "The Humming Hive That Held the Sunbeam Warm"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 617,
+    "source": "伊索寓言",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-040",
+    "title": {
+      "zh": "涟漪轻柔的瀑布与卵石轻拍的枕头",
+      "en": "The Ripple-Soft Falls and the Pebble-Pat Pillow"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 628,
+    "source": "睡前原创",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-041",
+    "title": {
+      "zh": "木头帆船与蜜糖暖港",
+      "en": "The Wooden Sailboat and the Honey-Warm Harbor"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 649,
+    "source": "格林童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-042",
+    "title": {
+      "zh": "哼着柔和橙色歌谣的南瓜园",
+      "en": "The Pumpkin Patch Where Gourds Hum Soft Orange"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 654,
+    "source": "安徒生童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-043",
+    "title": {
+      "zh": "自动奏乐的音乐盒，把旋律轻轻倾入茶杯",
+      "en": "The Music Box That Tipped Its Tune to the Teacup"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 625,
+    "source": "王尔德童话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-044",
+    "title": {
+      "zh": "纸灯笼节与柔光游行",
+      "en": "The Paper Lantern Festival and the Gentle Glow Parade"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 660,
+    "source": "法国经典",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-045",
+    "title": {
+      "zh": "松鼠小爪轻 tucked 进树根织就的小窝",
+      "en": "The Root-Weave Den Where Squirrel Paws Tuck In Soft"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 629,
+    "source": "英国民间",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-046",
+    "title": {
+      "zh": "琥珀热气球与蜜糖暖空飘游",
+      "en": "The Amber Balloon and the Honey-Warm Sky Drift"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 640,
+    "source": "一千零一夜",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-047",
+    "title": {
+      "zh": "风筝节里纸翅膀轻轻托住微风",
+      "en": "The Kite Festival Where Paper Wings Hold the Breeze"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 643,
+    "source": "中国民间故事",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-048",
+    "title": {
+      "zh": "唱着轻柔水歌的鹅卵石池洞",
+      "en": "The Pebble-Pool Cave Where Water Sings Soft"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 636,
+    "source": "中国古代神话",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-049",
+    "title": {
+      "zh": "蕨叶轻裹的幽谷，萤火虫悄悄安眠",
+      "en": "The Fern-Folded Hollow Where Fireflies Tuck In"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 641,
+    "source": "伊索寓言",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-510-050",
+    "title": {
+      "zh": "深蓝色海洋的缓缓摇篮",
+      "en": "The Deep Blue Ocean’s Slow-Drift Cradle"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 575,
+    "source": "睡前原创",
+    "lengthMin": "5-10"
+  },
+  {
+    "id": "long-1520-001",
+    "title": {
+      "zh": "雪山暖石炉",
+      "en": "The Snowy Mountain’s Warm Stone Hearth"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 902,
+    "source": "格林童话",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-002",
+    "title": {
+      "zh": "杏子柔暖的烤箱与肉桂飘香的柜台",
+      "en": "The Apricot-Soft Oven and the Cinnamon-Scented Counter"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 929,
+    "source": "安徒生童话",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-003",
+    "title": {
+      "zh": "图书馆的午夜翻页声",
+      "en": "The Library’s Midnight Page-Turn"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 950,
+    "source": "王尔德童话",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-004",
+    "title": {
+      "zh": "蒲公英微风与薰衣草小径",
+      "en": "The Buttercup Breeze and the Lavender Line"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 951,
+    "source": "法国经典",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-005",
+    "title": {
+      "zh": "喷着轻柔白雾的小火车穿过虞美人群山",
+      "en": "The Little Train Who Puffed Gentle Puffs Through the Poppy Hills"
+    },
+    "tags": [
+      "睡前",
+      "自然"
+    ],
+    "duration": 913,
+    "source": "英国民间",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-006",
+    "title": {
+      "zh": "发出温暖海盐轻叹的灯塔",
+      "en": "The Lighthouse with the Warm Salt Sigh"
+    },
+    "tags": [
+      "睡前",
+      "童话"
+    ],
+    "duration": 958,
+    "source": "一千零一夜",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-007",
+    "title": {
+      "zh": "按钮眼睛熊守着温柔时光的阁楼",
+      "en": "The Attic Where Button-Eyed Bears Hold Gentle Time"
+    },
+    "tags": [
+      "睡前",
+      "成长"
+    ],
+    "duration": 942,
+    "source": "中国民间故事",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-008",
+    "title": {
+      "zh": "雨后闪亮的花园和露珠秋千",
+      "en": "The Rain-Sparkle Garden and the Dewdrop Swing"
+    },
+    "tags": [
+      "睡前",
+      "寓言"
+    ],
+    "duration": 927,
+    "source": "中国古代神话",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-009",
+    "title": {
+      "zh": "云中城堡与羊毛云吊桥",
+      "en": "The Cloud-Castle with the Wool-Cloud Drawbridge"
+    },
+    "tags": [
+      "睡前",
+      "动物"
+    ],
+    "duration": 918,
+    "source": "伊索寓言",
+    "lengthMin": "15-20"
+  },
+  {
+    "id": "long-1520-010",
+    "title": {
+      "zh": "水獭小爪轻印软泥的河岸",
+      "en": "The Riverbank Where Otter Paws Press Soft Mud"
+    },
+    "tags": [
+      "睡前",
+      "睡前"
+    ],
+    "duration": 918,
+    "source": "睡前原创",
+    "lengthMin": "15-20"
+  }
+]

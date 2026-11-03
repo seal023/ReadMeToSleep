@@ -1,21 +1,21 @@
 /**
- * gen_long_stories.mjs — 批量生成「长篇」儿童睡前故事（15–20 分钟 / 20–30 分钟）。
+ * gen_long_stories.mjs — 批量生成「长篇」儿童睡前故事（5–10 分钟 / 15–20 分钟）。
  *
  * 与 gen_bulk.mjs（短篇 200–500 字）不同，这里产出的是可连续朗读 15–30 分钟的长故事，用于
  * 孩子「一觉睡到天亮」式的陪伴。用英文原创（公共版权风格、AI 生成，无版权纠纷），再由同一模型
  * 翻译成中文，做到中英双语都有正文（contentEn / content）。
  *
  * 用法（需能读到项目根目录下的 .env，或直接传环境变量）：
- *   node data/classic-stories/gen_long_stories.mjs [短篇模式篇数=2] [长篇模式篇数=2]
+ *   node data/classic-stories/gen_long_stories.mjs [5-10分钟篇数=0] [15-20分钟篇数=0]
  *
- * 例：各生成 100 篇（全量，会跑很久、消耗较多额度，建议用后台任务分次跑）：
- *   node data/classic-stories/gen_long_stories.mjs 100 100
+ * 例：5-10 分钟 50 篇 + 15-20 分钟 10 篇：
+ *   node data/classic-stories/gen_long_stories.mjs 50 10
  *
  * 行为：
  *   1. 从 .env 读取 EXPO_PUBLIC_AI_API_KEY / EXPO_PUBLIC_AI_BASE_URL（与 App 同源百炼 Key）。
  *   2. 英文原创长故事按「分两段生成 + 必要时续写」保证篇幅达标，再逐段翻译成中文。
  *   3. 每篇带字段：id, title(zh), titleEn(en), content(zh), contentEn(en), tags, duration(秒),
- *      source, lengthMin(15-20 | 20-30)。
+ *      source, lengthMin(5-10 | 15-20)。
  *   4. 单独写入 data/classic-stories/long/<mode>/ 与 long/index.json，**不触碰** classic 1–100 与短篇扩展。
  *   5. 已存在标题自动去重；网络/解析失败自动重试；单词数不达标则续写补齐。
  *
@@ -64,11 +64,28 @@ const SOURCES = [
   '英国民间', '一千零一夜', '中国民间故事', '中国古代神话', '伊索寓言',
 ];
 
-// 两种长度档位的目标英文单词数（按 ~150 词/分钟估算）。
+// 长度档位的目标英文单词数（按 ~150 词/分钟估算；5–10 分钟≈750–1500 词）。
 // half = 每段目标词数区间；maxTok = 该档每段生成硬上限（token），避免单段写超。
+// 注：20–30 分钟档已按需求移除。
+// 标题主题池：每篇强制绑定一个不同主题，从根本上杜绝「Moonlit/Lullaby」套路刷屏
+const THEMES = [
+  'a cozy forest', 'the deep blue ocean', 'a snowy mountain', 'a warm little bakery',
+  'a library at midnight', 'a meadow of wildflowers', 'a friendly little train', 'a lighthouse by the sea',
+  'an attic full of old toys', 'a garden after the rain', 'a castle in the clouds', 'a quiet riverbank',
+  'a fireplace on a cold night', 'a star observatory', 'a busy honeybee hive', 'a gentle waterfall',
+  'a wooden sailboat', 'a pumpkin patch in autumn', 'a music box that plays itself', 'a paper lantern festival',
+  'a burrow under the tree roots', 'a hot-air balloon', 'a kite festival', 'a hidden waterfall cave',
+];
+let themeCursor = 0;
+function nextTheme() {
+  const t = THEMES[themeCursor % THEMES.length];
+  themeCursor++;
+  return t;
+}
+
 const MODES = {
+  '5-10': { folder: '5-10', wordMin: 750, wordMax: 1500, half: [375, 750], maxTok: 1100 },
   '15-20': { folder: '15-20', wordMin: 2200, wordMax: 2800, half: [1000, 1300], maxTok: 1600 },
-  '20-30': { folder: '20-30', wordMin: 3000, wordMax: 4200, half: [1500, 1800], maxTok: 2200 },
 };
 
 function ensureDir(d) {
@@ -144,21 +161,41 @@ function stripFence(t) {
  * 生成一篇英文长故事（分两段 + 必要时续写）。
  * 返回 { title, text }，text 为完整英文正文。
  */
-async function genEnglishStory(mode, idx) {
+async function genEnglishStory(mode, idx, existingTitles = new Set(), theme = 'a cozy bedtime') {
   const cfg = MODES[mode];
   const [halfMin, halfMax] = cfg.half;
-  // 标题一次生成双语（省一次翻译调用）
-  const titlePrompt = `Invent ONE brand-new, original, public-domain-style bedtime story title for children (English, 3-8 years). Make it gentle and dreamy.
-Respond with ONLY a JSON object (no markdown, no extra text): {"en":"English title","zh":"中文标题"}`;
   let enTitle = `The Sleepy Tale ${idx}`;
   let zhTitle = `睡梦故事 ${idx}`;
-  const rawTitle = stripFence(await callModel(titlePrompt, 128));
-  try {
-    const o = JSON.parse(rawTitle.replace(/^```json\s*|^```|```$/gi, '').trim());
-    if (o?.en) enTitle = String(o.en).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80);
-    if (o?.zh) zhTitle = String(o.zh).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 60);
-  } catch {
-    enTitle = (rawTitle || enTitle).replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 80);
+
+  // 标题去重 + 主题多样性：每篇强制绑定一个不同主题（theme），重试时一并避开已撞车的候选
+  const enOnly = [...existingTitles].filter((t) => /^[\x00-\x7F]+$/.test(t));
+  const tried = new Set();
+  let titleOk = false;
+  for (let attempt = 0; attempt < 8 && !titleOk; attempt++) {
+    const avoidList = [...enOnly, ...tried];
+    const avoidNote = avoidList.length
+      ? `\nDo NOT reuse any of these ALREADY-USED titles (invent something clearly different):\n- ${avoidList.slice(0, 50).join('\n- ')}`
+      : '';
+    const titlePrompt = `Invent ONE brand-new, original bedtime story title for children (English, 3-8 years), gentle and soothing.
+REQUIRED: the title MUST clearly feature this specific setting/subject — ${theme}.
+STRICT RULES:
+- Avoid overused words unless the theme truly needs them: moon, moonlit, moonlight, lullaby, velvet, sleepy, dream, star, sleep.
+- Make the title distinct in imagery from all the already-used titles listed below.${avoidNote}
+Respond with ONLY a JSON object (no markdown, no extra text): {"en":"English title","zh":"中文标题"}`;
+    const rawTitle = stripFence(await callModel(titlePrompt, 160));
+    if (!rawTitle) continue; // API 偶发失败，下一轮重试
+    // 鲁棒提取：正则抓 "en"/"zh"，容忍模型偶发加前后缀或 markdown 导致 JSON.parse 失败
+    const mEn = rawTitle.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+    const mZh = rawTitle.match(/"zh"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
+    const cand = mEn ? mEn[1].trim() : '';
+    const zhCand = mZh ? mZh[1].trim() : '';
+    if (cand && !existingTitles.has(cand) && !tried.has(cand)) {
+      enTitle = cand.slice(0, 80);
+      if (zhCand) zhTitle = zhCand.slice(0, 60);
+      titleOk = true;
+    } else if (cand) {
+      tried.add(cand); // 本次撞车，下一轮避开这个候选
+    }
   }
 
   const p1 = `Write the FIRST HALF (about ${halfMin}-${halfMax} words) of a brand-new, original, public-domain-style bedtime story titled "${enTitle}". 
@@ -230,6 +267,7 @@ function durationEstimate(enWords) {
 
 function loadExistingTitles() {
   const titles = new Set();
+  // 1) 从 index.json 读取（若存在）
   const idxPath = path.join(LONG_DIR, 'index.json');
   if (fs.existsSync(idxPath)) {
     try {
@@ -240,6 +278,22 @@ function loadExistingTitles() {
       }
     } catch {
       /* ignore */
+    }
+  }
+  // 2) 直接扫描各档 JSON 文件（防止 index 未重建时漏判已落盘故事）
+  for (const mode of Object.keys(MODES)) {
+    const dir = path.join(LONG_DIR, MODES[mode].folder);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const s = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        if (s?.title?.zh) titles.add(s.title.zh);
+        else if (s?.title?.en) titles.add(s.title.en);
+        else if (typeof s?.title === 'string') titles.add(s.title);
+      } catch {
+        /* ignore */
+      }
     }
   }
   return titles;
@@ -253,11 +307,12 @@ function loadLongIndex() {
 
 async function genOne(mode, idx, existingTitles) {
   const cfg = MODES[mode];
-  const en = await genEnglishStory(mode, idx);
+  const theme = nextTheme();
+  const en = await genEnglishStory(mode, idx, existingTitles, theme);
   if (!en.text || wordCount(en.text) < cfg.wordMin - 300) return null;
   const zh = await translateToZh(en.text);
   const id = `long-${mode.replace('-', '')}-${String(idx).padStart(3, '0')}`;
-  const tags = [mode === '15-20' ? '睡前' : '童话', CATEGORIES[idx % CATEGORIES.length]];
+  const tags = [mode === '20-30' ? '童话' : '睡前', CATEGORIES[idx % CATEGORIES.length]];
   const source = SOURCES[idx % SOURCES.length];
   const story = {
     id,
@@ -316,15 +371,21 @@ async function main() {
     console.error('缺少 EXPO_PUBLIC_AI_API_KEY（请配置 .env 或环境变量）。');
     process.exit(1);
   }
-  const shortCount = parseInt(process.argv[2] || '2', 10);
-  const longCount = parseInt(process.argv[3] || '2', 10);
+  // 参数：argv[2]=5-10 分钟篇数，argv[3]=15-20 分钟篇数（20-30 已移除）
+  const counts = {
+    '5-10': parseInt(process.argv[2] || '0', 10),
+    '15-20': parseInt(process.argv[3] || '0', 10),
+  };
   ensureDir(LONG_DIR);
   const existingTitles = loadExistingTitles();
 
-  for (const mode of ['15-20', '20-30']) {
-    const target = mode === '15-20' ? shortCount : longCount;
+  for (const mode of Object.keys(MODES)) {
+    const target = counts[mode] ?? 0;
     if (target <= 0) continue;
-    let done = loadLongIndex().filter((s) => s.lengthMin === mode).length;
+    const bucketDir = path.join(LONG_DIR, MODES[mode].folder);
+    let done = fs.existsSync(bucketDir)
+      ? fs.readdirSync(bucketDir).filter((f) => f.endsWith('.json')).length
+      : 0;
     // target 视为「该模式总目标篇数」：已有则补齐，不叠加（支持中断后续跑）
     const toGenerate = Math.max(0, target - done);
     if (toGenerate === 0) {
