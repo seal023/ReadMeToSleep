@@ -29,7 +29,7 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor 
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -281,6 +281,18 @@ export default function StoryPlayScreen() {
   const preparingRef = useRef(false);
   /** 安全兜底：若真实的播完回调（onDone）因故未触发，到点也结束，避免卡在播放页 */
   const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * v86 反馈 #1：来电 / 切后台打断后播放状态错乱。
+   * 监听 AppState：进后台/来电时主动停掉播放器并记住断点（不让系统留下孤儿播放器），
+   * 回到前台若仍属「被打断而非手动停止」则自动续播；打断期间用 setPlaybackInterrupted
+   * 屏蔽一切「播完」判定。interruptedRef 已在上方声明（失焦清理复用），此处补两个配合用 ref。
+   */
+  const appActiveRef = useRef(true);
+  const resumeAfterInterruptRef = useRef(false);
+  /** 让 AppState 监听读到最新的 phase / isPlaying / handlePlay，避免闭包旧值 */
+  const phaseRef = useRef<Phase>('playing');
+  const isPlayingRef = useRef(false);
+  const handlePlayRef = useRef<(v?: string) => void>(() => {});
   // 提问环节「按住说话、松开停止」的真实录音（expo-audio，与声音克隆页同款）
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈（不识字也能看懂）
@@ -389,33 +401,75 @@ export default function StoryPlayScreen() {
   }, [isPlaying, story?.id]);
 
   /**
-   * 锁屏 / 切后台再回来（v62 反馈 #2）。
-   * iOS 在后台会停用音频会话，回到前台后直接 play() 不出声、按钮看着也像失效。
-   * 这里做三件事：回前台重设音频会话、复位「启动中」锁（否则点播放会被拦掉）、
-   * 把界面状态和断点对齐 —— 修完就表现为「回到页面点播放即可接着听」。
+   * 锁屏 / 切后台 / 来电打断再回来（v62 反馈 #2 + v86 反馈 #1）。
+   * ---------------------------------------------------------------------------
+   * iOS 在音频会话被系统打断（来电 / 切后台 / 锁屏）时，会由 expo-audio 在原生层把播放器
+   * 暂停、并在打断结束后自动续播一个「孤儿播放器」——它的 React 状态（isPlaying）早已脱节，
+   * 于是表现为「三角键却仍在响、再点播放一直缓冲、停止后重播直接跳提问」。
+   * 这里统一处理 AppState 变化：
+   *   ① 进后台 / 来电（state 不再是 active）：若正在播放，主动停掉播放器 + 记住断点 +
+   *      屏蔽一切「播完」判定（setPlaybackInterrupted），不让系统留下孤儿播放器；
+   *   ② 回到前台：若这次只是被打断（resumeAfterInterruptRef），自动从断点续播，
+   *      状态与真实播放重新对齐；若原本就没在播（手动暂停等），重设音频会话、复位启动锁，
+   *      回来点播放即可接着听。
+   * 用 phaseRef / isPlayingRef / handlePlayRef 读最新值，避免闭包旧值。
    */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background') {
-        const pos = getClonedPosition();
-        if (pos > 3 && story) {
-          resumeAtRef.current = pos;
-          saveStoryPosition(story.id, pos);
+      const wasActive = appActiveRef.current;
+      appActiveRef.current = state === 'active';
+      if (state !== 'active') {
+        // 进后台 / 来电 / 锁屏：正在播放则主动停掉播放器 + 记断点 + 屏蔽播完判定
+        if (isPlayingRef.current && phaseRef.current === 'playing') {
+          const pos = getClonedPosition();
+          if (pos > 3) resumeAtRef.current = pos;
+          if (story) saveStoryPosition(story.id, pos > 3 ? pos : resumeAtRef.current);
+          interruptedRef.current = true;
+          resumeAfterInterruptRef.current = true;
+          stopStory();
+          setPlaybackInterrupted(true);
+          playTokenRef.current++;
+          startingRef.current = false;
+          if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+          if (progressInterval.current) clearInterval(progressInterval.current);
+          setIsPlaying(false);
+          setPreparing(false);
+        } else {
+          // 没在播放（手动暂停 / 睡眠锁屏等）：仅标记回来需对齐状态
+          interruptedRef.current = true;
         }
-        interruptedRef.current = true;
         return;
       }
-      if (state === 'active' && interruptedRef.current) {
+      // 回到前台
+      if (wasActive === false && interruptedRef.current) {
         interruptedRef.current = false;
-        void reassertAudioSession();
-        startingRef.current = false;
-        setIsPlaying(false);
-        setPreparing(false);
-        if (resumeAtRef.current > 3) setResumeSec(Math.floor(resumeAtRef.current));
+        setPlaybackInterrupted(false);
+        if (resumeAfterInterruptRef.current && phaseRef.current === 'playing') {
+          // 来电 / 切后台期间仍在听 → 自动从断点续播，状态与真实播放重新对齐
+          resumeAfterInterruptRef.current = false;
+          setTimeout(() => {
+            if (!aliveRef.current) return;
+            if (phaseRef.current !== 'playing') return;
+            void handlePlayRef.current();
+          }, 350);
+        } else {
+          // 原本就没在播（手动暂停等）：重设音频会话、复位启动锁，回来点播放即可接着听
+          void reassertAudioSession();
+          startingRef.current = false;
+          setIsPlaying(false);
+          setPreparing(false);
+          if (resumeAtRef.current > 3) setResumeSec(Math.floor(resumeAtRef.current));
+        }
       }
     });
     return () => sub.remove();
   }, [story?.id]);
+
+  // 把最新的 phase / isPlaying 同步进 ref，供上面的 AppState 监听读取（避免闭包旧值）
+  useEffect(() => {
+    phaseRef.current = phase;
+    isPlayingRef.current = isPlaying;
+  });
 
   // 双语解析：英文模式且故事有英文正文时取英文，否则中文。
   // 派生值每次渲染重算，跟随界面语言实时切换。
@@ -796,6 +850,7 @@ export default function StoryPlayScreen() {
    *        避免依赖 setSelectedVoice 的异步 state（同一 tick 里读到的还是旧值）。
    */
   const handlePlay = async (voiceOverride?: string) => {
+    handlePlayRef.current = handlePlay;
     if (!story) return;
     const voice = voiceOverride ?? selectedVoice;
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
@@ -833,6 +888,9 @@ export default function StoryPlayScreen() {
       const onEnded = () => {
         if (token !== playTokenRef.current) return;
         if (endFiredRef.current) return;
+        // 打断期间（来电 / 切后台）任何 ended 信号都不可信，直接忽略，
+        // 避免 iOS 孤儿播放器的暂停被误判成「故事讲完 → 跳提问」（v86 反馈 #1）
+        if (!appActiveRef.current || interruptedRef.current) return;
         /**
          * v79 修复：切到别的 App / 锁屏时，iOS 会收回音频会话，
          * 播放器（尤其云端合成音）常常立刻回调「播完了」——
@@ -1035,6 +1093,18 @@ export default function StoryPlayScreen() {
     if (story) clearStoryPosition(story.id);
     void handlePlay();
   };
+
+
+  // 离开故事页（切到首页 / 再听一遍 / 返回 / 或 AI 回答还在响时切走）彻底停掉所有声音与会话，
+  // 避免「界面走了、AI 还在朗读」（v86 反馈 #2）。同时释放常亮，交回系统熄屏。
+  useEffect(() => {
+    return () => {
+      stopStory();
+      cancelSleepSession();
+      deactivateKeepAwake('rms-story').catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 快进 / 后退（±delta 秒）：克隆声 / 本地录音用真实播放位置跳转；系统音不支持，给提示
   const handleSeekBy = (delta: number) => {
@@ -1899,7 +1969,7 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <TouchableOpacity style={styles.primaryBtn2} onPress={() => { Keyboard.dismiss(); setPhase('finished'); }}>
+        <TouchableOpacity style={styles.primaryBtn2} onPress={() => { Keyboard.dismiss(); stopStory(); setPhase('finished'); }}>
           <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </ScrollView>

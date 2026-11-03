@@ -65,6 +65,19 @@ function hashText(text: string): string {
 let endWatchTimer: ReturnType<typeof setInterval> | null = null;
 let endFired = false;
 let endOnce: (() => void) | null = null;
+/**
+ * 音频会话被系统打断（来电 / 切后台）期间，屏蔽一切「播完」判定。
+ * 打断时 iOS 会让 expo-audio 在原生层暂停 / 自动续播一个孤儿播放器，期间 player.playing
+ * 会变成 false 且位置停在中途 —— 若不屏蔽，下面的「停滞判定」会误以为故事讲完了，
+ * 把孩子直接推到提问环节（v86 反馈 #1）。由 [id].tsx 在 AppState 变化时置位 / 复位。
+ */
+let interrupted = false;
+export function setPlaybackInterrupted(v: boolean): void {
+  interrupted = v;
+}
+export function isPlaybackInterrupted(): boolean {
+  return interrupted;
+}
 /** onEnded 事件的守门人（只有真到末尾才放行），见 armEndWatch 内注释 */
 let acceptEnd: (() => void) | null = null;
 // 出现过的最大时长：长音频起播/缓冲抖动时 duration 可能瞬间回退，
@@ -172,6 +185,11 @@ function armEndWatch(onDone?: () => void): void {
   acceptEnd = acceptEndSignal;
   endWatchTimer = setInterval(() => {
     if (endFired || !currentPlayer) return;
+    // 打断期间（来电 / 切后台）屏蔽一切「播完」判定，避免孤儿播放器的暂停被误判为结束
+    if (interrupted) {
+      stallTicks = 0;
+      return;
+    }
     const dur = getClonedDuration();
     const pos = getClonedPosition();
     // duration 未加载完成（0）时不做判断，避免刚起播就误判结束
