@@ -14,6 +14,7 @@ import { getProgress, saveProgress, getVoiceSetting } from '../../services/stora
 import { checkCheckInGate, FREE_TOTAL_CHECKIN_LIMIT } from '../../services/entitlement';
 import { getNewBadges, computeRewardExtras, BADGES } from '../../constants/rewards';
 import { playStory } from '../../services/playback';
+import { isClonedAudioPlaying } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { generateTravelStory } from '../../services/travelStory';
 import Racco from '../../components/common/Racco';
@@ -480,6 +481,17 @@ export default function TravelCheckinScreen() {
       });
     } catch (err) {
       console.warn('[checkin] tts failed:', err);
+    }
+    /**
+     * v84 反馈 #5：「打卡成功」在故事还没讲完时就跳出来了。
+     * 播完回调有可能早到（音频时长刚加载 / 云端合成音起点抖动），此时故事其实还在讲。
+     * 打卡是「听完才算」的仪式感，宁可多等：只要音频还在响就继续等，
+     * 直到它真的停下（上限按正文长度放宽，避免异常情况下无限等待）。
+     */
+    const waitCapMs = Math.max(60000, (story?.content.length ?? 0) * 400);
+    const waitStart = Date.now();
+    while (isClonedAudioPlaying() && Date.now() - waitStart < waitCapMs) {
+      await new Promise((r) => setTimeout(r, 300));
     }
     setIsPlaying(false);
     handleCheckIn();

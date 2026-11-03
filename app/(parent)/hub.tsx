@@ -1,10 +1,15 @@
 import { useMemo } from 'react';
 import { router } from 'expo-router';
 import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import Constants from 'expo-constants';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
 import { useLanguage } from '../../hooks/useLanguage';
+
+/** 关于卡用：便于家长在真机上确认装的是哪一个包 */
+const APP_VERSION: string = (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';
+const BUILD_NUMBER: string = (Constants.nativeBuildVersion as string | undefined) ?? '?';
 
 interface CardDef {
   icon: string;
@@ -45,6 +50,13 @@ export default function ParentHub() {
     { icon: '🔊', title: t('parentHub.card.voice.title'), desc: t('parentHub.card.voice.desc'), href: '/(parent)/voice-clone' },
     { icon: '💳', title: t('parentHub.card.subscription.title'), desc: t('parentHub.card.subscription.desc'), href: '/(parent)/subscription' },
     { icon: '👤', title: t('parentHub.card.account.title'), desc: t('parentHub.card.account.desc'), href: '/(parent)/account' },
+    // v84 反馈 #7：「关于」从孩子端设置页搬到家长模式（版本号是排查问题用的，家长才需要）
+    { icon: 'ℹ️', title: t('parentHub.card.about.title'), desc: `v${APP_VERSION} · build ${BUILD_NUMBER}`, action: () => {
+      Alert.alert(
+        t('parentHub.card.about.title'),
+        `${t('settings.about.description')}\n\nv${APP_VERSION} · build ${BUILD_NUMBER}\n${t('parentHub.card.about.desc')}`,
+      );
+    }},
     { icon: '📊', title: t('parentHub.card.stats.title'), desc: t('parentHub.card.stats.desc'), href: '/(parent)/statistics' },
     // 配色页在根级路由（孩子端设置页也能直接进），这里只是同一个页面的家长入口
     { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },

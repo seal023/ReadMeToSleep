@@ -81,6 +81,8 @@ let maxDur = 0;
  *   ② 播放器自报停止：player.playing 变 false 且已经播过一段 → 连续 2s 视为播完。
  */
 let hardEndTimer: ReturnType<typeof setTimeout> | null = null;
+/** 硬定时器当前被安排在什么时刻（ms 时间戳）：dur/pos 变化超过 3s 就重挂，见下方注释 */
+let hardEndArmAt = 0;
 let stallTicks = 0;
 /**
  * v81 #1：「点播放直接进入提问环节」的根因就在这里。
@@ -110,6 +112,7 @@ function clearHardEnd(): void {
     clearTimeout(hardEndTimer);
     hardEndTimer = null;
   }
+  hardEndArmAt = 0;
   stallTicks = 0;
   sawPlaying = false;
   maxPos = 0;
@@ -197,11 +200,25 @@ function armEndWatch(onDone?: () => void): void {
     }
     // ② 硬定时器：时长已知后，按「剩余时长 + 2s」挂一次性 timeout。
     //    与 currentTime 是否归零无关，是"音频确实播完了"最可靠的兜底。
+    //
+    // ⚠️ 2026-11-03 修复（v84 反馈 #5「打卡成功在故事没讲完就跳出来」）：
+    //    原来只在**第一拍**挂一次，之后再也不重算。长音频（AI 创作 / 旅行打卡 5–10 分钟）
+    //    起播时 AVPlayer 报的 duration 往往只是已加载的那一小段（远小于真实时长），
+    //    于是定时器按那个小数挂上去 → 故事才讲到一半就被判「播完」→ 直接弹打卡成功。
+    //    现在每一拍都用最新的 dur/pos 重算目标时刻，偏差超过 3s 就重挂；
+    //    duration 长出来后目标时刻自然跟着往后推，正常播放时两者几乎不变（不会抖）。
+    const wantArmAt = Date.now() + Math.max(0, dur - pos) * 1000 + 2000;
     if (!hardEndTimer) {
-      const remainMs = Math.max(0, dur - pos) * 1000;
+      hardEndArmAt = wantArmAt;
       hardEndTimer = setTimeout(() => {
         endOnce?.();
-      }, remainMs + 2000);
+      }, Math.max(2000, wantArmAt - Date.now()));
+    } else if (Math.abs(wantArmAt - hardEndArmAt) > 3000) {
+      clearTimeout(hardEndTimer);
+      hardEndArmAt = wantArmAt;
+      hardEndTimer = setTimeout(() => {
+        endOnce?.();
+      }, Math.max(2000, wantArmAt - Date.now()));
     }
     // ③ 播放器自报已停止
     //    v81 修正：必须「真的出过声」+「位置真的往前走过」才允许判停，
@@ -557,6 +574,20 @@ export function didPlayThisSession(): boolean {
 /** 本次播放到达过的最大位置（秒）；没真正出声时通常接近 0 */
 export function getMaxPlayedPosition(): number {
   return maxPos;
+}
+
+/**
+ * 当前是否**真的还在响**（播放器自报 playing=true）。
+ * 给「播完再做下一步」的调用方做复核用（v84 反馈 #5：旅行打卡成功页在故事没讲完时
+ * 就弹了出来 —— 上层可以在回调后用它确认音频真的停了，再写打卡记录）。
+ */
+export function isClonedAudioPlaying(): boolean {
+  try {
+    const p = currentPlayer as unknown as { playing?: boolean } | null;
+    return Boolean(p && p.playing);
+  } catch {
+    return false;
+  }
 }
 
 /**

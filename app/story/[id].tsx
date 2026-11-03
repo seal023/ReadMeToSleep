@@ -21,6 +21,9 @@ import {
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
+// 语音题录音落盘：录音器给的是缓存里的临时文件，拷一份到稳定的 qa_clips 目录，
+// 避免「刚录完能听、过一会儿/重进页面就播不出来」。
+import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
 import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
@@ -81,6 +84,37 @@ function formatClock(sec: number): string {
 
 /** 问答录音的最长时长（秒）：到点自动结束，避免孩子忘了点「结束」一直录 */
 const QA_MAX_REC_SEC = 20;
+
+/**
+ * 把刚录好的语音题音频拷到一个稳定位置，返回可播放的 uri。
+ * ---------------------------------------------------------------------------
+ * v84 反馈 #1（英文界面 3/3 录音听不到回放）：录音器给的是缓存目录里的临时文件，
+ * 直接拿它去 createAudioPlayer 有时会「命令成功但一声不出」；文件还随时可能被系统回收。
+ * 这里统一拷到 cache/qa_clips/ 下再播，并对「几乎没录到音」的空文件直接判失败，
+ * 让界面给出明确提示，而不是按了没反应。
+ */
+function persistQaClip(rawUri: string | null): string | null {
+  if (!rawUri) return null;
+  try {
+    const src = new File(rawUri);
+    if (!src.exists) return null;
+    const size = (src as unknown as { size?: number }).size;
+    // 1.2KB 以下基本等于没录到音（正常说一两秒就有十几 KB）
+    if (typeof size === 'number' && size > 0 && size < 1200) return null;
+    try {
+      const dir = new Directory(Paths.cache, 'qa_clips');
+      if (!dir.exists) dir.create({ intermediates: true });
+      const dest = new File(dir, `qaclip_${Date.now()}.m4a`);
+      if (dest.exists) dest.delete();
+      src.copy(dest);
+      return dest.exists ? dest.uri : rawUri;
+    } catch {
+      return rawUri; // 拷贝失败就用原件，至少本次能播
+    }
+  } catch {
+    return rawUri;
+  }
+}
 
 // 随声波形：播放时一排竖条循环跳动，暂停时静止——给不识字的孩子可见的「声音在流动」反馈
 function SoundWave({ playing }: { playing: boolean }) {
@@ -209,6 +243,8 @@ export default function StoryPlayScreen() {
   // 睡眠定时：倒计时剩余（ms，>0 表示会话进行中）与「到点是否锁定」标记
   const [sleepRemaining, setSleepRemaining] = useState(0);
   const [sleepLocked, setSleepLocked] = useState(false);
+  /** 到点关屏：纯黑遮罩（iOS 没有公开的「主动熄屏」API，用黑屏 + 释放常亮近似） */
+  const [screenOff, setScreenOff] = useState(false);
   // 正在准备克隆声（合成/下载中）：给「点播放后等待」一个可见反馈，
   // 同时作为并发保护，避免等待期间重复点击开出第二路播放（双声叠加）。
   const [preparing, setPreparing] = useState(false);
@@ -302,22 +338,34 @@ export default function StoryPlayScreen() {
     };
   }, []);
 
-  // 播放中为睡眠定时会话刷新剩余时间（仅在 playing 阶段计时）
+  // 播放中为睡眠定时会话刷新剩余时间。
+  // v84 反馈 #4：故事讲完后**不再清零**计时——家长设了 30 分钟，故事 10 分钟讲完，
+  // 屏幕应该继续按定时在 30 分钟时关掉（原来 handleStoryEnded 会 cancelSleepSession，
+  // 等于「故事一讲完定时就作废」，屏幕再也不会按设定时间关）。
   useEffect(() => {
-    if (phase !== 'playing') {
-      setSleepRemaining(0);
-      return;
-    }
-    const tick = setInterval(() => {
-      setSleepRemaining(isSleepSessionActive() ? getSleepRemainingMs() : 0);
-    }, 1000);
-    return () => clearInterval(tick);
+    if (phase === 'sleep') return;
+    const tick = () => setSleepRemaining(isSleepSessionActive() ? getSleepRemainingMs() : 0);
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
   }, [phase]);
 
-  // 听故事期间不自动锁屏（v62 反馈 #2）：屏幕一黑，家长得重新解锁才能操作，体验很差
+  /**
+   * 屏幕常亮（v84 反馈 #4）
+   * -------------------------------------------------------------------------
+   * 原来只在「isPlaying 且 phase=playing」时常亮，于是：
+   *   · 正在等声音合成（preparing）时屏幕就开始变暗；
+   *   · 故事一讲完（completed / 提问环节）立刻放开常亮，屏幕很快自动锁上，
+   *     孩子还没答完题就黑屏了。
+   * 现在：听故事（含准备中）保持常亮；只要家长设了睡眠定时，就一直常亮到定时到点，
+   * 到点那一刻释放常亮 + 黑屏，屏幕才按系统自动锁定时间熄灭。
+   */
+  const screenWakeWanted =
+    (phase === 'playing' && (isPlaying || preparing)) ||
+    (phase !== 'sleep' && sleepRemaining > 0);
   useEffect(() => {
     const TAG = 'rms-story';
-    if (!isPlaying || phase !== 'playing') {
+    if (!screenWakeWanted) {
       deactivateKeepAwake(TAG).catch(() => {});
       return;
     }
@@ -325,7 +373,7 @@ export default function StoryPlayScreen() {
     return () => {
       deactivateKeepAwake(TAG).catch(() => {});
     };
-  }, [isPlaying, phase]);
+  }, [screenWakeWanted]);
 
   // 播放中每 5 秒记一次断点，锁屏/退出后回来能接着听
   useEffect(() => {
@@ -698,7 +746,12 @@ export default function StoryPlayScreen() {
 
   // 故事真正讲完（系统音 onDone / 克隆声 onEnded）→ 才进入「讲完啦/提问」环节
   const handleStoryEnded = () => {
-    cancelSleepSession();
+    /**
+     * v84 反馈 #4：这里**不再** cancelSleepSession()。
+     * 家长设的「睡眠定时」是「几点把屏幕关掉」，不是「放多久停声」：
+     * 故事讲完后倒计时应继续走，到点再黑屏关屏（见 sleep 阶段的 screenOff）。
+     * 只有手动停止 / 退出播放页才取消会话（见 handleStop 与失焦清理）。
+     */
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     if (progressInterval.current) clearInterval(progressInterval.current);
     setProgress(100);
@@ -760,6 +813,7 @@ export default function StoryPlayScreen() {
     // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
     setIsPlaying(true);
     setPreparing(true);
+    setScreenOff(false); // 重新播放：撤掉到点黑屏遮罩
     preparingRef.current = true; // 准备阶段：任何 ended 回调一律忽略（见 onEnded 注释）
     clonedPlayingRef.current = false; // 本轮还没确定用云端音频，先按系统音兜底逻辑走
     playingSinceRef.current = Date.now();
@@ -770,6 +824,9 @@ export default function StoryPlayScreen() {
       const sleepLock = await getSleepLockEnabled();
       const onSleepExpire = () => {
         setSleepLocked(sleepLock);
+        // 到点：先切黑屏（近似的「关屏」），再由 screenWakeWanted 释放常亮，
+        // 让 iOS 按系统自动锁定时间真正熄屏。
+        setScreenOff(true);
         setPhase('sleep');
       };
       // 故事结束只认当前这次播放：过期的 onDone / 定时器回调一律忽略
@@ -1070,7 +1127,22 @@ export default function StoryPlayScreen() {
       return;
     }
     // 录好了：保留音频句柄，交给孩子决定「听一遍 / 重录 / 继续」
-    setVoiceClipUri(audioRecorder.uri ?? null);
+    // v84 反馈 #1：拷贝到稳定目录再播（缓存临时文件常常"能创建、播不出声"）
+    // 个别机型 stop() 返回时 uri 还没写回，等一下再读一次，避免误判"没录上"
+    let rawUri = audioRecorder.uri ?? null;
+    if (!rawUri) {
+      await new Promise((r) => setTimeout(r, 220));
+      rawUri = audioRecorder.uri ?? null;
+    }
+    const clip = persistQaClip(rawUri);
+    if (!clip) {
+      const tooShort = pickPhrase('voiceTooShort', displayLang);
+      setQaFeedback(tooShort);
+      speakWithBestVoice(tooShort, displayLang);
+      setTimeout(() => setQaFeedback(''), 1600);
+      return;
+    }
+    setVoiceClipUri(clip);
     const heard = pickPhrase('voiceHeard', displayLang);
     setQaFeedback(heard);
     speakWithBestVoice(heard, displayLang);
@@ -1085,9 +1157,29 @@ export default function StoryPlayScreen() {
       return;
     }
     setVoicePlaying(true);
-    // 录音句柄同样可能是「刚停止还没落盘」的状态，等一下再播
-    await new Promise((r) => setTimeout(r, 120));
-    const ok = await playLocalFile(voiceClipUri, () => setVoicePlaying(false));
+    /**
+     * v84 反馈 #1：录音回放不出声。
+     * 录完之后音频会话还停在 playAndRecord（走听筒、音量极小，听起来就是"没声"），
+     * 直接起播往往是"播放器建起来了但一点声音都没有"。
+     * 所以先把会话显式切回「纯播放」，留一拍让它落定；仍失败就重置会话再试一次。
+     */
+    const toPlaybackMode = async () => {
+      try {
+        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+      } catch {
+        /* 会话配置失败不阻断，继续尝试起播 */
+      }
+    };
+    // 先把还在响的提示音（克隆声 / 系统音）停掉，否则会盖住刚录的这段
+    stopStory();
+    await toPlaybackMode();
+    await new Promise((r) => setTimeout(r, 160));
+    let ok = await playLocalFile(voiceClipUri, () => setVoicePlaying(false));
+    if (!ok) {
+      await reassertAudioSession();
+      await new Promise((r) => setTimeout(r, 260));
+      ok = await playLocalFile(voiceClipUri, () => setVoicePlaying(false));
+    }
     if (!ok) {
       setVoicePlaying(false);
       setQaFeedback(t('story.qa.clipFail'));
@@ -1139,7 +1231,12 @@ export default function StoryPlayScreen() {
     setIsRecording(false);
     await stopQaRecording();
     const durSec = (recEndTs.current - recStartTs.current) / 1000;
-    const uri = audioRecorder.uri;
+    // 个别机型 stop() 返回时 uri 还没写回：等一下再读，避免误报「没录上」
+    let uri = audioRecorder.uri ?? null;
+    if (!uri) {
+      await new Promise((r) => setTimeout(r, 220));
+      uri = audioRecorder.uri ?? null;
+    }
     let text = '';
     if (uri && durSec >= 0.6) {
       setTranscribing(true);
@@ -1239,15 +1336,45 @@ export default function StoryPlayScreen() {
     qaStarting.current = true;
     recReady.current = false;
     recStartPromise.current = (async () => {
+      /**
+       * v84 反馈 #2：第一次录音总是不成功、第二次就好（"其实操作上区别不大"）。
+       * ---------------------------------------------------------------------
+       * 根因是音频会话还没从上一段提示音的 playback 切到 playAndRecord，
+       * 就立刻 prepareToRecordAsync()：录音器起来了，但实际一点声音都没采到，
+       * 于是第一次转文字是空的（表现为"没录上"）；第二次因为会话已经待在录音态，
+       * 同样的操作就正常了。
+       * 现在改三步：① 先把在播的声音停干净；② 显式切录音会话并留一小段静默让它落定；
+       * ③ 起录失败自动重试一次（会话切换偶尔会被系统拖慢）。
+       */
+      const begin = async () => {
+        // 手指按到录音键：立刻停掉正在播放的提示音，否则录不到音（Issue 4）
+        stopStory();
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        // 会话切换不是瞬时的：不等这一下，第一次录音几乎必然采不到音
+        await new Promise((r) => setTimeout(r, 220));
+        await audioRecorder.prepareToRecordAsync();
+        await audioRecorder.record();
+      };
+
       try {
         const perm = await requestRecordingPermissionsAsync();
         if (!perm.granted) {
           Alert.alert(t('story.micPermTitle'), t('story.micPermMsg'));
           return;
         }
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        await audioRecorder.prepareToRecordAsync();
-        await audioRecorder.record();
+        try {
+          await begin();
+        } catch (firstErr) {
+          console.warn('[story] 提问录音首次起录失败，重试一次:', firstErr);
+          // 记录器可能停在半启动状态：先尝试收尾（没在录时 stop 会抛，忽略），再重来
+          try {
+            await audioRecorder.stop();
+          } catch {
+            /* 忽略 */
+          }
+          await new Promise((r) => setTimeout(r, 320));
+          await begin();
+        }
         recReady.current = true;
         recStartTs.current = Date.now();
         setIsRecording(true);
@@ -1617,11 +1744,16 @@ export default function StoryPlayScreen() {
               <Text style={styles.sleepBtnText}>{t('sleep.locked.unlock')}</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.sleepBtn} onPress={() => { setPhase('playing'); }}>
+            <TouchableOpacity style={styles.sleepBtn} onPress={() => { setScreenOff(false); setPhase('playing'); }}>
               <Text style={styles.sleepBtnText}>{t('sleep.locked.continue')}</Text>
             </TouchableOpacity>
           )}
         </View>
+        {/* 到点关屏：纯黑遮罩 +（外面已释放常亮）让系统尽快熄屏。
+            轻点任意处回到月亮页，家长可解锁或继续。 */}
+        {screenOff ? (
+          <Pressable style={styles.screenOffOverlay} onPress={() => setScreenOff(false)} />
+        ) : null}
       </CartoonScreen>
     );
   }
@@ -2269,4 +2401,13 @@ const styles = StyleSheet.create({
     borderRadius: 26,
   },
   sleepBtnText: { fontSize: 16, fontWeight: '700', color: '#5B4B23' },
+  /** 到点关屏：整屏纯黑（轻点返回），配合释放常亮让系统自动熄屏 */
+  screenOffOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000000',
+  },
 });

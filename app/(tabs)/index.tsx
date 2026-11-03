@@ -19,6 +19,7 @@ import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
 import { getClonedTargets } from '../../services/voiceClone';
+import { useEntitlement } from '../../hooks/useEntitlement';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
 import type { RaccoState } from '../../types';
 
@@ -41,6 +42,13 @@ function getGreetingKey(): string {
 
 export default function HomeTab() {
   const { t, language } = useLanguage();
+  /**
+   * 会员状态（v84 反馈 #6）：已经是会员就不再顶上「升级会员」卡片，
+   * 只有未订阅 / 订阅过期时才出现，避免付费用户天天被推销。
+   * snapshot 为 null 表示还在读（含 IAP 校验），此期间先不显示，避免闪一下又消失。
+   */
+  const { snapshot, refresh: refreshEntitlement } = useEntitlement();
+  const showPremiumCard = snapshot ? !snapshot.premium : false;
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   const [guideVisible, setGuideVisible] = useState(false);
@@ -135,7 +143,7 @@ export default function HomeTab() {
       getChildName().then((n) => {
         if (alive) setChildName(n);
       });
-      // 克隆入口文案：已克隆 → 「已绑定家人的声音 · 更换」
+      // 克隆入口文案（v84 反馈 #3：统一说「克隆你的声音」，不再用「已绑定家人的声音」这种容易误解的说法）
       getClonedTargets()
         .then((targets) => {
           if (alive) setHasCloned(Array.isArray(targets) && targets.length > 0);
@@ -147,6 +155,13 @@ export default function HomeTab() {
         alive = false;
       };
     }, [])
+  );
+
+  // 每次回到首页刷新会员状态（刚买完 / 刚过期都能立刻反映到「升级会员」卡片的显隐）
+  useFocusEffect(
+    useCallback(() => {
+      void refreshEntitlement();
+    }, [refreshEntitlement])
   );
 
   // 首启昵称引导：未设置昵称则在首次启动弹出（隐私同意后首页才挂载，触发安全）
@@ -199,20 +214,22 @@ export default function HomeTab() {
         </ElasticPressable>
       </View>
 
-      {/* 会员入口：直达订阅/会员中心，避免"找不到收费板块" */}
-      <ElasticPressable
-        style={styles.premiumCard}
-        onPress={() => router.push('/(parent)/subscription')}
-        pressScale={0.94}
-        bounciness={14}
-      >
-        <Text style={styles.premiumEmoji}>💎</Text>
-        <View style={styles.premiumTextWrap}>
-          <Text style={styles.premiumTitle}>{t('home.premium.title')}</Text>
-          <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
-        </View>
-        <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
-      </ElasticPressable>
+      {/* 会员入口：只在未订阅 / 已过期时出现（已是会员就不再推销，v84 反馈 #6） */}
+      {showPremiumCard && (
+        <ElasticPressable
+          style={styles.premiumCard}
+          onPress={() => router.push('/(parent)/subscription')}
+          pressScale={0.94}
+          bounciness={14}
+        >
+          <Text style={styles.premiumEmoji}>💎</Text>
+          <View style={styles.premiumTextWrap}>
+            <Text style={styles.premiumTitle}>{t('home.premium.title')}</Text>
+            <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
+          </View>
+          <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
+        </ElasticPressable>
+      )}
 
       {/* 声音克隆：产品灵魂，常驻渲染、永不消失（v79：去掉可收起的临时状态） */}
       <View style={styles.cloneBanner}>
