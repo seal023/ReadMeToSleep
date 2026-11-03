@@ -193,7 +193,8 @@ export default function CreateScreen() {
             onPress={() => setStoryLang(lang)}
           >
             <Text style={storyLang === lang ? styles.chipTextActive : styles.chipText}>
-              {lang === 'zh' ? '中文' : 'English'}
+              {/* 英文界面里不出现汉字：中文选项写成 Chinese；中文界面仍显示「中文」 */}
+              {lang === 'zh' ? (uiLang === 'en' ? 'Chinese' : '中文') : 'English'}
             </Text>
           </TouchableOpacity>
         ))}

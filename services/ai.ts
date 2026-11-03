@@ -371,23 +371,28 @@ export async function generateStory(
   }
 
   // 时长分级 → 字数/词数要求 + 输出 token 上限
-  // short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟
+  // short 约 3 分钟 / medium 约 15 分钟 / long 约 25 分钟
+  //
+  // v84 反馈修正：原先 short 的下限被写成「绝对不少于 800 字」，等于**强制写长**——
+  // 家长选「短」却拿到一篇念 6 分钟的长故事（英文 500 词起）。短篇现在改成
+  // 「有明确上限」的写法，并把下限压到合理区间，避免模型为了满足下限硬凑景物描写。
   const lenRule = (
     isZh
       ? {
-          short: '正文字数 900-1200 个汉字，绝对不少于 800 字（这个长度要求必须严格满足）',
+          short: '正文字数 500-650 个汉字，**最多不超过 700 字**（这是短篇，3 分钟内要念完，长度上限必须严格满足）',
           medium: '正文字数约 2500-3500 个汉字，绝对不少于 2200 字（这个长度要求必须严格满足）',
           long: '正文字数约 4500-6000 个汉字，绝对不少于 4000 字（这个长度要求必须严格满足）',
         }
       : {
-          short: 'about 600-800 English words, and NEVER fewer than 500 words (this is a strict requirement)',
+          short: 'about 300-380 English words, and **NEVER more than 420 words** (a short read-aloud piece of about 3 minutes — the upper limit is strict)',
           medium: 'about 1600-2200 English words, and NEVER fewer than 1400 words (this is a strict requirement)',
           long: 'about 3000-4000 English words, and NEVER fewer than 2600 words (this is a strict requirement)',
         }
   )[length] as string;
 
+  // 短篇的 token 上限同时收紧：即便模型想写长，也在物理上被挡住（1800 ≈ 1200 汉字，留足安全余量）
   const lenTokens = (
-    { short: 3072, medium: 6144, long: 8192 } as Record<StoryLength, number>
+    { short: 1800, medium: 6144, long: 8192 } as Record<StoryLength, number>
   )[length];
 
   const langName = isZh ? '简体中文' : 'English';
@@ -403,6 +408,7 @@ export async function generateStory(
     `【语言要求】必须全部使用${langName}输出，不得混用其他语言。`,
     '【内容要求】',
     `- ${lengthRule}，分成 5-8 个自然段，段落之间用空行分隔。`,
+    '- 每段都要推进一点情节，不要堆砌景物描写、不要反复形容同一个画面，不要为凑字数加排比句。',
     '- 情节简单温暖、有画面感，节奏舒缓，越往后越安静。',
     '- 结尾必须是安宁、助眠的收束，例如"晚安""做个好梦"。',
     '- 不得出现暴力、恐怖、惊吓、死亡、争吵、负面情绪描写。',

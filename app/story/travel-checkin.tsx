@@ -34,26 +34,41 @@ type Step = 'locate' | 'generate' | 'play' | 'success';
  *   x = (经度 + 180) / 360 * 100
  *   y = (90 - 纬度) / 180 * 100
  * 仅保证相对方位正确，不追求地理精度（儿童向示意地图）。
+ *
+ * v84：中英文名拆成 4 个字段。原先只有 `en: 'Tokyo · Tower'` 这种「拼好的整串」，
+ * 英文界面里地图图钉、列表标题、打卡记录却仍在用中文 `cn`/`place`，
+ * 结果英文界面上到处是汉字（纽约、东京·东京塔、可打卡…）。
+ * 现在显示名一律走 cityName()/placeName()/fullName()，中文界面零变化。
  */
 const LOCATIONS = [
   // —— 中国 ——
-  { cn: '北京', place: '故宫', en: 'Beijing · Forbidden City', emoji: '🏯', x: 82.3, y: 27.8 },
-  { cn: '上海', place: '外滩', en: 'Shanghai · The Bund', emoji: '🌃', x: 83.8, y: 32.7 },
-  { cn: '西安', place: '兵马俑', en: "Xi'an · Terracotta Warriors", emoji: '🗿', x: 80.3, y: 30.9 },
-  { cn: '成都', place: '大熊猫基地', en: 'Chengdu · Panda Base', emoji: '🐼', x: 78.9, y: 33.0 },
-  { cn: '杭州', place: '西湖', en: 'Hangzhou · West Lake', emoji: '🛶', x: 83.4, y: 33.2 },
-  { cn: '桂林', place: '漓江', en: 'Guilin · Li River', emoji: '⛰️', x: 80.6, y: 35.9 },
-  { cn: '拉萨', place: '布达拉宫', en: 'Lhasa · Potala Palace', emoji: '🏔️', x: 75.3, y: 33.5 },
-  { cn: '大理', place: '洱海', en: 'Dali · Erhai Lake', emoji: '🌊', x: 77.9, y: 35.8 },
+  { cn: '北京', place: '故宫', cityEn: 'Beijing', placeEn: 'Forbidden City', emoji: '🏯', x: 82.3, y: 27.8 },
+  { cn: '上海', place: '外滩', cityEn: 'Shanghai', placeEn: 'The Bund', emoji: '🌃', x: 83.8, y: 32.7 },
+  { cn: '西安', place: '兵马俑', cityEn: "Xi'an", placeEn: 'Terracotta Warriors', emoji: '🗿', x: 80.3, y: 30.9 },
+  { cn: '成都', place: '大熊猫基地', cityEn: 'Chengdu', placeEn: 'Panda Base', emoji: '🐼', x: 78.9, y: 33.0 },
+  { cn: '杭州', place: '西湖', cityEn: 'Hangzhou', placeEn: 'West Lake', emoji: '🛶', x: 83.4, y: 33.2 },
+  { cn: '桂林', place: '漓江', cityEn: 'Guilin', placeEn: 'Li River', emoji: '⛰️', x: 80.6, y: 35.9 },
+  { cn: '拉萨', place: '布达拉宫', cityEn: 'Lhasa', placeEn: 'Potala Palace', emoji: '🏔️', x: 75.3, y: 33.5 },
+  { cn: '大理', place: '洱海', cityEn: 'Dali', placeEn: 'Erhai Lake', emoji: '🌊', x: 77.9, y: 35.8 },
   // —— 世界 ——
-  { cn: '巴黎', place: '埃菲尔铁塔', en: 'Paris · Eiffel Tower', emoji: '🗼', x: 50.7, y: 22.9 },
-  { cn: '伦敦', place: '大本钟', en: 'London · Big Ben', emoji: '🕰️', x: 50.0, y: 21.4 },
-  { cn: '纽约', place: '自由女神', en: 'New York · Statue of Liberty', emoji: '🗽', x: 29.4, y: 27.4 },
-  { cn: '东京', place: '东京塔', en: 'Tokyo Tower', emoji: '🗾', x: 88.8, y: 30.2 },
-  { cn: '悉尼', place: '歌剧院', en: 'Sydney · Opera House', emoji: '🏝️', x: 92.0, y: 68.8 },
-  { cn: '开罗', place: '金字塔', en: 'Cairo · Pyramids', emoji: '🐫', x: 58.6, y: 33.3 },
-  { cn: '里约', place: '基督像', en: 'Rio · Christ Statue', emoji: '⛪', x: 38.0, y: 62.8 },
+  { cn: '巴黎', place: '埃菲尔铁塔', cityEn: 'Paris', placeEn: 'Eiffel Tower', emoji: '🗼', x: 50.7, y: 22.9 },
+  { cn: '伦敦', place: '大本钟', cityEn: 'London', placeEn: 'Big Ben', emoji: '🕰️', x: 50.0, y: 21.4 },
+  { cn: '纽约', place: '自由女神', cityEn: 'New York', placeEn: 'Statue of Liberty', emoji: '🗽', x: 29.4, y: 27.4 },
+  { cn: '东京', place: '东京塔', cityEn: 'Tokyo', placeEn: 'Tokyo Tower', emoji: '🗾', x: 88.8, y: 30.2 },
+  { cn: '悉尼', place: '歌剧院', cityEn: 'Sydney', placeEn: 'Opera House', emoji: '🏝️', x: 92.0, y: 68.8 },
+  { cn: '开罗', place: '金字塔', cityEn: 'Cairo', placeEn: 'Pyramids', emoji: '🐫', x: 58.6, y: 33.3 },
+  { cn: '里约', place: '基督像', cityEn: 'Rio', placeEn: 'Christ the Redeemer', emoji: '⛪', x: 38.0, y: 62.8 },
 ];
+
+type TravelLoc = (typeof LOCATIONS)[number];
+
+/** 城市名（按界面语言） */
+const cityName = (l: TravelLoc, lang: Language) => (lang === 'en' ? l.cityEn : l.cn);
+/** 地标名（按界面语言） */
+const placeName = (l: TravelLoc, lang: Language) => (lang === 'en' ? l.placeEn : l.place);
+/** 「城市 · 地标」整串（按界面语言；全 App 统一的展示格式） */
+const fullName = (l: TravelLoc, lang: Language) =>
+  lang === 'en' ? `${l.cityEn} · ${l.placeEn}` : `${l.cn}·${l.place}`;
 
 /**
  * 旅行打卡故事：内置离线长故事（约 5-10 分钟，零运行期 token、零延迟、可缓存）。
@@ -235,11 +250,11 @@ function genericTravelStory(name: string, length: TravelLength = 'medium'): { ti
   return { title: s.title, content: s.content };
 }
 
-/** 长度档位展示文案（与创作页长度选择一致） */
+/** 长度档位展示文案（与创作页长度选择完全一致：短 3 / 中 15 / 长 25 分钟） */
 const LENGTH_LABELS: Record<TravelLength, { zh: string; en: string; tagZh: string; tagEn: string }> = {
-  short: { zh: '短', en: 'Short', tagZh: '~4分钟', tagEn: '~4 min' },
-  medium: { zh: '中', en: 'Medium', tagZh: '~10分钟', tagEn: '~10 min' },
-  long: { zh: '长', en: 'Long', tagZh: '~20分钟', tagEn: '~20 min' },
+  short: { zh: '短', en: 'Short', tagZh: '~3分钟', tagEn: '~3 min' },
+  medium: { zh: '中', en: 'Medium', tagZh: '~15分钟', tagEn: '~15 min' },
+  long: { zh: '长', en: 'Long', tagZh: '~25分钟', tagEn: '~25 min' },
 };
 
 /** 等待时的轮换提示：孩子不识字也靠小浣熊和动效知道「还在做，别走」 */
@@ -257,11 +272,11 @@ const BADGE_RULES = [
   { count: 15, emoji: '🥇', label: { zh: '十五城传奇', en: '15 Cities Legend' } },
 ];
 
-const stepConfig: { key: Step; icon: string; label: string }[] = [
-  { key: 'locate', icon: '📍', label: '定位' },
-  { key: 'generate', icon: '✨', label: '生成' },
-  { key: 'play', icon: '📖', label: '播放' },
-  { key: 'success', icon: '✅', label: '打卡' },
+const stepConfig: { key: Step; icon: string; zh: string; en: string }[] = [
+  { key: 'locate', icon: '📍', zh: '定位', en: 'Place' },
+  { key: 'generate', icon: '✨', zh: '生成', en: 'Write' },
+  { key: 'play', icon: '📖', zh: '播放', en: 'Listen' },
+  { key: 'success', icon: '✅', zh: '打卡', en: 'Done' },
 ];
 
 export default function TravelCheckinScreen() {
@@ -306,12 +321,15 @@ export default function TravelCheckinScreen() {
     const lower = q.toLowerCase();
     const matched = LOCATIONS.find((l) => {
       const cn = l.cn;
-      const en = l.en.toLowerCase();
-      const place = l.place.toLowerCase();
+      const place = l.place;
+      const cityEn = l.cityEn.toLowerCase();
+      const placeEn = l.placeEn.toLowerCase();
       return (
         cn.includes(q) || q.includes(cn) ||
-        en.includes(lower) || lower.includes(en) ||
-        place.includes(lower) || lower.includes(place)
+        place.includes(q) || q.includes(place) ||
+        cityEn.includes(lower) || lower.includes(cityEn) ||
+        placeEn.includes(lower) || lower.includes(placeEn) ||
+        lower.includes(`${cityEn} ${placeEn}`)
       );
     });
     if (matched) setSelectedLoc(matched);
@@ -409,7 +427,8 @@ export default function TravelCheckinScreen() {
     if (!showPaywall(gate)) return;
 
     const loc = selectedLoc;
-    setLocation(language === 'en' ? loc.en : `${loc.cn}·${loc.place}`);
+    // 打卡记录里存「当前界面语言」的完整名：中文存「东京·东京塔」，英文存「Tokyo · Tokyo Tower」
+    setLocation(fullName(loc, language === 'en' ? 'en' : 'zh'));
     setStep('generate');
 
     // 本地模板先备好：AI 生成失败 / 无网 / 额度耗尽时立刻顶上，保证永远有故事可听
@@ -423,7 +442,7 @@ export default function TravelCheckinScreen() {
       generateTravelStory({
         place: loc.place,
         city: loc.cn,
-        placeEn: loc.en,
+        placeEn: fullName(loc, 'en'),
         length: storyLength,
         language: language === 'zh' ? 'zh' : 'en',
       }),
@@ -519,13 +538,32 @@ export default function TravelCheckinScreen() {
   // 地图数据：把 LOCATIONS 转成 CartoonMap 需要的格式，并标出已打卡的
   const mapSpots: MapSpot[] = LOCATIONS.map((l) => ({
     id: l.place,
-    name: l.cn,
-    place: l.place,
+    // 英文界面只出现英文名：地图图钉上的字也跟着界面语言走
+    name: cityName(l, language),
+    place: placeName(l, language),
     emoji: l.emoji,
     x: l.x,
     y: l.y,
-    visited: visitedPlaces.includes(l.cn),
+    // 打卡记录里存的是当时的界面语言（中文「东京」或英文「Tokyo」），两种都认
+    visited: visitedPlaces.includes(l.cn) || visitedPlaces.includes(l.cityEn),
   }));
+
+  /**
+   * 星星墙上的地名：打卡记录保存的是「打卡当时的界面语言」，
+   * 切到英文界面后要重新映射成英文，否则会出现一串中文地名。
+   * 自定义地点（地图上没有的）原样显示。
+   */
+  const localizedVisited = (stored: string) => {
+    const hit: TravelLoc | undefined = LOCATIONS.find(
+      (l) =>
+        l.cn === stored ||
+        l.cityEn === stored ||
+        l.place === stored ||
+        l.placeEn === stored
+    );
+    if (!hit) return stored;
+    return language === 'en' ? hit.cityEn : hit.cn;
+  };
 
   // Step indicator
   const stepIdx = stepConfig.findIndex(s => s.key === step);
@@ -544,7 +582,9 @@ export default function TravelCheckinScreen() {
               <Text style={[styles.stepIcon, i === stepIdx && styles.stepIconActive]}>{s.icon}</Text>
             )}
           </View>
-          <Text style={[styles.stepLabel, i === stepIdx && styles.stepLabelActive]}>{s.label}</Text>
+          <Text style={[styles.stepLabel, i === stepIdx && styles.stepLabelActive]}>
+            {language === 'en' ? s.en : s.zh}
+          </Text>
           {i < stepConfig.length - 1 && <View style={styles.stepLine} />}
         </React.Fragment>
       ))}
@@ -597,7 +637,7 @@ export default function TravelCheckinScreen() {
               <TextInput
                 style={styles.searchInput}
                 value={query}
-                placeholder={language === 'en' ? '搜索或语音输入地点' : '搜索或语音说出地点'}
+                placeholder={language === 'en' ? 'Search or say a place name' : '搜索或语音说出地点'}
                 placeholderTextColor="#999"
                 onChangeText={setQuery}
               />
@@ -643,11 +683,16 @@ export default function TravelCheckinScreen() {
               onSelect={(spot) =>
                 setSelectedLoc(LOCATIONS.find((l) => l.place === spot.id) ?? null)
               }
+              legend={
+                language === 'en'
+                  ? { todo: 'To visit', done: 'Visited' }
+                  : { todo: '可打卡', done: '已打卡' }
+              }
               hint={
                 selectedLoc
                   ? (language === 'en'
-                      ? `Selected: ${selectedLoc.en}`
-                      : `已选好：${selectedLoc.cn}·${selectedLoc.place}`)
+                      ? `Selected: ${fullName(selectedLoc, 'en')}`
+                      : `已选好：${fullName(selectedLoc, 'zh')}`)
                   : (language === 'en' ? 'No place picked yet' : '还没选地点哦～')
               }
             />
@@ -659,20 +704,23 @@ export default function TravelCheckinScreen() {
             <ScrollView style={styles.locList} nestedScrollEnabled>
               {(() => {
                 const q = query.trim();
-                const filtered = q
-                  ? LOCATIONS.filter(
-                      (l) =>
-                        l.cn.includes(q) ||
-                        l.en.toLowerCase().includes(q.toLowerCase()) ||
-                        l.place.includes(q)
-                    )
-                  : LOCATIONS;
+                const ql = q.toLowerCase();
+                // 中英文名都参与匹配：英文界面输入 Tokyo、中文界面输入 东京 都能命中
+                const matches = (l: TravelLoc) =>
+                  l.cn.includes(q) ||
+                  l.place.includes(q) ||
+                  l.cityEn.toLowerCase().includes(ql) ||
+                  l.placeEn.toLowerCase().includes(ql);
+                const filtered = q ? LOCATIONS.filter(matches) : LOCATIONS;
                 const exact = q
                   ? LOCATIONS.some(
                       (l) =>
                         l.cn === q ||
-                        l.en.toLowerCase() === q.toLowerCase() ||
-                        l.place === q
+                        l.place === q ||
+                        l.cityEn.toLowerCase() === ql ||
+                        l.placeEn.toLowerCase() === ql ||
+                        fullName(l, 'en').toLowerCase() === ql ||
+                        fullName(l, 'zh') === q
                     )
                   : true;
                 const customSel = !!selectedLoc && selectedLoc.place === q && !exact;
@@ -685,7 +733,8 @@ export default function TravelCheckinScreen() {
                           setSelectedLoc({
                             cn: q,
                             place: q,
-                            en: q,
+                            cityEn: q,
+                            placeEn: q,
                             emoji: '📍',
                             x: 50,
                             y: 30,
@@ -712,8 +761,14 @@ export default function TravelCheckinScreen() {
                         >
                           <Text style={styles.locEmoji}>{l.emoji}</Text>
                           <View style={styles.locTextWrap}>
-                            <Text style={styles.locName}>{l.cn}·{l.place}</Text>
-                            <Text style={styles.locEn}>{l.en}</Text>
+                            {/*
+                              中文界面：主行「城市·地标」+ 英文副行（方便双语家庭）；
+                              英文界面：只留英文主行，不再出现任何汉字。
+                            */}
+                            <Text style={styles.locName}>{fullName(l, language)}</Text>
+                            {language === 'zh' ? (
+                              <Text style={styles.locEn}>{`${l.cityEn} · ${l.placeEn}`}</Text>
+                            ) : null}
                           </View>
                           {isSel && <Text style={styles.locCheck}>✓</Text>}
                         </TouchableOpacity>
@@ -880,7 +935,7 @@ export default function TravelCheckinScreen() {
                 </Text>
                 <View style={styles.starRow}>
                   {visitedPlaces.map((p, i) => (
-                    <Text key={`${p}-${i}`} style={styles.starChip}>⭐ {p}</Text>
+                    <Text key={`${p}-${i}`} style={styles.starChip}>⭐ {localizedVisited(p)}</Text>
                   ))}
                 </View>
               </View>

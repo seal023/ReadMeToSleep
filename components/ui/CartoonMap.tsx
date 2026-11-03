@@ -41,6 +41,11 @@ interface CartoonMapProps {
   onSelect?: (spot: MapSpot) => void;
   /** 地图说明文案 */
   hint?: string;
+  /**
+   * 图例文字。默认中文；英文界面必须传入，否则地图下方会冒出两个汉字
+   * （v84 反馈：英文界面里不该出现任何汉字）。
+   */
+  legend?: { todo: string; done: string };
 }
 
 /** 地图上的卡通图钉 */
@@ -125,7 +130,9 @@ function MapPin({
   );
 }
 
-export function CartoonMap({ spots, selectedId, onSelect, hint }: CartoonMapProps) {
+export function CartoonMap({ spots, selectedId, onSelect, hint, legend }: CartoonMapProps) {
+  const legendTodo = legend?.todo ?? '可打卡';
+  const legendDone = legend?.done ?? '已打卡';
   return (
     <View style={styles.mapCard}>
       <View style={styles.mapSurface}>
@@ -152,11 +159,11 @@ export function CartoonMap({ spots, selectedId, onSelect, hint }: CartoonMapProp
       <View style={styles.legendRow}>
         <View style={styles.legendItem}>
           <Text style={styles.legendDot}>📍</Text>
-          <Text style={styles.legendText}>可打卡</Text>
+          <Text style={styles.legendText}>{legendTodo}</Text>
         </View>
         <View style={styles.legendItem}>
           <Text style={styles.legendDot}>⭐</Text>
-          <Text style={styles.legendText}>已打卡</Text>
+          <Text style={styles.legendText}>{legendDone}</Text>
         </View>
       </View>
     </View>
