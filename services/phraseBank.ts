@@ -178,6 +178,16 @@ export function pickPhrase(cat: PhraseCategory, lang: Language): string {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/**
+ * 「声音设置」页的试听样句。
+ * ⚠️ 试听与预热必须引用同一份字符串（缓存 key = 文本 hash），
+ * 否则首次点选永远要现合成——正是 v91 #4「等很久才出声」的原因。
+ */
+export const VOICE_PREVIEW_SAMPLE: Record<Language, string> = {
+  zh: '宝贝，今晚我们一起讲一个小浣熊的故事好不好？',
+  en: 'Sweetheart, shall we read a little story together tonight?',
+};
+
 /** 列出全部短句（含语言），供预热缓存一次性合成 */
 export function allBankPhrases(): { text: string; lang: Language }[] {
   const out: { text: string; lang: Language }[] = [];

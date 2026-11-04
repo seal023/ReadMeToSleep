@@ -18,8 +18,9 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ScreenBackButton } from '../../components/ui/ScreenBackButton';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
 import { getProgress, saveProgress } from '../../services/storage';
 import { BADGES, LEVELS, getLevel, getNextLevel, getNewBadges } from '../../constants/rewards';
@@ -46,6 +47,7 @@ function makeTestCheckIns(n: number): Progress['checkIns'] {
 }
 
 export default function RewardTestScreen() {
+  const router = useRouter();
   const [progress, setProgress] = useState<Progress | null>(null);
   const [preview, setPreview] = useState<PreviewState>(EMPTY_PREVIEW);
 
@@ -178,6 +180,7 @@ export default function RewardTestScreen() {
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView contentContainerStyle={styles.scroll}>
+        <ScreenBackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/(parent)/hub'))} />
         <Text style={styles.title}>🧪 奖励测试</Text>
         <Text style={styles.subtitle}>
           仅测试用：直接推进计数，不必逐个听完故事。上架前可删掉此页。

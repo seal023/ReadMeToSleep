@@ -136,6 +136,15 @@ export default function ParentIndex() {
         alwaysBounceVertical={false}
       >
         <View style={styles.panel}>
+          {/* v91 #3：家长模式原来一旦进来只能输密码，没有「回孩子端」的出口。
+              放在面板最上方，不影响 PIN 的安全语义（只是退回孩子界面）。 */}
+          <TouchableOpacity
+            style={styles.exitBtn}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.exitBtnText}>← {t('common.back')}</Text>
+          </TouchableOpacity>
           {/* 进门页用可爱浣熊，睡姿 + 呼吸 + 飘 Z 动画（比静态表情更亲切） */}
           <View style={styles.racco}>
             <Racco state="sleeping" size={raccoSize} />
@@ -229,6 +238,16 @@ const styles = StyleSheet.create({
     maxWidth: PANEL_MAX_WIDTH,
     alignItems: 'center',
   },
+  // 回孩子端的出口（家长面板是 column + 居中，这里靠左单独对齐）
+  exitBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    marginBottom: 6,
+  },
+  exitBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   racco: { alignItems: 'center', marginBottom: 4 },
   title: {
     fontSize: 24,

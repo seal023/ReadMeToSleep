@@ -10,6 +10,7 @@ import { checkVoiceCloneGate } from '@/services/entitlement';
 import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneResult, type CloneTarget } from '@/services/voiceClone';
 import { warmClonedPhrases, clearClonedPhraseCache } from '@/services/phraseCache';
 import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayback';
+import { stopStory } from '@/services/playback';
 import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting } from '@/services/storage';
 import { voiceDisplayName } from '@/services/voiceCatalog';
 
@@ -228,6 +229,8 @@ export default function VoiceClonePage() {
 
   const startRecording = async () => {
     try {
+      // 录音前先停掉正在响的提示音 / 试听：否则录进去杂音，会话也切不到录音态
+      stopStory();
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(t('vc.recFail'), t('vc.micPerm'));

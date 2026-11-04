@@ -5,17 +5,20 @@ import { LanguageProvider, useLanguage } from '../hooks/useLanguage';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { trySilentRestore } from '../services/iap';
 import { useAppStore } from '../store/appStore';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { ZCOOLKuaiLe_400Regular } from '@expo-google-fonts/zcool-kuaile';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
-import { getChildName, getPromptVoiceSetting, getVoiceSetting, migrateVoiceDefaultsOnce } from '../services/storage';
+import {
+  getChildName, getPromptVoiceSetting, getVoiceSetting,
+  migrateVoiceDefaultsOnce, migratePromptVoiceOnce,
+} from '../services/storage';
 import { speakWithBestVoice, stopStory } from '../services/playback';
 import { invalidateAudioMode } from '../services/tts';
 import { reassertAudioSession } from '../services/clonedVoicePlayback';
-import { ensurePhraseWarmup } from '../services/phraseCache';
+import { ensurePhraseWarmup, ensurePresetVoicesInstalled } from '../services/phraseCache';
 
 /**
  * inactive → background 的间隔门槛（毫秒）。
@@ -78,6 +81,9 @@ function GreetingOnOpen() {
   /** 前台时刷新告别所需的全部信息（启动 / 回到前台 / 家长改过昵称或声线后） */
   const refreshFarewellCache = useCallback(async () => {
     try {
+      // 先确保「提示音声线」的历史遗留克隆值已纠正（幂等，一次即止）：
+      // 否则首启这一句问候可能还按旧的克隆声线念，正是「提示音不该是克隆声」的来源。
+      await migratePromptVoiceOnce();
       const agreed = await AsyncStorage.getItem(PRIVACY_CONSENT_KEY);
       agreedRef.current = agreed === 'agreed';
       privacyReadyRef.current = true;
@@ -137,6 +143,9 @@ function GreetingOnOpen() {
     // 若已克隆声音，后台预热高频短句到本地缓存：使提示音是克隆声且秒出、零 token
     // （克隆较早 / 缓存被系统清理也能补上；同进程只跑一次）
     ensurePhraseWarmup();
+    // 首次安装：把「除克隆声以外的所有声音」都装进本地缓存（大姐姐/温柔女声/大哥哥/邻家姐姐），
+    // 之后任何提示音、任何音色试听都命中磁盘缓存 —— 不需要缓冲、离线也能响。
+    void ensurePresetVoicesInstalled();
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') {
         // 回前台先重建音频会话（2026-11-01 修复 #2）：
@@ -167,6 +176,32 @@ function GreetingOnOpen() {
       sub.remove();
     };
   }, [hydrated, speak, refreshFarewellCache]);
+
+  return null;
+}
+
+/**
+ * 「换界面就闭嘴」：提示音 / 朗读不跟着用户走到下一个页面。
+ * ---------------------------------------------------------------------------
+ * 需求（2026-11-04）：退出、更换操作界面时，提示音必须马上停，不能一边翻页一边还在说。
+ *
+ * 实现：监听路由 pathname 变化，一变化就 stopStory()（同时停云端音频与系统语音）。
+ * 冷启动那 STARTUP_GRACE_MS 内不拦：启动页 → 首页的一次跳转会把刚播的问候掐掉。
+ */
+const STARTUP_GRACE_MS = 2500;
+
+function StopAudioOnNavigate() {
+  const pathname = usePathname();
+  const mountedAt = useRef(Date.now());
+  const lastPath = useRef(pathname);
+
+  useEffect(() => {
+    if (pathname === lastPath.current) return;
+    lastPath.current = pathname;
+    // 启动阶段的「启动页 → 首页」跳转不算用户换界面
+    if (Date.now() - mountedAt.current < STARTUP_GRACE_MS) return;
+    stopStory();
+  }, [pathname]);
 
   return null;
 }
@@ -225,6 +260,8 @@ export default function RootLayout() {
       // v82：先把旧版本「克隆成功即自动写入」的克隆声线清回默认内置大姐姐（只跑一次），
       // 否则老设备升级后会看到「默认说是大姐姐、实际念故事还是妈妈的声音」。
       await migrateVoiceDefaultsOnce();
+      // v92：提示音的初始声音统一回默认大姐姐（只纠正历史遗留的克隆值，不覆盖家长的选择）
+      await migratePromptVoiceOnce();
       const [lang, voice, parentMode] = await Promise.all([
         AsyncStorage.getItem('rms_language'),
         getVoiceSetting(), // 已含默认值兜底，恒为有效声线
@@ -244,6 +281,9 @@ export default function RootLayout() {
   const handlePrivacyAgree = async () => {
     await AsyncStorage.setItem(PRIVACY_CONSENT_KEY, 'agreed');
     setShowPrivacy(false);
+    // 同意隐私政策后才开始联网「装声音」与短句预热（未同意前一行网络都不发）
+    ensurePhraseWarmup();
+    void ensurePresetVoicesInstalled();
   };
 
   const handleOpenPrivacyPolicy = () => {
@@ -258,6 +298,7 @@ export default function RootLayout() {
       <AuthProvider>
         <StatusBar style="dark" />
         <GreetingOnOpen />
+        <StopAudioOnNavigate />
         <EntitlementSyncOnLogin />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />

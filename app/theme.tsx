@@ -19,7 +19,7 @@
  *   配震动反馈 + 语音播报，不识字也能玩。
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
@@ -37,7 +37,7 @@ import {
   type ThemeKey,
 } from '../constants/Colors';
 import { useLanguage } from '../hooks/useLanguage';
-import { speakWithBestVoice } from '../services/playback';
+import { speakWithBestVoice, prewarmSpeech } from '../services/playback';
 
 /** 每套主题一个专属 emoji，孩子看图标就能认出来 */
 const THEME_EMOJI: Record<ThemeKey, string> = {
@@ -58,6 +58,29 @@ export default function ThemeScreen() {
   const nameOf = (key: ThemeKey) => t(`theme.names.${key}`);
   const tagOf = (key: ThemeKey) => t(`theme.tags.${key}`);
 
+  /** 点选后要说的那句话（预热与播放必须逐字一致，否则缓存永不命中） */
+  const pickedLine = (key: ThemeKey) =>
+    `${nameOf(key)}${language === 'zh' ? '，' : '. '}${t('theme.speakPicked')}`;
+
+  /**
+   * v91 #4：进页面先把 4 句反馈语合成好落盘。
+   * 之前是点击当下才发起合成，网络一抖就要等十几秒（用户以为没反应直接退了）。
+   * 预热后点一下就命中本地缓存，几乎瞬时出声。
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const k of THEME_KEYS) {
+        if (cancelled) return;
+        await prewarmSpeech(pickedLine(k), language);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
+
   const pick = (key: ThemeKey) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const ok = saveThemeKey(key);
@@ -66,12 +89,9 @@ export default function ThemeScreen() {
       return;
     }
     setSaved(key);
-    // 语音反馈：孩子不识字，选完要「听得见」结果
-    const sep = language === 'zh' ? '，' : '. ';
-    void speakWithBestVoice(
-      `${nameOf(key)}${sep}${t('theme.speakPicked')}`,
-      language,
-    );
+    // 语音反馈：孩子不识字，选完要「听得见」结果。
+    // fast：不再等音频会话配置，进一步压缩起播延迟。
+    void speakWithBestVoice(pickedLine(key), language, { fast: true });
   };
 
   return (

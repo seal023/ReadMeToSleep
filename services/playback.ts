@@ -3,6 +3,7 @@ import {
   playClonedAudio,
   stopClonedAudio,
   hasClonedVoice,
+  prewarmClonedAudio,
 } from './clonedVoicePlayback';
 import { getPromptVoiceSetting } from './storage';
 import { DEFAULT_VOICE, normalizeVoiceId } from './voiceCatalog';
@@ -40,12 +41,24 @@ export function presetTargetFor(voiceId: string | undefined): string | undefined
  * 播放故事。返回是否用上了「云端音频」（true 时调用方可用真实播放位置驱动进度条）。
  * 注意：本函数「发起即返回」，进度条由调用方按字数估算驱动（见 [id].tsx）。
  */
+/** 最近一次 playStory 实际用上的声线（降级后用的一定是兜底声线，不是用户选的那个） */
+let lastPlayedVoice = '';
+export function getLastPlayedVoice(): string {
+  return lastPlayedVoice;
+}
+
 export async function playStory(
   text: string,
   voiceId: string,
   language: 'zh' | 'en' = 'zh',
   onDone?: () => void,
+  /**
+   * startAt：从第几秒开始讲（换声 / 断点续播）。
+   * 长故事走分片时，它会直接定位到对应那一篇起播，不再「从开头播一瞬再跳」。
+   */
+  opts?: { startAt?: number },
 ): Promise<boolean> {
+  const startAt = opts?.startAt && opts.startAt > 1 ? opts.startAt : undefined;
   for (const target of voiceCandidates(voiceId)) {
     const ok = await playClonedAudio(
       text,
@@ -53,12 +66,16 @@ export async function playStory(
       onDone,
       undefined,
       undefined,
-      undefined,
+      startAt ? { startAt } : undefined,
       language,
     );
-    if (ok) return true;
+    if (ok) {
+      lastPlayedVoice = target; // 记录真实生效的声线（供界面判断"点了没反应"）
+      return true;
+    }
   }
   // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
+  lastPlayedVoice = 'system';
   textToSpeech(text, 'system', language, onDone);
   return false;
 }
@@ -218,4 +235,31 @@ export async function speakPhrase(
   const text = pickPhrase(cat, language);
   if (!text) return false;
   return speakWithBestVoice(text, language, opts);
+}
+
+/**
+ * 预热一句「提示语」（用提示音声线）——点下去就出声，不再等合成。
+ * ---------------------------------------------------------------------------
+ * v91 #4：配色页点选后语音要等十几秒才响。短句也是现场合成的，
+ * 只要没命中磁盘缓存就要走一次网络。进页面时先把要说的几句合成好落盘，
+ * 真正点击时直接命中缓存（零延迟、零 token）。
+ */
+export async function prewarmSpeech(text: string, language: 'zh' | 'en' = 'zh'): Promise<void> {
+  const content = (text || '').trim();
+  if (!content) return;
+  let voice: string | undefined;
+  try {
+    voice = await getPromptVoiceSetting();
+  } catch {
+    voice = undefined;
+  }
+  const target = normalizeVoiceId(voice);
+  if (target === 'system') return; // 系统音是本地合成，不需要预热
+  const t2 = presetTargetFor(target);
+  if (!t2) return;
+  try {
+    await prewarmClonedAudio(content, t2, language);
+  } catch {
+    /* 预热失败不影响正常播放 */
+  }
 }

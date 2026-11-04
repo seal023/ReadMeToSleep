@@ -13,7 +13,7 @@ import {
 import { getProgress, saveProgress, getVoiceSetting } from '../../services/storage';
 import { checkCheckInGate, FREE_TOTAL_CHECKIN_LIMIT } from '../../services/entitlement';
 import { getNewBadges, computeRewardExtras, BADGES } from '../../constants/rewards';
-import { playStory } from '../../services/playback';
+import { playStory, stopStory } from '../../services/playback';
 import { isClonedAudioPlaying } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { generateTravelStory } from '../../services/travelStory';
@@ -302,6 +302,33 @@ export default function TravelCheckinScreen() {
   const [storyLength, setStoryLength] = useState<TravelLength>('medium');
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
+  /**
+   * v91 #3：任何步骤都能退出。
+   * 之前只有「打卡成功」页有返回键，故事生成出来后必须听完才走得掉。
+   * 注意：退出只影响界面，打卡判定仍然只认「故事听完」（handlePlay 里播完才 handleCheckIn）。
+   */
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      stopStory(); // 离开页面立刻停声，避免「界面走了、故事还在读」
+    };
+  }, []);
+
+  const handleBack = () => {
+    stopStory();
+    try {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+    } catch {
+      /* 个别平台没有 canGoBack，直接兜底 */
+    }
+    router.replace('/(tabs)');
+  };
+
   // 生成中的轮换提示：AI 现场写作要 10~40 秒，静止画面会让孩子以为卡住了
   const [genHintIdx, setGenHintIdx] = useState(0);
   useEffect(() => {
@@ -359,6 +386,8 @@ export default function TravelCheckinScreen() {
     }
     // 空闲 → 开始录音
     try {
+      // 录音前先停掉正在读的提示音 / 故事（否则录进杂音、且会话切不过去会录不到）
+      stopStory();
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(
@@ -494,6 +523,8 @@ export default function TravelCheckinScreen() {
       await new Promise((r) => setTimeout(r, 300));
     }
     setIsPlaying(false);
+    // 已经离开页面（点了返回）：不记打卡，避免「没听完也打卡成功」
+    if (!aliveRef.current) return;
     handleCheckIn();
   };
 
@@ -625,6 +656,12 @@ export default function TravelCheckinScreen() {
       <View style={styles.container}>
       {/* Background confetti */}
       {step === 'success' && renderConfetti()}
+
+      {/* v91 #3：常驻返回键（所有步骤都有）。
+          故事生成后也能直接退出，不必非听完；打卡仍以「听完」为准。 */}
+      <TouchableOpacity style={styles.floatBackBtn} onPress={handleBack} activeOpacity={0.75}>
+        <Text style={styles.floatBackText}>←</Text>
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.header}>{language === 'en' ? 'Travel Check-in' : '旅行打卡'}</Text>
@@ -1088,6 +1125,25 @@ const styles = StyleSheet.create({
   playBtnText: { fontSize: 15, fontWeight: '600', color: '#FFF' },
   backBtn: { marginTop: 12, paddingVertical: 8 },
   backBtnText: { fontSize: 14, color: '#7A6A5D' },
+  // 常驻返回键：悬浮在内容之上，任何步骤都在同一个位置（孩子记得住）
+  floatBackBtn: {
+    position: 'absolute',
+    top: 46,
+    left: 16,
+    zIndex: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  floatBackText: { fontSize: 22, color: '#3D3229', fontWeight: '700' },
 
   // Success
   celebrateEmoji: { fontSize: 64, marginBottom: 12 },

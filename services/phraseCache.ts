@@ -4,10 +4,15 @@ import en from '../locales/en.json';
 import { getChildName, getPromptVoiceSetting } from './storage';
 import {
   prewarmPhraseBatch,
+  prewarmClonedAudio,
   clearClonedCacheForTarget,
   hasClonedVoice,
+  hasCachedAudio,
+  isClonedAudioPlaying,
 } from './clonedVoicePlayback';
-import { allBankPhrases } from './phraseBank';
+import { installBundledPrompts } from './bundledPrompts';
+import { allBankPhrases, VOICE_PREVIEW_SAMPLE } from './phraseBank';
+import { PRESET_VOICE_OPTIONS, DEFAULT_VOICE } from './voiceCatalog';
 import type { CloneTarget } from './voiceClone';
 import type { Language } from '../types';
 
@@ -62,6 +67,8 @@ function buildWarmPhrases(lang: Language, name: string): string[] {
   // 后台网络又被 iOS 降速 → 听起来就是「再见」过了十几秒才出来。
   const out: string[] = [];
   for (const key of NAME_KEYS) out.push(applyName(translate(key, lang), name));
+  // 声音设置页的试听样句：点选后要立刻出声，不能现合成
+  out.push(VOICE_PREVIEW_SAMPLE[lang]);
   for (const p of allBankPhrases()) {
     if (p.lang === lang) out.push(p.text);
   }
@@ -100,6 +107,18 @@ export function clearClonedPhraseCache(target: CloneTarget): void {
 }
 
 let appWarmTriggered = false;
+
+/** 隐私同意标记（与 _layout.tsx 同一个 key）：未同意前不发任何网络请求 */
+const PRIVACY_CONSENT_KEY = 'rms_privacy_consent_v1';
+
+async function privacyAgreed(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(PRIVACY_CONSENT_KEY)) === 'agreed';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * App 打开（语言 hydrate 后）触发「一次」全量预热。
  * 覆盖两种情形：① 早前预热过、缓存被系统清理；② 用户换了提示音声线。
@@ -107,6 +126,8 @@ let appWarmTriggered = false;
  */
 export async function ensurePhraseWarmup(): Promise<void> {
   if (appWarmTriggered) return;
+  // 先查隐私同意：未同意前一行网络都不发（同意后由 _layout 再调一次）
+  if (!(await privacyAgreed())) return;
   appWarmTriggered = true;
   try {
     // v81：提示音声线与故事声线独立，这里只预热「提示音」要用的那个声线
@@ -117,5 +138,133 @@ export async function ensurePhraseWarmup(): Promise<void> {
     await warmClonedPhrases(voice);
   } catch {
     /* 忽略 */
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  首次安装：把「除克隆声以外的所有声音」装进本地缓存                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 需求（2026-11-04）：「初次安装的时候，除了克隆的声音，其他声音都安装进去，
+ * 这样就不需要缓冲了」。
+ *
+ * 做法：把内置样本音色（大姐姐 / 温柔女声 / 大哥哥 / 邻家姐姐）各自需要的
+ * 提示音全部提前合成、落到本地缓存。之后任何一次提示音 / 试听都直接命中磁盘缓存，
+ * 零网络、零 token、点下去就出声；离线也能响。
+ *
+ * 覆盖内容（中英各一份，与运行时逐字一致才命中）：
+ *   · 带昵称的问候 / 告别（必须秒出，尤其锁屏告别）
+ *   · 声音设置页的试听样句
+ *   · 整份俏皮短句词库（答对 / 再想想 / 我听到啦 / 引导语…）
+ *   · AI 兜底回答
+ *
+ * 代价：每个音色约 100 条短句，四条音色约 400 次合成请求。全部是几十字的短文本，
+ * token 成本很低；带宽/耗时靠「先装正在用的 → 再装默认 → 最后装其余」+ 低并发 + 音色间停顿
+ * 控制在可接受范围。只跑一次（标记落盘），中途被打断下次启动会接着补（已落盘的自动跳过）。
+ */
+const PRESET_INSTALL_FLAG = 'rms_preset_voices_installed_v1';
+let presetInstallStarted = false;
+
+/** 中英双语全套提示音文本（含名字替换，和运行时播报逐字一致） */
+function buildWarmPhrasesAllLangs(name: string): { text: string; lang: Language }[] {
+  const out: { text: string; lang: Language }[] = [];
+  (['zh', 'en'] as Language[]).forEach((lang) => {
+    // 问候 / 告别排最前：它们必须秒出（锁屏告别尤其不能等）
+    for (const key of NAME_KEYS) out.push({ text: applyName(translate(key, lang), name), lang });
+    out.push({ text: VOICE_PREVIEW_SAMPLE[lang], lang });
+    for (const p of allBankPhrases()) {
+      if (p.lang === lang) out.push(p);
+    }
+    out.push({ text: translate('story.qa.unknown', lang), lang });
+  });
+  return out;
+}
+
+/** 把某个内置样本音色需要的全部提示音装进本地缓存（已存在的自动跳过） */
+export async function warmPresetVoice(target: string): Promise<void> {
+  if (!target || !target.startsWith('preset:')) return;
+  try {
+    const name = (await getChildName()) || '';
+    // 内置 mp3 覆盖了固定短句（368 条）；这里只处理「内置补不到的」——
+    // 主要是带昵称的问候 / 告别（昵称由用户输入，无法预生成）。
+    // 过滤掉已落盘的，避免内置装完后又白发几百次合成请求。
+    const items = buildWarmPhrasesAllLangs(name).filter(
+      (it) => !hasCachedAudio(it.text, target as CloneTarget),
+    );
+    if (items.length === 0) return;
+    // 安装期并发压到 2：别和「用户正在播的故事」抢带宽，也别撞接口限流
+    const CONCURRENCY = 2;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < items.length) {
+        const it = items[cursor++];
+        // 用户正在听故事时先让路（最多等 20 秒）：安装不能让正在播的故事卡顿。
+        let waited = 0;
+        while (isClonedAudioPlaying() && waited < 20000) {
+          await new Promise((r) => setTimeout(r, 400));
+          waited += 400;
+        }
+        try {
+          await prewarmClonedAudio(it.text, target as CloneTarget, it.lang);
+        } catch {
+          /* 单条失败不影响其它 */
+        }
+        // 轻微限速：把突发请求摊平，别和首播抢接口
+        await new Promise((r) => setTimeout(r, 120));
+      }
+    };
+    const workers: Promise<void>[] = [];
+    for (let i = 0; i < Math.min(CONCURRENCY, items.length); i++) workers.push(worker());
+    await Promise.all(workers);
+  } catch {
+    /* 单个音色失败不影响其它音色 */
+  }
+}
+
+/** 后台预热某个内置音色（切换声音后调用，不阻塞界面） */
+export function warmPresetVoiceInBackground(target: string): void {
+  if (!target || !target.startsWith('preset:')) return;
+  void warmPresetVoice(target);
+}
+
+/**
+ * 首次安装（或缓存被系统清空后）一次性把全部内置音色装满缓存。
+ * 同进程只尝试一次；成功标记落盘后不再重复。
+ */
+export async function ensurePresetVoicesInstalled(): Promise<void> {
+  // ① 先装「随包内置」的 mp3：纯本地文件复制，不发任何网络请求，故不受隐私门控。
+  //    内部幂等（flag + 已存在文件跳过），重复调用开销可忽略。
+  await installBundledPrompts();
+
+  if (presetInstallStarted) return;
+  // 未同意隐私政策前不发任何合成请求（同意后 _layout 会再调一次）
+  if (!(await privacyAgreed())) return;
+  presetInstallStarted = true;
+  try {
+    const done = await AsyncStorage.getItem(PRESET_INSTALL_FLAG);
+    if (done === '1') return;
+
+    let prompt = DEFAULT_VOICE;
+    try {
+      prompt = await getPromptVoiceSetting();
+    } catch {
+      prompt = DEFAULT_VOICE;
+    }
+
+    // 顺序：正在用的 → 默认大姐姐 → 其余内置音色（去重）
+    const order: string[] = [];
+    [prompt, DEFAULT_VOICE, ...PRESET_VOICE_OPTIONS.map((o) => o.id)].forEach((v) => {
+      if (v && v.startsWith('preset:') && !order.includes(v)) order.push(v);
+    });
+
+    for (const v of order) {
+      await warmPresetVoice(v);
+      // 音色之间喘一口：把接口让给真正的播放请求，避免首播排队
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    await AsyncStorage.setItem(PRESET_INSTALL_FLAG, '1');
+  } catch {
+    /* 安装失败不影响使用；下次启动继续补（已落盘的会跳过） */
   }
 }

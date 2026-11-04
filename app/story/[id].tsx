@@ -25,7 +25,7 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 // 避免「刚录完能听、过一会儿/重进页面就播不出来」。
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
-import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor } from '../../services/playback';
+import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
@@ -209,6 +209,12 @@ export default function StoryPlayScreen() {
    * 现在录完先停住，界面上给「听我录的 / 重录 / 说完了下一题」三个选择。
    */
   const [voiceClipUri, setVoiceClipUri] = useState<string | null>(null);
+  /**
+   * v91 #2：语音题「孩子刚说的话」的转文字结果。
+   * 3~5 岁孩子不识字，光有录音回放家长也不知道说了啥；这里把 ASR 结果显示出来，
+   * 大人可以照着念给孩子听，也便于事后回忆孩子讲了什么。
+   */
+  const [qaAnswerText, setQaAnswerText] = useState('');
   /** 语音题录音回放中（按钮显示「⏸」） */
   const [voicePlaying, setVoicePlaying] = useState(false);
   const qaRecTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -554,6 +560,7 @@ export default function StoryPlayScreen() {
       const q = qaQuestions[qaIndex];
       // 换题：清掉上一题的录音句柄与回放状态
       setVoiceClipUri(null);
+      setQaAnswerText('');
       setVoicePlaying(false);
       const sinceEnter = Date.now() - qaPhaseEnterRef.current;
       const wait = qaIndex === 0 && sinceEnter < 1000 ? 1000 - sinceEnter : 0;
@@ -564,25 +571,29 @@ export default function StoryPlayScreen() {
     }
   }, [phase, qaIndex, qaLoading]);
 
-  // 题目预热：进入问答阶段前，把所有题目的克隆音频预先合成好（中英文都备），
+  // 题目预热：进入问答阶段前，把所有题目的音频预先合成好（中英文都备），
   // 这样「题目一出现就立即朗读」，不再有合成等待的延迟（命中缓存后零 token、零延迟）
   useEffect(() => {
     if (!qaQuestions || qaQuestions.length === 0) return;
-    if (!selectedVoice || selectedVoice === 'system') return;
     let cancelled = false;
     (async () => {
-      if (!(await hasClonedVoice(selectedVoice))) return;
+      /**
+       * ⚠️ 这里必须按「提示音声线」预热 —— 题目实际是用 speakWithBestVoice 朗读的，
+       * 它读的是提示音声线设置，不是故事朗读声线。之前这里用的 selectedVoice（故事声线），
+       * 一旦两个设置不同（比如故事用妈妈克隆声、提示音用大姐姐），预热出来的缓存永远命中不了，
+       * 结果每题都要现场合成：慢、且网络一抖就听不到题目（v91 #2）。
+       */
       for (const q of qaQuestions) {
         if (cancelled) break;
         // ⚠️ 这两句必须与 qaQuestionSpeech() 用的尾巴逐字一致，否则缓存永不命中
         const tailZh = q.type === 'voice' ? QA_VOICE_TAIL_ZH : '';
         const tailEn = q.type === 'voice' ? QA_VOICE_TAIL_EN : '';
-        await prewarmClonedAudio(q.question + tailZh, selectedVoice);
-        await prewarmClonedAudio(q.question + tailEn, selectedVoice);
+        await prewarmSpeech(q.question + tailZh, 'zh');
+        await prewarmSpeech(q.question + tailEn, 'en');
       }
     })();
     return () => { cancelled = true; };
-  }, [qaQuestions, selectedVoice]);
+  }, [qaQuestions, displayLang]);
 
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈
   useEffect(() => {
@@ -710,6 +721,11 @@ export default function StoryPlayScreen() {
           : presetTargetFor(selectedVoice);
       if (!target || cancelled) return;
       prewarmClonedAudio(storyText, target, displayLang);
+      // 主声线是克隆声时，顺手把「兜底的大姐姐」前 3 片也备好：
+      // 克隆声万一合成失败/超时，降级后第一段仍能几乎立刻出声，而不是又等一轮（v91 #1）
+      if (target !== 'preset:cherry') {
+        void prewarmClonedAudio(storyText, 'preset:cherry', displayLang, { maxChunks: 3 });
+      }
     })();
     return () => {
       cancelled = true;
@@ -973,15 +989,26 @@ export default function StoryPlayScreen() {
         return;
       }
 
-      const used = await playStory(storyText, voice, displayLang, onEnded);
+      const used = await playStory(storyText, voice, displayLang, onEnded, {
+        startAt: resumeAtRef.current,
+      });
       if (token !== playTokenRef.current) return;
       setUsingClonedVoice(used);
       clonedPlayingRef.current = used;
+      /**
+       * v91 #1：记录「实际生效」的声线。
+       * 用户选了妈妈的声音但云端合成失败时，playStory 会自动降级成内置大姐姐；
+       * 此时如果仍把 playingVoiceRef 记成妈妈，下次再点「妈妈的声音」会被判成
+       * 「没变化」直接 return —— 用户看到的现象就是「点了半天还是大姐姐」。
+       */
+      playingVoiceRef.current = getLastPlayedVoice() || voice;
 
       // 断点续播：从上次停下的位置接着听（仅克隆声 / 本地录音可 seek，系统音不支持）
       if (used && resumeAtRef.current > 3) {
         const target = resumeAtRef.current;
-        seekClonedAudio(target);
+        // 分片模式已经在起播时定位好了（见 playStory 的 startAt），这里只在明显偏离时补一次，
+        // 避免"刚定位好又被 seek 拉一下"的小跳帧
+        if (getClonedPosition() < target - 5) seekClonedAudio(target);
         // 音频刚加载时 seek 可能被忽略，600ms 后若位置仍在开头附近就补一次
         setTimeout(() => {
           if (token !== playTokenRef.current) return;
@@ -1208,8 +1235,8 @@ export default function StoryPlayScreen() {
       saveChildQuiz(quiz).catch(() => {});
       const fb = pickPhrase('correct', displayLang);
       setQaFeedback(fb);
-      // 等反馈语音完整播完（最多 3.5s 兜底）再进入下一题/第2轮，
-      // 避免「答对」被下一题的提示音打断、或两题语音重叠（Issue 3）。
+      // 等反馈语音播完再进下一题，避免「答对」被下一题打断；但最多只等 2.5 秒，
+      // 提示音卡住时不能把孩子晾在原地（v92：提示音与界面的联动不能过长）。
       let advanced = false;
       const advance = () => {
         if (advanced) return;
@@ -1229,7 +1256,7 @@ export default function StoryPlayScreen() {
       }
       speakWithBestVoice(fb, displayLang, { onDone: advance }).catch(() => {});
       // 兜底：万一音频未触发 onDone（合成失败等），也按时推进，不卡住流程
-      qaAdvanceTimer.current = setTimeout(advance, 3500);
+      qaAdvanceTimer.current = setTimeout(advance, 2500);
     } else {
       // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
       const fb = pickPhrase('wrong', displayLang);
@@ -1279,6 +1306,16 @@ export default function StoryPlayScreen() {
     const heard = pickPhrase('voiceHeard', displayLang);
     setQaFeedback(heard);
     speakWithBestVoice(heard, displayLang);
+    // v91 #2：顺手把这段回答转成文字并显示出来（失败就只留录音，不影响流程）
+    setQaAnswerText('');
+    void (async () => {
+      try {
+        const text = await transcribeAudio(clip);
+        if (text && text.trim()) setQaAnswerText(text.trim());
+      } catch {
+        /* 转写失败静默：录音回放仍然可用 */
+      }
+    })();
   };
 
   /** 回放刚录的这一段（孩子确认自己说了什么） */
@@ -1333,10 +1370,16 @@ export default function StoryPlayScreen() {
   /** 确认这一题答完了 → 记日志并进入下一题（原自动推进逻辑搬到这里） */
   const confirmVoiceAnswer = () => {
     const q = qaQuestions[qaIndex];
-    if (q) setQaRound1Log((prev) => [...prev, { q: q.question, a: t('story.qa.voiceAnswer') }]);
+    if (q) {
+      setQaRound1Log((prev) => [
+        ...prev,
+        { q: q.question, a: qaAnswerText || t('story.qa.voiceAnswer') },
+      ]);
+    }
     stopStory();
     setVoicePlaying(false);
     setVoiceClipUri(null);
+    setQaAnswerText('');
     setQaFeedback('');
     if (qaIndex < qaQuestions.length - 1) {
       setQaIndex(qaIndex + 1);
@@ -1399,9 +1442,10 @@ export default function StoryPlayScreen() {
   };
 
   /**
-   * 让答案文字与语音「同时出现」：
-   * 先起播语音，真正出声（onStart）时再把文字显出来；万一音频没起播，8 秒后兜底显示文字。
-   * 这样不会出现「字已经看完、声音几秒后才来」的时差。
+   * 让答案文字与语音「几乎同时出现」：
+   * 优先在语音真正出声（onStart）时显示文字；但最多只等 1.5 秒——
+   * 提示音缓存命中的情况几乎瞬时，等不到的（网络抖动）立刻先显示文字，
+   * 不能让孩子干等（v92：提示音与界面的联动不能过长）。
    */
   const revealAnswerWithVoice = (text: string) =>
     new Promise<void>((resolve) => {
@@ -1413,7 +1457,7 @@ export default function StoryPlayScreen() {
         resolve();
       };
       speakWithBestVoice(text, displayLang, { onStart: reveal }).catch(() => {});
-      setTimeout(reveal, 8000);
+      setTimeout(reveal, 1500);
     });
 
   const handleChildQuestion = async () => {
@@ -1934,6 +1978,10 @@ export default function StoryPlayScreen() {
                 /* 录完了：听一遍 / 重录 / 确认进入下一题 */
                 <View style={styles.voiceConfirmWrap}>
                   <Text style={styles.voiceConfirmHint}>{t('story.qa.confirmHint')}</Text>
+                  {/* v91 #2：把孩子的回答转成文字显示出来（不识字也能让大人念给他听） */}
+                  {qaAnswerText ? (
+                    <Text style={styles.voiceHeardText}>🗣 {qaAnswerText}</Text>
+                  ) : null}
                   <View style={styles.voiceMiniRow}>
                     <TouchableOpacity style={styles.voiceMiniBtn} onPress={playVoiceClip}>
                       <Text style={styles.voiceMiniText}>
@@ -1946,6 +1994,10 @@ export default function StoryPlayScreen() {
                   </View>
                   <TouchableOpacity style={styles.voiceConfirmBtn} onPress={confirmVoiceAnswer}>
                     <Text style={styles.voiceConfirmText}>✅ {t('story.qa.confirmNext')}</Text>
+                  </TouchableOpacity>
+                  {/* 录完仍可再听一遍题目（v91 #2：语音不能被"录完"挡住） */}
+                  <TouchableOpacity style={styles.replayQBtn} onPress={replayQuestion}>
+                    <Text style={styles.replayQText}>🔊 {t('story.qa.replayQuestion')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -2410,6 +2462,17 @@ const styles = StyleSheet.create({
   voiceConfirmWrap: { alignItems: 'center', marginTop: 24, paddingHorizontal: 12 },
   voiceConfirmHint: {
     fontSize: 17, color: '#3D3229', textAlign: 'center', lineHeight: 26, marginBottom: 18,
+  },
+  // 语音转文字结果：孩子刚说的话（v91 #2）
+  voiceHeardText: {
+    fontSize: 16,
+    color: '#6B5B4E',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginTop: -8,
+    marginBottom: 16,
+    paddingHorizontal: 8,
+    fontStyle: 'italic',
   },
   voiceMiniRow: { flexDirection: 'row', gap: 12, marginBottom: 18 },
   voiceMiniBtn: {

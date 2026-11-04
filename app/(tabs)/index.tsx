@@ -17,7 +17,8 @@ import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
-import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress } from '../../services/storage';
+import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress, getPromptVoiceSetting } from '../../services/storage';
+import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { getClonedTargets } from '../../services/voiceClone';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { speakWithBestVoice, speakPhrase } from '../../services/playback';
@@ -193,6 +194,14 @@ export default function HomeTab() {
     await saveChildName(name);
     setChildName(name);
     setOnboardVisible(false);
+    // 带昵称的问候 / 告别是全新文本（内置 mp3 里没有），立刻后台预热一次，
+    // 保证下次开机那句「早上好呀，小明！」也是秒出、不联网现合成。
+    try {
+      const v = await getPromptVoiceSetting();
+      if (v && v.startsWith('preset:')) warmPresetVoiceInBackground(v);
+    } catch {
+      /* 预热失败不影响流程 */
+    }
   };
 
   return (

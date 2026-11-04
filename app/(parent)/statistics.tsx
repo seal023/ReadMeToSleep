@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ScreenBackButton } from '../../components/ui/ScreenBackButton';
+import { useRouter } from 'expo-router';
 import { COLORS, FONT } from '../../constants/theme';
 import { getProgress, getStories, getChildQAs, getChildQuizzes, type ChildQA, type ChildQuiz } from '../../services/storage';
 import type { Story } from '../../types';
@@ -35,6 +37,7 @@ interface StatCard {
 
 export default function StatisticsPage() {
   const { t, language } = useLanguage();
+  const router = useRouter();
   /** 日期/时间跟随界面语言：英文包下不要再出现 2026-11-02 的 zh-CN 格式 */
   const localeTag = language === 'en' ? 'en-US' : 'zh-CN';
   const [loaded, setLoaded] = useState(false);
@@ -107,6 +110,7 @@ export default function StatisticsPage() {
   return (
     <CartoonScreen gradient="candy" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <ScreenBackButton onPress={() => router.back()} />
         <View style={styles.raccoTop}>
           <Racco state="idle" size={RACCO_IDLE_SIZE} />
           <Text style={styles.raccoLabel}>{t('stats.raccoLabel')}</Text>

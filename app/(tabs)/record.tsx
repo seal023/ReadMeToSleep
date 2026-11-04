@@ -19,6 +19,7 @@ import {
 import { Directory, File, Paths } from 'expo-file-system/next';
 import { saveStory, getStories, deleteStory } from '../../services/storage';
 import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayback';
+import { stopStory } from '../../services/playback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -114,6 +115,8 @@ export default function RecordScreen() {
 
   const startRecording = async () => {
     try {
+      // 录音前先把还在响的提示音 / 试听停干净（否则录进去、或会话切不过去录不到音）
+      stopStory();
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(t('record.permFail'), t('record.micPerm'));

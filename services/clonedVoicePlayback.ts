@@ -48,6 +48,8 @@ let currentPlayer: AudioPlayerLike | null = null;
  */
 const CHUNK_THRESHOLD_CHARS = 480; // 文本超过此字符数即走分片（中文约 480 字 / 英文约 320 词）
 const CHUNK_TARGET_CHARS = 280; // 每片目标长度（中文）；英文按约 3 倍字符折算
+/** 克隆音色单次合成明显更慢，片长压到 120 字，换声后第一次出声快得多（v91 #1） */
+const CHUNK_TARGET_CHARS_CLONE = 120;
 const CHUNK_PRELOAD = 2; // 当前片播放时，后台预取接下来的片数
 
 interface ChunkState {
@@ -67,6 +69,9 @@ interface ChunkState {
   pendingAdvance: boolean; // 当前片已播完，但下一片尚未合成好，等待中
   started: boolean;
   onStartFired: boolean; // 整体 onStart 是否已触发（仅第一片出声时触发一次）
+  /** 起播要落在这一片的第几秒（换声 / 断点续播时直接从这里开始，不从故事开头播） */
+  startIdx: number;
+  startOffset: number;
 }
 let chunkState: ChunkState | null = null;
 
@@ -366,6 +371,51 @@ function writeBytesToCache(fileName: string, audio: ArrayBuffer): void {
   file.write(new Uint8Array(audio));
 }
 
+/**
+ * 该句在本地是否已有音频（内置安装 / 历史缓存命中）。
+ * 用于「内置装完之后只补真正缺的那几条」，避免再发上百次联网合成。
+ */
+export function hasCachedAudio(text: string, target: CloneTarget): boolean {
+  try {
+    return cacheFile(cacheFileName(text, target)).exists;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 把「随包内置」的提示音 mp3 落到本地缓存，文件名与联网合成完全一致。
+ * ---------------------------------------------------------------------------
+ * 这样播放链路一行都不用改：`ensureSynthFile` 的 `cached.exists` 直接命中，
+ * 不发网络、不耗 token，安装后点下去就出声（v93「先生成 mp3 直接装进去」）。
+ *
+ * @param srcUri 内置资源解析出来的本地路径（Asset.localUri / uri）
+ * @returns 目标缓存文件是否已就位
+ */
+export async function seedBundledAudio(
+  text: string,
+  target: CloneTarget,
+  srcUri: string,
+): Promise<boolean> {
+  try {
+    const dest = cacheFile(cacheFileName(text, target));
+    if (dest.exists) return true;
+    const bytes = await new File(srcUri).bytes();
+    if (!bytes || bytes.length < 500) return false;
+    if (!dest.exists) {
+      try {
+        dest.create();
+      } catch {
+        /* 并发创建忽略 */
+      }
+    }
+    dest.write(bytes);
+    return dest.exists;
+  } catch {
+    return false;
+  }
+}
+
 /** 确保某段文本的克隆音频已落盘（命中缓存直接返回；并发调用只合成一次） */
 async function ensureSynthFile(
   text: string,
@@ -395,18 +445,23 @@ async function ensureSynthFile(
  * 预热：在用户点播放之前就把整段故事的克隆音频合成好、落到缓存。
  * 用于故事页打开时后台预热，点播放即可几乎瞬时出声。
  * 任何失败都静默忽略（正常播放时会再走一次合成并透出错误）。
+ *
+ * opts.maxChunks：只预热前 N 片。用于「顺手备一下兜底声线」——
+ * 万一主声线合成失败要降级，第一段也能立刻出声（v91 #1）。
  */
 export async function prewarmClonedAudio(
   text: string,
   target: CloneTarget,
   language: 'zh' | 'en' = 'zh',
+  opts?: { maxChunks?: number },
 ): Promise<void> {
   try {
     if (!text || text.trim().length < 2) return;
     // 长文本按分片预热：避免一次性合成整段大文件（v90 #1/#3 同源）。
     // 进故事页即预热各片，点播放时多半已落盘 → 几乎瞬时出声。
     if (text.length > CHUNK_THRESHOLD_CHARS) {
-      const chunks = splitIntoChunks(text, language);
+      const all = splitIntoChunks(text, language, target);
+      const chunks = opts?.maxChunks ? all.slice(0, Math.max(1, opts.maxChunks)) : all;
       const CONCURRENCY = 3;
       let cursor = 0;
       const worker = async () => {
@@ -574,7 +629,16 @@ export async function playClonedAudio(
    *   （未命中时会静默补一次后台合成，供下次秒出。）
    * fast：不等待音频会话配置就起播，进一步压缩切后台时的起播延迟。
    */
-  opts?: { cacheOnly?: boolean; fast?: boolean },
+  opts?: {
+    cacheOnly?: boolean;
+    fast?: boolean;
+    /**
+     * 起始秒数：分片模式下直接定位到这一片起播。
+     * 换声 / 断点续播必须用它——否则会先从头播一小段再跳，孩子听到的是"倒回去了"，
+     * 而且要多合成一次第 1 片，白等一轮（v91 #1）。
+     */
+    startAt?: number;
+  },
   /** 文本语种：仅长文本分片切句时需要（中文按字符、英文按词估算长度） */
   language: 'zh' | 'en' = 'zh',
 ): Promise<boolean> {
@@ -598,8 +662,29 @@ export async function playClonedAudio(
     // 长文本（如 15-20 分钟故事）走分片流式：先合成第 1 片就播、边播边合成后续，
     // 解决「整段合成完才出声 / 暂停后整段重缓冲」的问题（v90 #1/#2/#3）。
     if (text.length > CHUNK_THRESHOLD_CHARS) {
-      const chunks = splitIntoChunks(text, language);
+      const chunks = splitIntoChunks(text, language, target);
       if (chunks.length > 1) {
+        // 起始片：先按「估算时长」把各片长度填好，再据此定位。
+        // 好处：① 换声/续播直接从该片开始，不必先合成第 1 片；② 累计位置从此可信。
+        const durations: number[] = new Array(chunks.length).fill(0);
+        for (let i = 0; i < chunks.length; i++) {
+          durations[i] = estimateChunkDuration(chunks[i], language);
+        }
+        let startIdx = 0;
+        let startOffset = 0;
+        const want = opts?.startAt ?? 0;
+        if (want > 1) {
+          let acc = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            if (acc + durations[i] > want) {
+              startIdx = i;
+              startOffset = Math.max(0, want - acc);
+              break;
+            }
+            acc += durations[i];
+            startIdx = i;
+          }
+        }
         chunkState = {
           active: true,
           chunks,
@@ -609,7 +694,7 @@ export async function playClonedAudio(
           abortCheck,
           onStart,
           fast: opts?.fast,
-          durations: new Array(chunks.length).fill(0),
+          durations,
           synthDone: new Array(chunks.length).fill(false),
           synthRunning: new Set<number>(),
           current: -1,
@@ -617,9 +702,11 @@ export async function playClonedAudio(
           pendingAdvance: false,
           started: false,
           onStartFired: false,
+          startIdx,
+          startOffset,
         };
-        // 起播第 1 片（合成完即播，无需等整段）
-        return await playChunkIndex(0);
+        // 起播定位到的那一片（合成完即播，无需等整段）
+        return await playChunkIndex(startIdx);
       }
       // 切不出多片（极少）：退回整段逻辑
     }
@@ -730,10 +817,29 @@ function stopCurrentPlayerOnly(): void {
  * 把长文本切成若干「片」：尽量在句子/段落边界切，避免把一句话拦腰截断。
  * 中文按字符数、英文按词估算长度。返回至少 1 片。
  */
-function splitIntoChunks(text: string, language: 'zh' | 'en'): string[] {
+/**
+ * 每片目标长度（字符）。克隆声（真人复刻模型）单次合成明显比内置音色慢，
+ * 所以片要更短：首片等待时间 ≈ 片长成正比，120 字能把「换克隆声后第一次出声」
+ * 从十几秒压到几秒（v91 #1：切到妈妈的声音后一直缓冲）。
+ * 注意：同一声线的预热与播放必须用同一套切法，否则缓存永远命中不了。
+ */
+function chunkTargetChars(target: CloneTarget, language: 'zh' | 'en'): number {
+  const base = target.startsWith('preset:') ? CHUNK_TARGET_CHARS : CHUNK_TARGET_CHARS_CLONE;
+  return language === 'zh' ? base : base * 3;
+}
+
+function splitIntoChunks(
+  text: string,
+  language: 'zh' | 'en',
+  target?: CloneTarget,
+): string[] {
   const raw = (text || '').trim();
   if (!raw) return [];
-  const targetChars = language === 'zh' ? CHUNK_TARGET_CHARS : CHUNK_TARGET_CHARS * 3;
+  const targetChars = target
+    ? chunkTargetChars(target, language)
+    : language === 'zh'
+    ? CHUNK_TARGET_CHARS
+    : CHUNK_TARGET_CHARS * 3;
   if (raw.length <= targetChars) return [raw];
   const delims = language === 'zh' ? '。！？；…\n' : '.!?;\n';
   const chunks: string[] = [];
@@ -912,6 +1018,16 @@ async function playChunkIndex(i: number): Promise<boolean> {
     cs.active = false;
     chunkState = null;
     return false;
+  }
+  // 起始片：跳到该片内部的指定位置（换声 / 断点续播用，避免从这一片开头重播）
+  if (i === cs.startIdx && cs.startOffset > 1) {
+    const off = cs.startOffset;
+    cs.startOffset = 0;
+    seekClonedAudioRaw(off);
+    setTimeout(() => {
+      if (!chunkState || !chunkState.active || chunkState.current !== i) return;
+      if (getClonedPositionRaw() < off - 1) seekClonedAudioRaw(off);
+    }, 450);
   }
   // 预取后续 CHUNK_PRELOAD 片（后台并发合成，边播边缓冲）
   for (let k = 1; k <= CHUNK_PRELOAD; k++) {

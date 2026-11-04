@@ -4,6 +4,8 @@ import {
 } from 'react-native';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { ScreenBackButton } from '../../components/ui/ScreenBackButton';
+import { useRouter } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import {
   getStories, saveStory, deleteStory, getChildName, saveParentComment, getParentComment,
@@ -14,6 +16,7 @@ import type { Story } from '../../types';
 
 export default function ChildRecordingsScreen() {
   const { t, language } = useLanguage();
+  const router = useRouter();
   const [recordings, setRecordings] = useState<Story[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [childName, setChildName] = useState<string>('');
@@ -143,6 +146,7 @@ export default function ChildRecordingsScreen() {
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView style={styles.scrollRoot} contentContainerStyle={styles.scroll}>
+      <ScreenBackButton onPress={() => router.back()} />
       <View style={styles.raccoWrap}>
         <Racco state="happy" size={100} />
       </View>

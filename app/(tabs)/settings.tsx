@@ -6,7 +6,8 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
-import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName } from '../../services/storage';
+import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting } from '../../services/storage';
+import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 export default function SettingsScreen() {
@@ -15,6 +16,21 @@ export default function SettingsScreen() {
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
   const [childName, setChildNameState] = useState('');
+
+  /**
+   * 昵称改了以后：新的问候 / 告别是全新文本，内置 mp3 里没有，
+   * 这里顺手用当前提示音声线后台预热一次（内置音色才有意义），
+   * 否则下次开机那句「早上好呀，小明！」要现场联网合成，会慢一拍。
+   */
+  const saveNameAndWarm = async (name: string) => {
+    await setChildName(name);
+    try {
+      const v = await getPromptVoiceSetting();
+      if (v && v.startsWith('preset:')) warmPresetVoiceInBackground(v);
+    } catch {
+      /* 预热失败不影响设置 */
+    }
+  };
 
   useEffect(() => {
     getVoiceGuidance().then(setVoiceGuidanceState);
@@ -98,7 +114,7 @@ export default function SettingsScreen() {
           placeholderTextColor="#999"
           maxLength={12}
           onChangeText={setChildNameState}
-          onBlur={() => setChildName(childName)}
+          onBlur={() => saveNameAndWarm(childName)}
         />
       </View>
 

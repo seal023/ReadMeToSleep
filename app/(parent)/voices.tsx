@@ -10,12 +10,15 @@ import { useLanguage } from '../../hooks/useLanguage';
 import {
   getVoiceSetting, saveVoiceSetting,
   getPromptVoiceSetting, savePromptVoiceSetting,
+  DEFAULT_PROMPT_VOICE,
 } from '../../services/storage';
 import {
   listAvailableVoices, renameClonedVoice, deleteClonedVoice,
   MAX_CLONE_NAME_LEN, type VoiceOption,
 } from '../../services/voiceCatalog';
 import { speakWithBestVoice, stopStory } from '../../services/playback';
+import { VOICE_PREVIEW_SAMPLE } from '../../services/phraseBank';
+import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 
 /**
  * 家长端「声音设置」（v81 新增）
@@ -82,11 +85,9 @@ export default function VoiceSettings() {
   /** 试听：一句话让孩子/家长直接听出差别（用当前点的那个声音，不改设置） */
   const preview = useCallback(
     (id: string) => {
-      const sample =
-        uiLang === 'en'
-          ? 'Sweetheart, shall we read a little story together tonight?'
-          : '宝贝，今晚我们一起讲一个小浣熊的故事好不好？';
-      void speakWithBestVoice(sample, uiLang, { voiceId: id });
+      // ⚠️ 必须与预热用的样句同源（phraseBank.VOICE_PREVIEW_SAMPLE），
+      // 否则首点永远命不中缓存，听起来就是「点了半天才出声」。
+      void speakWithBestVoice(VOICE_PREVIEW_SAMPLE[uiLang], uiLang, { voiceId: id, fast: true });
     },
     [uiLang],
   );
@@ -94,12 +95,15 @@ export default function VoiceSettings() {
   const pickStory = async (id: string) => {
     setStoryVoice(id);
     await saveVoiceSetting(id);
+    // 换成内置音色时后台补齐该音色的提示音缓存（首次安装已装好，这里只是兜底）
+    warmPresetVoiceInBackground(id);
     preview(id);
   };
 
   const pickPrompt = async (id: string) => {
     setPromptVoice(id);
     await savePromptVoiceSetting(id);
+    warmPresetVoiceInBackground(id);
     preview(id);
   };
 
@@ -214,6 +218,16 @@ export default function VoiceSettings() {
           <Text style={styles.sectionTitle}>{t('voices.sectionPrompt')}</Text>
           <Text style={styles.sectionSub}>{t('voices.promptDesc')}</Text>
           {loaded ? renderOptions(promptVoice, pickPrompt) : null}
+          {/* 一键回默认大姐姐：提示音的「初始声音」就是它，改乱了也能一键还原 */}
+          {loaded && promptVoice !== DEFAULT_PROMPT_VOICE ? (
+            <TouchableOpacity
+              style={styles.resetBtn}
+              onPress={() => void pickPrompt(DEFAULT_PROMPT_VOICE)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.resetBtnText}>↩ {t('voices.resetPrompt')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -343,6 +357,11 @@ const styles = StyleSheet.create({
   optionTextActive: { fontSize: 15, color: COLORS.orange, fontWeight: '600', flexShrink: 1 },
   check: { fontSize: 18, color: COLORS.orange },
   tip: { fontSize: 12, color: COLORS.textLight, lineHeight: 18, marginTop: 4 },
+  resetBtn: {
+    alignSelf: 'flex-start', marginTop: 4, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 14, backgroundColor: COLORS.orange + '14',
+  },
+  resetBtnText: { fontSize: 13, color: COLORS.orange, fontWeight: '600' },
 
   /* 已克隆声音的管理行 */
   manageRow: {

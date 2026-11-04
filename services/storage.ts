@@ -84,6 +84,8 @@ const KEYS = {
   ACCOUNT_NICKNAME: 'rms_account_nickname',
   /** v82 一次性迁移标记：见 migrateVoiceDefaultsOnce */
   VOICE_DEFAULTS_V82: 'rms_voice_defaults_v82',
+  /** v92 一次性迁移标记：提示音声线统一回默认大姐姐，见 migratePromptVoiceOnce */
+  PROMPT_VOICE_V92: 'rms_prompt_voice_v92',
 };
 
 export interface ParentComment {
@@ -327,6 +329,32 @@ export async function migrateVoiceDefaultsOnce(): Promise<void> {
     const isClone = !!v && v !== 'system' && !v.startsWith('preset:');
     if (isClone) await AsyncStorage.removeItem(KEYS.VOICE);
     await AsyncStorage.setItem(KEYS.VOICE_DEFAULTS_V82, '1');
+  } catch {
+    /* 迁移失败不阻塞启动，下次启动会再试 */
+  }
+}
+
+/**
+ * v92 一次性迁移：把「提示音声线」统一回默认内置大姐姐
+ * ---------------------------------------------------------------------------
+ * 需求（2026-11-04）：「所有的提示音的初始声音，全部默认用大姐姐的声音」。
+ *
+ * 背景：`rms_prompt_voice` 是 v81 新增键，但 v81 期间「克隆成功即自动写声线」的旧逻辑
+ * 也会把它写成 mom/dad 之类的克隆值。老设备上于是出现「提示音突然变成妈妈的声音」，
+ * 而家长从没主动选过——和 v82 修故事声线是同一类遗留问题。
+ *
+ * 规则（只跑一次）：
+ *   · 存的是克隆音色（非 preset: / 非 system）→ 改回 DEFAULT_PROMPT_VOICE（大姐姐）。
+ *   · 家长明确选过的内置样本音色 / 手机系统语音 → 原样保留，不覆盖用户选择。
+ */
+export async function migratePromptVoiceOnce(): Promise<void> {
+  try {
+    const done = await AsyncStorage.getItem(KEYS.PROMPT_VOICE_V92);
+    if (done === '1') return;
+    const cur = ((await AsyncStorage.getItem(KEYS.PROMPT_VOICE)) || '').trim();
+    const isClone = !!cur && cur !== 'system' && !cur.startsWith('preset:');
+    if (isClone) await AsyncStorage.setItem(KEYS.PROMPT_VOICE, DEFAULT_PROMPT_VOICE);
+    await AsyncStorage.setItem(KEYS.PROMPT_VOICE_V92, '1');
   } catch {
     /* 迁移失败不阻塞启动，下次启动会再试 */
   }

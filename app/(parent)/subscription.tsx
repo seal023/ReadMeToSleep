@@ -14,6 +14,7 @@ import { useIAP } from '@/hooks/useIAP';
 import { useAuth } from '@/hooks/useAuth';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { ScreenBackButton } from '@/components/ui/ScreenBackButton';
 import { COLORS, FONT } from '@/constants/theme';
 import { useLanguage } from '@/hooks/useLanguage';
 import type { PaidPlan, Plan } from '@/services/iap';
@@ -208,6 +209,7 @@ export default function SubscriptionPage() {
   return (
     <CartoonScreen gradient="candy" decor>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScreenBackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/(parent)/hub'))} />
       <View style={styles.page}>
       {/* Racco 吉祥物 */}
       <View style={styles.raccoTop}>

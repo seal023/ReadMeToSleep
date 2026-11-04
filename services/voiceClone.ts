@@ -416,6 +416,33 @@ function base64ToUint8(b64: string): Uint8Array {
   return out;
 }
 
+/**
+ * 带超时的 fetch（v91 #1/#4 根因修复）
+ * ---------------------------------------------------------------------------
+ * 百炼接口偶发「连上了但一直不返回」：没有超时的 fetch 会一直挂到 iOS 系统级超时
+ * （实测可挂 60~120 秒以上），界面上表现就是「一直在缓冲」「点了半天提示音才响」。
+ * 现在每次请求都有硬超时，超时即中断并按失败处理 → 上层立刻降级，不会无限干等。
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 20000,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => {
+    try {
+      ctrl.abort();
+    } catch {
+      /* 忽略 */
+    }
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function synthesizeWithClonedVoice(
   text: string,
   target: CloneTarget
@@ -443,7 +470,7 @@ export async function synthesizeWithClonedVoice(
   let lastError = '';
   for (const endpoint of endpoints) {
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -455,7 +482,7 @@ export async function synthesizeWithClonedVoice(
             sample_rate: 24000,
           },
         }),
-      });
+      }, 15000);
       if (!res.ok) {
         const bodyText = await res.text().catch(() => '');
         const hint =
@@ -490,14 +517,20 @@ export async function synthesizeWithClonedVoice(
       //   App Transport Security 会直接拦截（"requires the use of a secure connection"）。
       //   阿里云 DNS 域名均支持 https，这里强制升级为 https 再下载，无需改原生配置。
       audioUrl = toHttps(audioUrl);
-      const audioRes = await fetch(audioUrl);
+      const audioRes = await fetchWithTimeout(audioUrl, {}, 12000);
       if (!audioRes.ok) {
         lastError = `下载合成音频失败（HTTP ${audioRes.status}）：${audioUrl.slice(0, 160)}`;
         continue;
       }
       return { audio: await audioRes.arrayBuffer(), error: undefined };
     } catch (err: any) {
-      lastError = `合成异常：${err?.message || String(err)}`;
+      const aborted =
+        err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort');
+      lastError = aborted
+        ? '合成请求超时（15 秒无响应），已中断'
+        : `合成异常：${err?.message || String(err)}`;
+      // 超时=服务端/网络挂住，换端点通常也一样，直接返回让上层马上降级（不再干等）
+      if (aborted) return { audio: null, error: lastError };
     }
   }
 
