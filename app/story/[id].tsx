@@ -29,7 +29,7 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor,
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -293,6 +293,8 @@ export default function StoryPlayScreen() {
   const cloudPausedRef = useRef(false);
   /** 当前播放的「播完」信号处理函数（句柄），供恢复播放时复用同一 onEnded（含 token 校验） */
   const onEndedRef = useRef<(() => void) | null>(null);
+  /** 兜底哨兵：音频停在末尾但结束回调没送达的连续拍数（见 startProgressTicker） */
+  const endStallRef = useRef(0);
   /** 是否刚从后台/锁屏回来过（回来时要把界面状态与音频会话对齐） */
   const interruptedRef = useRef(false);
   /** story 的 ref 镜像：失焦清理是空依赖的 useCallback，拿不到最新 story */
@@ -885,6 +887,7 @@ export default function StoryPlayScreen() {
   const startProgressTicker = (isReal: boolean) => {
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (isReal) {
+      endStallRef.current = 0;
       progressInterval.current = setInterval(() => {
         const pos = getClonedPosition();
         const dur = getClonedDuration();
@@ -893,6 +896,27 @@ export default function StoryPlayScreen() {
           setProgress(Math.min(100, (pos / dur) * 100));
           // 剩余时间 = 真实总时长 - 真实播放位置（暂停时 pos 不前进，倒计时自然停住）
           setRemainSec(Math.max(0, Math.round(dur - pos)));
+        }
+        /**
+         * v95 反馈 #3 兜底哨兵：音频已经停住、位置就在末尾，但结束回调因为
+         * 各种原因（片状态被提前清理 / 事件丢失）没送到界面 —— 每 250ms 一拍，
+         * 连续 8 拍（2 秒）仍是这样就主动结束，避免「声音停了界面一动不动」。
+         * 只在仍在播放态时判，暂停不会被误判成播完。
+         */
+        if (!isPlayingRef.current) {
+          endStallRef.current = 0;
+          return;
+        }
+        const rawDur = getClonedDurationRaw();
+        const rawPos = getClonedPositionRaw();
+        if (!isClonedAudioPlaying() && rawDur > 1 && rawPos >= rawDur - 1) {
+          endStallRef.current += 1;
+          if (endStallRef.current >= 8) {
+            endStallRef.current = 0;
+            onEndedRef.current?.();
+          }
+        } else {
+          endStallRef.current = 0;
         }
       }, 250);
     } else {
@@ -984,6 +1008,18 @@ export default function StoryPlayScreen() {
          * 孩子听到一半就被推进提问环节（正是本次反馈的现象）。引擎在末片真正结束时
          * 会自己清掉 chunkState，所以「正常结束」时这里必然拿到 null，不会误拦。
          */
+        /**
+         * v95 反馈 #3（嫦娥奔月听完不跳提问）：
+         * 引擎在整段**自然播完**时会自己打标记，这里直接采信。
+         * 原来只靠「位置推进过」等启发式复核，而分片模式每换一片都会重置这些值，
+         * 于是真实的播完信号被判成假信号丢掉 —— 声音停了，界面却停在播放页，
+         * 既不进「讲完啦」，也不会结算奖励、不会进提问环节。
+         */
+        if (didFinishNaturally()) {
+          endFiredRef.current = true;
+          handleStoryEnded();
+          return;
+        }
         const chunkNow = getChunkPlace();
         if (chunkNow && chunkNow.index < chunkNow.total - 1) return;
         const reallyAtEnd = endDur > 1 && endPos >= endDur - 3;

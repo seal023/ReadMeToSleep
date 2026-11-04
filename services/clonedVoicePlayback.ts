@@ -205,6 +205,15 @@ let maxPos = 0;
 let startPos = 0;
 /** 上一拍的位置：用于识别「用户往回拖了」，据此重挂硬定时器 */
 let lastPos = 0;
+/**
+ * v95 反馈 #3（嫦娥奔月听完不跳提问）：整段是否**自然播完**。
+ * 分片模式下「末片播完」是唯一可信的结束信号，但上层还要用
+ * 「位置推进过」等启发式再验一遍；而分片模式里 maxPos 会被每片的
+ * clearHardEnd() 清零，导致「推进过」永远为假 → 上层把真实的播完信号丢掉，
+ * 界面停在播放页（声音停了、不跳提问、不出奖励动画）。
+ * 现在引擎在整段自然结束时打这个标记，上层可直接采信，不再靠猜。
+ */
+let naturalEnded = false;
 
 function clearHardEnd(): void {
   if (hardEndTimer) {
@@ -300,6 +309,13 @@ function armEndWatch(onDone?: () => void): void {
       const rpos = getClonedPositionRaw();
       const p = currentPlayer as unknown as { playing?: boolean } | null;
       if (p && typeof p.playing === 'boolean' && p.playing) sawPlaying = true;
+      /**
+       * v95：分片模式下也必须维护 maxPos（用累计位置）。
+       * 这里原来直接 return，maxPos 永远为 0；上层的「位置推进过」判据于是恒假，
+       * 末片播完引发的真实结束信号会被当成假信号丢掉。
+       */
+      const cum = getChunkPosition();
+      if (cum > maxPos) maxPos = cum;
       if (!chunkState.paused && rdur > 0.4 && rpos >= rdur - 0.6) endOnce?.();
       /**
        * v95 修复：等下一片等太久 → 跳过它继续。
@@ -917,6 +933,7 @@ export async function reassertAudioSession(): Promise<void> {
 /** 停止当前克隆声播放 */
 export function stopClonedAudio(): void {
   resetEndWatch();
+  naturalEnded = false; // 主动停止 ≠ 自然播完
   userPaused = false; // 整体停止：暂停态失效
   // 清分片状态（分片播放被整体停止时）
   if (chunkState) {
@@ -1258,6 +1275,8 @@ function tryAdvance(): void {
   // 没有下一片（都跳完 / 已是最后）→ 整段结束
   cs.pendingAdvance = false;
   cs.pendingSince = 0;
+  // 必须在 onDone 之前打标记：上层回调里会立刻读它来决定「这是真播完」
+  naturalEnded = true;
   if (cs.onDone) cs.onDone();
   cs.active = false;
   chunkState = null;
@@ -1417,6 +1436,15 @@ export function getClonedDuration(): number {
  */
 export function didPlayThisSession(): boolean {
   return sawPlaying;
+}
+
+/**
+ * 整段是否刚「自然播完」（分片模式末片播完 / 单段音频到末尾）。
+ * 上层收到结束回调时用它一票通过：这是引擎自己打的标记，不需要再用
+ * 「位置是否推进过」之类的启发式去猜（分片模式下那些值会被逐片重置）。
+ */
+export function didFinishNaturally(): boolean {
+  return naturalEnded;
 }
 
 /** 本次播放到达过的最大位置（秒）；没真正出声时通常接近 0 */
