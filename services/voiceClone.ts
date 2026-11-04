@@ -422,12 +422,19 @@ function base64ToUint8(b64: string): Uint8Array {
  * 百炼接口偶发「连上了但一直不返回」：没有超时的 fetch 会一直挂到 iOS 系统级超时
  * （实测可挂 60~120 秒以上），界面上表现就是「一直在缓冲」「点了半天提示音才响」。
  * 现在每次请求都有硬超时，超时即中断并按失败处理 → 上层立刻降级，不会无限干等。
+ *
+ * v95 修复（关键）：超时必须一直覆盖到**响应体读完**，不能拿到响应头就撤掉。
+ * fetch() 只解析到响应头就返回，真正的音频数据是在 res.json() / res.arrayBuffer() 里
+ * 才读的。原来 finally 里立刻 clearTimeout，一旦服务端发完响应头后不再吐数据
+ * （百炼偶发），这两个 await 会挂到系统级超时（1~2 分钟甚至更久）——
+ * 孩子的感受就是「读到第二段就断了，一直转圈」，暂停、停止重播都救不回来。
+ * 因此改为：返回 ctrl + done()，由调用方在读完响应体后再 done() 收尾。
  */
 async function fetchWithTimeout(
   url: string,
   init: RequestInit = {},
   timeoutMs = 20000,
-): Promise<Response> {
+): Promise<{ res: Response; ctrl: AbortController; done: () => void }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => {
     try {
@@ -437,9 +444,11 @@ async function fetchWithTimeout(
     }
   }, timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    return { res, ctrl, done: () => clearTimeout(timer) };
+  } catch (err) {
     clearTimeout(timer);
+    throw err;
   }
 }
 
@@ -469,8 +478,9 @@ export async function synthesizeWithClonedVoice(
   // 这类错误换端点就能过；401/403 是权限问题，换端点也没用，直接返回。
   let lastError = '';
   for (const endpoint of endpoints) {
+    let req: { res: Response; ctrl: AbortController; done: () => void } | null = null;
     try {
-      const res = await fetchWithTimeout(endpoint, {
+      req = await fetchWithTimeout(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -483,6 +493,7 @@ export async function synthesizeWithClonedVoice(
           },
         }),
       }, 15000);
+      const res = req.res;
       if (!res.ok) {
         const bodyText = await res.text().catch(() => '');
         const hint =
@@ -498,7 +509,13 @@ export async function synthesizeWithClonedVoice(
         if (res.status === 401 || res.status === 403) return { audio: null, error: lastError };
         continue;
       }
-      const data = (await res.json().catch(() => null)) as any;
+      // 读响应体同样受这次请求的超时保护（被 abort 时抛出，交给下面的 catch 处理）
+      const data = (await res.json().catch((err) => {
+        const aborted =
+          err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort');
+        if (aborted) throw err;
+        return null;
+      })) as any;
       // 非流式：音频以下载地址返回（output.audio.url）；个别配置也可能直接给 base64，一并兼容
       let audioUrl: string | undefined = data?.output?.audio?.url;
       if (!audioUrl && typeof data?.output?.audio === 'string') {
@@ -517,20 +534,27 @@ export async function synthesizeWithClonedVoice(
       //   App Transport Security 会直接拦截（"requires the use of a secure connection"）。
       //   阿里云 DNS 域名均支持 https，这里强制升级为 https 再下载，无需改原生配置。
       audioUrl = toHttps(audioUrl);
-      const audioRes = await fetchWithTimeout(audioUrl, {}, 12000);
-      if (!audioRes.ok) {
-        lastError = `下载合成音频失败（HTTP ${audioRes.status}）：${audioUrl.slice(0, 160)}`;
-        continue;
+      // 下载超时放宽到 25s：这段现在包含「真正把字节读完」，弱网下一片 WAV 约 1MB 需要时间
+      const audioReq = await fetchWithTimeout(audioUrl, {}, 25000);
+      try {
+        if (!audioReq.res.ok) {
+          lastError = `下载合成音频失败（HTTP ${audioReq.res.status}）：${audioUrl.slice(0, 160)}`;
+          continue;
+        }
+        return { audio: await audioReq.res.arrayBuffer(), error: undefined };
+      } finally {
+        audioReq.done();
       }
-      return { audio: await audioRes.arrayBuffer(), error: undefined };
     } catch (err: any) {
       const aborted =
         err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('abort');
       lastError = aborted
-        ? '合成请求超时（15 秒无响应），已中断'
+        ? '合成请求超时（服务端无响应或音频下载中断），已放弃本次'
         : `合成异常：${err?.message || String(err)}`;
       // 超时=服务端/网络挂住，换端点通常也一样，直接返回让上层马上降级（不再干等）
       if (aborted) return { audio: null, error: lastError };
+    } finally {
+      req?.done();
     }
   }
 

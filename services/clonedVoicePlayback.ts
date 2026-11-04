@@ -64,9 +64,15 @@ interface ChunkState {
   durations: number[]; // 每片真实时长（秒），播放后逐片填入
   synthDone: boolean[];
   synthRunning: Set<number>;
+  /** 已经重试过的片（网络抖动重试一次，仍失败才跳过） */
+  retried: Set<number>;
   current: number; // 当前播放片索引（-1=尚未起播）
   paused: boolean;
   pendingAdvance: boolean; // 当前片已播完，但下一片尚未合成好，等待中
+  /** 开始等下一片的时刻：等太久（合成挂住）就跳过，绝不让孩子对着缓冲界面干等 */
+  pendingSince: number;
+  /** 当前片真正起播的时刻：用于挡住「同一片被重复请求起播」（否则第一句会念两遍） */
+  playStartedAt: number;
   started: boolean;
   onStartFired: boolean; // 整体 onStart 是否已触发（仅第一片出声时触发一次）
   /** 起播要落在这一片的第几秒（换声 / 断点续播时直接从这里开始，不从故事开头播） */
@@ -106,6 +112,29 @@ function hashText(text: string): string {
     h |= 0;
   }
   return Math.abs(h).toString(36);
+}
+
+/**
+ * 朗读前的「相邻重复句」去重（v95 反馈 #1：第一句话被读了两遍）
+ * ---------------------------------------------------------------------------
+ * AI 生成的长文本偶尔会复读：同一句话连着出现两次（开头最常见）。
+ * 这里只在**相邻两句去掉首尾空白后完全相同、且长度 ≥ 8 字**时才删掉后一句，
+ * 正常的重复用词（「走啊走啊」这类短句）不会被误删。
+ * 必须在切缓存文件名**之前**处理，否则预热与播放算出的文件名会不一致、永远命中不了。
+ */
+function dedupeAdjacentSentences(text: string): string {
+  const raw = text || '';
+  if (raw.length < 20) return raw;
+  // 中文 ≥5 字、英文 ≥8 字符的相邻重复句才删（「走啊走啊」这类短句重复是正常修辞，不动）
+  const zh = /([^。！？；…\n]{5,}[。！？；…])\s*\1/g;
+  const en = /([^.!?;\n]{8,}[.!?;])\s*\1/gi;
+  let out = raw;
+  for (let k = 0; k < 3; k++) {
+    const before = out;
+    out = out.replace(zh, '$1').replace(en, '$1');
+    if (out === before) break;
+  }
+  return out;
 }
 
 // —— 统一「播完」检测 ——
@@ -272,6 +301,30 @@ function armEndWatch(onDone?: () => void): void {
       const p = currentPlayer as unknown as { playing?: boolean } | null;
       if (p && typeof p.playing === 'boolean' && p.playing) sawPlaying = true;
       if (!chunkState.paused && rdur > 0.4 && rpos >= rdur - 0.6) endOnce?.();
+      /**
+       * v95 修复：等下一片等太久 → 跳过它继续。
+       * ---------------------------------------------------------------------
+       * 现实中会出现「第 N 片合成请求挂住 / 一直等不到结果」的情况，此前没有任何超时，
+       * 整段故事就永远停在「正在准备声音」，暂停、停止重播都一样（重播又从这一片开始等）。
+       * 现在等满 20 秒就把这一片标记为失败并跳过去 —— 最多少听一小段，但故事能继续。
+       */
+      const csx = chunkState;
+      if (
+        csx &&
+        !csx.paused &&
+        csx.pendingAdvance &&
+        csx.pendingSince > 0 &&
+        Date.now() - csx.pendingSince > 20000
+      ) {
+        const skip = csx.current + 1;
+        if (skip < csx.chunks.length) {
+          console.warn('[clonedPlayback] 等待第', skip, '片超时，跳过继续');
+          csx.synthDone[skip] = false;
+          csx.pendingAdvance = false;
+          csx.pendingSince = 0;
+          tryAdvance();
+        }
+      }
       return;
     }
     // 记录起播位置与推进情况（断点续播时起播位置就是 seek 到的秒数）
@@ -448,19 +501,42 @@ async function ensureSynthFile(
   if (cached.exists) return { ok: true };
   const running = inflight.get(fileName);
   if (running) return running;
-  const task = (async () => {
-    const { audio, error } = await synthesizeWithClonedVoice(text, target);
-    if (error) return { ok: false, error };
-    if (!audio) return { ok: false, error: ts('vc.diag.emptyAudio') };
-    writeBytesToCache(fileName, audio);
-    return { ok: true };
+  const task = (async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      /**
+       * 整体兜底超时 30 秒：网络层的各个超时加起来可能更长，而「同一片」的合成 Promise
+       * 会被 inflight 复用 —— 一旦它永远不结束，暂停再播放也会重新拿到同一个挂住的 Promise，
+       * 这正是「停止后重播还是卡在同一处」的原因。所以这里再设一道闸。
+       */
+      const raced = await Promise.race([
+        (async (): Promise<{ ok: boolean; error?: string }> => {
+          const { audio, error } = await synthesizeWithClonedVoice(text, target);
+          if (error) return { ok: false, error };
+          if (!audio) return { ok: false, error: ts('vc.diag.emptyAudio') };
+          writeBytesToCache(fileName, audio);
+          return { ok: true };
+        })(),
+        new Promise<{ ok: boolean; error?: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, error: '合成超时（30 秒），已跳过这一段' }), 30000),
+        ),
+      ]);
+      return raced;
+    } catch (err) {
+      /**
+       * v95 修复：这里以前没有 try。合成成功但**写盘失败**（磁盘满 / 文件句柄异常）时
+       * 整个 Promise 会 reject，而调用方（prewarmChunk / playChunkIndex）没有兜底 →
+       * 该片永远停留在「正在合成」状态，父层的等待永远不会被唤醒：
+       * 表现就是「读到第二段就一直缓冲，暂停/停止重播都卡在同一处」。
+       * 现在任何异常都收敛成 { ok:false }，上层一定会走「跳过/重试/降级」分支。
+       */
+      return { ok: false, error: `音频写盘失败：${(err as any)?.message || String(err)}` };
+    } finally {
+      // 无论成功/失败/超时都要摘掉 inflight，否则下一次请求会继续复用这个结果
+      inflight.delete(fileName);
+    }
   })();
   inflight.set(fileName, task);
-  try {
-    return await task;
-  } finally {
-    inflight.delete(fileName);
-  }
+  return task;
 }
 
 /**
@@ -479,10 +555,12 @@ export async function prewarmClonedAudio(
 ): Promise<void> {
   try {
     if (!text || text.trim().length < 2) return;
+    // 与播放侧保持一致的去重，否则预热出的缓存文件名和播放算的对不上
+    const body = dedupeAdjacentSentences(text);
     // 长文本按分片预热：避免一次性合成整段大文件（v90 #1/#3 同源）。
     // 进故事页即预热各片，点播放时多半已落盘 → 几乎瞬时出声。
-    if (text.length > CHUNK_THRESHOLD_CHARS) {
-      const all = splitIntoChunks(text, language, target);
+    if (body.length > CHUNK_THRESHOLD_CHARS) {
+      const all = splitIntoChunks(body, language, target);
       const chunks = opts?.maxChunks ? all.slice(0, Math.max(1, opts.maxChunks)) : all;
       const CONCURRENCY = 3;
       let cursor = 0;
@@ -501,9 +579,9 @@ export async function prewarmClonedAudio(
       await Promise.all(workers);
       return;
     }
-    const fileName = cacheFileName(text, target);
+    const fileName = cacheFileName(body, target);
     if (cacheFile(fileName).exists) return;
-    await ensureSynthFile(text, target, fileName);
+    await ensureSynthFile(body, target, fileName);
   } catch {
     /* 预热失败不影响正常播放 */
   }
@@ -679,15 +757,17 @@ export async function playClonedAudio(
   // 先停掉上一段，避免叠加
   stopClonedAudio();
   lastCloneError = '';
+  // 朗读前把「相邻重复句」去掉（v95 #1：第一句被念两遍），并与预热共用同一份文本
+  const body = dedupeAdjacentSentences(text);
 
   try {
     // cacheOnly：只播已落盘音频，绝不现场合成（锁屏告别等必须立刻出声）。
     // 长文本同样跳过分片，直接走整段已缓存文件。
     if (opts?.cacheOnly) {
-      const fileName = cacheFileName(text, target);
+      const fileName = cacheFileName(body, target);
       if (!cacheFile(fileName).exists) {
         // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
-        void prewarmClonedAudio(text, target, language);
+        void prewarmClonedAudio(body, target, language);
         return false;
       }
       const file = cacheFile(fileName);
@@ -695,8 +775,8 @@ export async function playClonedAudio(
     }
     // 长文本（如 15-20 分钟故事）走分片流式：先合成第 1 片就播、边播边合成后续，
     // 解决「整段合成完才出声 / 暂停后整段重缓冲」的问题（v90 #1/#2/#3）。
-    if (text.length > CHUNK_THRESHOLD_CHARS) {
-      const chunks = splitIntoChunks(text, language, target);
+    if (body.length > CHUNK_THRESHOLD_CHARS) {
+      const chunks = splitIntoChunks(body, language, target);
       if (chunks.length > 1) {
         // 起始片：先按「估算时长」把各片长度填好，再据此定位。
         // 好处：① 换声/续播直接从该片开始，不必先合成第 1 片；② 累计位置从此可信。
@@ -756,9 +836,12 @@ export async function playClonedAudio(
           durations,
           synthDone: new Array(chunks.length).fill(false),
           synthRunning: new Set<number>(),
+          retried: new Set<number>(),
           current: -1,
           paused: false,
           pendingAdvance: false,
+          pendingSince: 0,
+          playStartedAt: 0,
           started: false,
           onStartFired: false,
           startIdx,
@@ -769,8 +852,8 @@ export async function playClonedAudio(
       }
       // 切不出多片（极少）：退回整段逻辑
     }
-    const fileName = cacheFileName(text, target);
-    const res = await ensureSynthFile(text, target, fileName);
+    const fileName = cacheFileName(body, target);
+    const res = await ensureSynthFile(body, target, fileName);
     // 合成期间可能已有更新的旁白请求进来，若已被取代则放弃，不覆盖新声
     if (abortCheck && !abortCheck()) return false;
     if (!res.ok) {
@@ -1023,13 +1106,27 @@ async function playChunkIndex(i: number): Promise<boolean> {
   const cs = chunkState;
   if (!cs || !cs.active) return false;
   if (i < 0 || i >= cs.chunks.length) return false;
+  /**
+   * v95 修复：同一片在极短时间内被重复请求起播 → 直接忽略。
+   * 「片尾结束」有三个来源（轮询到末尾 / 事件式 onEnded / 硬定时器），个别版本会连发两次；
+   * 两次都推进时，第二次会把同一片重新 play 一遍 —— 听起来正是「第一句话又读了一遍」。
+   */
+  if (cs.current === i && cs.playStartedAt && Date.now() - cs.playStartedAt < 1500) {
+    return true;
+  }
   if (cs.abortCheck && !cs.abortCheck()) {
     cs.active = false;
     chunkState = null;
     return false;
   }
   const fileName = cacheFileName(cs.chunks[i], cs.target);
-  const res = await ensureSynthFile(cs.chunks[i], cs.target, fileName);
+  let res: { ok: boolean; error?: string };
+  try {
+    res = await ensureSynthFile(cs.chunks[i], cs.target, fileName);
+  } catch (err) {
+    // 兜底：ensureSynthFile 已内部收敛异常，这里再包一层，确保绝不会「静默挂住」
+    res = { ok: false, error: `合成异常：${(err as any)?.message || String(err)}` };
+  }
   if (!cs || !cs.active) return false;
   if (cs.abortCheck && !cs.abortCheck()) {
     cs.active = false;
@@ -1044,7 +1141,19 @@ async function playChunkIndex(i: number): Promise<boolean> {
       chunkState = null;
       return false;
     }
-    // 非首片失败：标记跳过，尝试下一片继续（绝不让一片失败卡死整段）
+    /**
+     * 非首片失败：先原地重试一次（网络抖动/限流很常见，重试多半就好了），
+     * 仍失败再标记跳过、继续下一片 —— 绝不让一片失败卡死整段。
+     */
+    if (!cs.retried.has(i)) {
+      cs.retried.add(i);
+      cs.synthDone[i] = false;
+      setTimeout(() => {
+        if (chunkState !== cs || !cs.active) return;
+        void playChunkIndex(i);
+      }, 900);
+      return false;
+    }
     cs.synthDone[i] = false;
     if (i < cs.chunks.length - 1) {
       void playChunkIndex(i + 1);
@@ -1057,8 +1166,12 @@ async function playChunkIndex(i: number): Promise<boolean> {
   }
   cs.synthDone[i] = true;
   cs.current = i;
+  cs.playStartedAt = Date.now();
   cs.paused = false;
   cs.started = true;
+  // 新的一片已经开播：把「等下一片」的等待态清掉，避免预取完成时又推进一次、把这一片打断
+  cs.pendingAdvance = false;
+  cs.pendingSince = 0;
   stopCurrentPlayerOnly();
   const firstChunk = !cs.onStartFired;
   if (firstChunk) cs.onStartFired = true;
@@ -1120,6 +1233,7 @@ function tryAdvance(): void {
   if (!cs || !cs.active) return;
   if (cs.paused) {
     cs.pendingAdvance = true;
+    if (!cs.pendingSince) cs.pendingSince = Date.now();
     return;
   }
   let next = cs.current + 1;
@@ -1127,6 +1241,7 @@ function tryAdvance(): void {
     const fileName = cacheFileName(cs.chunks[next], cs.target);
     if (cacheFile(fileName).exists) {
       cs.pendingAdvance = false;
+      cs.pendingSince = 0;
       void playChunkIndex(next);
       return;
     }
@@ -1136,11 +1251,13 @@ function tryAdvance(): void {
     } // 跳过已失败片
     // 未就绪且未判失败：触发预取并等待
     cs.pendingAdvance = true;
+    if (!cs.pendingSince) cs.pendingSince = Date.now();
     void prewarmChunk(next);
     return;
   }
   // 没有下一片（都跳完 / 已是最后）→ 整段结束
   cs.pendingAdvance = false;
+  cs.pendingSince = 0;
   if (cs.onDone) cs.onDone();
   cs.active = false;
   chunkState = null;
@@ -1153,23 +1270,34 @@ async function prewarmChunk(j: number): Promise<void> {
   if (cs.synthDone[j] || cs.synthRunning.has(j)) return;
   cs.synthRunning.add(j);
   const fileName = cacheFileName(cs.chunks[j], cs.target);
-  const res = await ensureSynthFile(cs.chunks[j], cs.target, fileName);
-  if (!cs || !cs.active) {
-    cs?.synthRunning.delete(j);
-    return;
+  let res: { ok: boolean; error?: string };
+  try {
+    res = await ensureSynthFile(cs.chunks[j], cs.target, fileName);
+  } catch (err) {
+    res = { ok: false, error: `合成异常：${(err as any)?.message || String(err)}` };
+  } finally {
+    /**
+     * v95 修复：一定要把本片从「正在合成」里摘掉。
+     * 原来这段没有 finally，一旦 await 抛错，synthRunning 会永久留着这个下标，
+     * 之后 tryAdvance / 重试看到「正在合成」就什么都不做 —— 整段故事永远停在等待中，
+     * 界面表现就是「读到第二段一直缓冲」。
+     */
+    cs.synthRunning.delete(j);
   }
-  cs.synthRunning.delete(j);
+  if (!cs || !cs.active) return;
   cs.synthDone[j] = res.ok;
   if (!res.ok) {
     // 预取失败：若正在等这一片，则跳过它继续推进
     if (cs.pendingAdvance && cs.current + 1 === j) {
       cs.pendingAdvance = false;
+      cs.pendingSince = 0;
       tryAdvance();
     }
     return;
   }
   if (cs.pendingAdvance && cs.current + 1 === j) {
     cs.pendingAdvance = false;
+    cs.pendingSince = 0;
     void playChunkIndex(j);
   }
 }
