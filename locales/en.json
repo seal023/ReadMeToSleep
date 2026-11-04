@@ -8,6 +8,8 @@
   "home.greetingAfternoon": "Good afternoon, {name}!",
   "home.greetingEvening": "Good evening, {name}!",
   "home.farewell": "Goodbye, {name}! Sweet dreams~",
+  "home.farewellDay": "Bye bye, {name}!",
+  "home.farewellNight": "Good night, {name}!",
   "home.recTitle": "Today's Story",
   "home.recTag1": "Bedtime",
   "home.recTag2": "3 min",

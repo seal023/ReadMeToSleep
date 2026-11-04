@@ -25,14 +25,14 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 // 避免「刚录完能听、过一会儿/重进页面就播不出来」。
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
-import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice } from '../../services/playback';
+import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
-import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
+import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -275,6 +275,12 @@ export default function StoryPlayScreen() {
   const startingAtRef = useRef(0);
   /** 断点秒数：点播放时从这里开始（0 表示从头） */
   const resumeAtRef = useRef(0);
+  /**
+   * 分片断点（片索引 + 片内秒），比秒数准（v93 #1）。
+   * App 被上划杀掉后 chunkState 只活在内存里，重新打开只能靠它「原处续播」；
+   * 否则按秒估算反推片位置，15–20 分钟的故事会一路偏到末尾 → 起播就跳提问环节。
+   */
+  const resumePlaceRef = useRef<StoryPlace | null>(null);
   /** 断点秒数（用于界面提示，不参与播放逻辑） */
   const [resumeSec, setResumeSec] = useState(0);
   /** 云端音频被手动暂停（只 pause 未停），再点播放走「秒续」而非重新缓冲（v90 #2） */
@@ -406,16 +412,20 @@ export default function StoryPlayScreen() {
     };
   }, [screenWakeWanted]);
 
-  // 播放中每 5 秒记一次断点，锁屏/退出后回来能接着听
+  // 播放中每 3 秒记一次断点（秒数 + 分片位置），上划退出/被杀后回来能原处接着听
   useEffect(() => {
     if (!isPlaying || !story) return;
     const timer = setInterval(() => {
       const pos = getClonedPosition();
       if (pos > 3) {
         resumeAtRef.current = pos;
-        saveStoryPosition(story.id, pos);
+        // 分片断点必须一起存：App 被系统杀掉时 chunkState 随进程消失，
+        // 只剩秒数就只能靠估算反推，长故事会一路偏到末尾（v93 #1）
+        const place = getChunkPlace();
+        if (place) resumePlaceRef.current = place;
+        saveStoryPosition(story.id, pos, place);
       }
-    }, 5000);
+    }, 3000);
     return () => clearInterval(timer);
   }, [isPlaying, story?.id]);
 
@@ -442,7 +452,13 @@ export default function StoryPlayScreen() {
         if (isPlayingRef.current && phaseRef.current === 'playing') {
           const pos = getClonedPosition();
           if (pos > 3) resumeAtRef.current = pos;
-          if (story) saveStoryPosition(story.id, pos > 3 ? pos : resumeAtRef.current);
+          const place = getChunkPlace();
+          if (place) resumePlaceRef.current = place;
+          if (story) saveStoryPosition(story.id, pos > 3 ? pos : resumeAtRef.current, place);
+          // 告诉全局问候「故事马上要接着播，先别出声」：
+          // 否则回前台时「晚上好」会先 stopStory()，把刚重建的分片播放器连状态一起清掉，
+          // 孩子看到的就是「点了播放一直缓冲 / 没声音」（v93 #1 的另一半）。
+          setStoryResumePending(true);
           interruptedRef.current = true;
           resumeAfterInterruptRef.current = true;
           stopStory();
@@ -456,6 +472,7 @@ export default function StoryPlayScreen() {
         } else {
           // 没在播放（手动暂停 / 睡眠锁屏等）：仅标记回来需对齐状态
           interruptedRef.current = true;
+          setStoryResumePending(false);
         }
         return;
       }
@@ -515,7 +532,11 @@ export default function StoryPlayScreen() {
         setPhase('playing');
         // 断点：上次没听完，这次点播放直接接着听
         try {
-          const pos = await getStoryPosition(s.id);
+          const [pos, place] = await Promise.all([
+            getStoryPosition(s.id),
+            getStoryPlace(s.id),
+          ]);
+          if (place) resumePlaceRef.current = place;
           if (pos > 3) {
             resumeAtRef.current = pos;
             setResumeSec(Math.floor(pos));
@@ -630,7 +651,10 @@ export default function StoryPlayScreen() {
         const pos = getClonedPosition();
         if (pos > 3 && storyRef.current) {
           resumeAtRef.current = pos;
-          saveStoryPosition(storyRef.current.id, pos);
+          // 分片断点也一起存（视频离开页后 App 被杀也能原处续播）
+          const place = getChunkPlace();
+          if (place) resumePlaceRef.current = place;
+          saveStoryPosition(storyRef.current.id, pos, place);
         }
         playTokenRef.current++;
         startingRef.current = false;
@@ -842,6 +866,7 @@ export default function StoryPlayScreen() {
     setPhase('completed');
     // 听完了，断点作废（下次从头开始才是对的）
     resumeAtRef.current = 0;
+    resumePlaceRef.current = null;
     setResumeSec(0);
     if (story) clearStoryPosition(story.id);
     // 俏皮收尾：克隆声随机来一句「讲完啦」，与屏显的完成页呼应
@@ -940,6 +965,14 @@ export default function StoryPlayScreen() {
          */
         const endDur = getClonedDuration();
         const endPos = getClonedPosition();
+        /**
+         * v93 #1：分片模式下「播完」只认最后一片。
+         * 片与片之间切播放器时，个别版本会送出一次 ended 信号；一旦被当成整篇播完，
+         * 孩子听到一半就被推进提问环节（正是本次反馈的现象）。引擎在末片真正结束时
+         * 会自己清掉 chunkState，所以「正常结束」时这里必然拿到 null，不会误拦。
+         */
+        const chunkNow = getChunkPlace();
+        if (chunkNow && chunkNow.index < chunkNow.total - 1) return;
         const reallyAtEnd = endDur > 1 && endPos >= endDur - 3;
         const everHeard = didPlayThisSession();
         const advanced = getMaxPlayedPosition() > 1;
@@ -989,8 +1022,15 @@ export default function StoryPlayScreen() {
         return;
       }
 
+      /**
+       * 断点续播（v93 #1）：
+       * 有「片索引断点」就交给播放层精确定位（与时长估算无关）；
+       * 没有（旧记录）才退回按秒估算。
+       */
+      const resumePlace = resumePlaceRef.current;
       const used = await playStory(storyText, voice, displayLang, onEnded, {
         startAt: resumeAtRef.current,
+        startChunk: resumePlace ?? undefined,
       });
       if (token !== playTokenRef.current) return;
       setUsingClonedVoice(used);
@@ -1004,7 +1044,7 @@ export default function StoryPlayScreen() {
       playingVoiceRef.current = getLastPlayedVoice() || voice;
 
       // 断点续播：从上次停下的位置接着听（仅克隆声 / 本地录音可 seek，系统音不支持）
-      if (used && resumeAtRef.current > 3) {
+      if (used && resumeAtRef.current > 3 && !resumePlace) {
         const target = resumeAtRef.current;
         // 分片模式已经在起播时定位好了（见 playStory 的 startAt），这里只在明显偏离时补一次，
         // 避免"刚定位好又被 seek 拉一下"的小跳帧
@@ -1019,6 +1059,11 @@ export default function StoryPlayScreen() {
           lastTotalDuration.current = dur * 1000;
           setProgress(Math.min(100, (target / dur) * 100));
         }
+      } else if (used && resumePlace) {
+        // 分片精确定位已经在 playChunkIndex 里做过（片内 seek），这里只校准进度条刻度。
+        // 绝不能再按秒数补 seek：秒数是估算累计值，二次跳会把刚对准的位置又推偏。
+        const dur = getClonedDuration();
+        if (dur > 0) lastTotalDuration.current = dur * 1000;
       }
 
       // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
@@ -1027,14 +1072,21 @@ export default function StoryPlayScreen() {
 
       // 兜底：万一 onDone / 播完检测都没触发，到点也结束
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-      const safeDur = used
-        ? ((story.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
-        : (displayLang === 'en'
-            ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
-            : Math.max(storyText.length * 210, 10000));
-      safetyTimerRef.current = setTimeout(onEnded, safeDur + 45000);
-      // v80 #4：上面这个安全网按「估算时长 + 45s」，真出问题时孩子要对着静止页面干等 45 秒。
-      // 起播 1.2s 后音频真实时长就已知了，此时把安全网收紧到「剩余时长 + 8s」。
+      const estimatedMs =
+        displayLang === 'en'
+          ? Math.max(storyText.split(/\s+/).filter(Boolean).length * 450, 8000)
+          : Math.max(storyText.length * 210, 10000);
+      /**
+       * v93 #1：安全网按「估算时长」排程，而分片模式下这个估算就是各片字数的估算之和
+       * （真实 TTS 通常比它短，反过来也可能长）。若估算偏短，安全网会在故事还没讲完时
+       * 就调 onEnded —— 表现正是「听到一半直接跳到结尾、进提问环节」。
+       * 所以这里统一放宽成 1.5 倍 + 60 秒余量：它只当"真的卡死"的兜底，
+       * 正常结束仍由分片引擎的「最后一片播完」判定（那是准的）。
+       */
+      const safeDur = used ? Math.max(story.duration ? story.duration * 1000 : 0, estimatedMs) : estimatedMs;
+      safetyTimerRef.current = setTimeout(onEnded, safeDur * 1.5 + 60000);
+      // v80 #4：起播 1.2s 后音频时长已知，把过宽的安全网收一收（同样留足 1.5 倍 + 60s，
+      // 分片模式的「总时长」是估算累计值，收紧太多就会提前掐断）。
       if (used) {
         setTimeout(() => {
           if (token !== playTokenRef.current) return;
@@ -1042,7 +1094,7 @@ export default function StoryPlayScreen() {
           if (real <= 1) return;
           const remain = Math.max(0, real - getClonedPosition());
           if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
-          safetyTimerRef.current = setTimeout(onEnded, remain * 1000 + 8000);
+          safetyTimerRef.current = setTimeout(onEnded, remain * 1500 + 60000);
         }, 1200);
       }
       startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
@@ -1052,6 +1104,8 @@ export default function StoryPlayScreen() {
         preparingRef.current = false;
       }
       startingRef.current = false;
+      // 续播这一刻已经过去，之后回前台可以正常播问候（故事在播时由 isStoryPlaying 挡住）
+      setStoryResumePending(false);
     }
   };
 
@@ -1068,6 +1122,8 @@ export default function StoryPlayScreen() {
     const wasPlaying = isPlaying;
     const pos = getClonedPosition();
     const dur = getClonedDuration();
+    // 换声要停在同一点：分片断点比秒数准，且必须在 stopStory 之前取（它会清掉 chunkState）
+    const placeNow = getChunkPlace();
     setSelectedVoice(id);
     void saveVoiceSetting(id); // 记住选择，下次进故事页直接沿用
     if (!wasPlaying) return;
@@ -1082,6 +1138,8 @@ export default function StoryPlayScreen() {
     const remain = dur > 1 ? dur - pos : Infinity;
     const restartFromZero = remain < 12;
     resumeAtRef.current = !restartFromZero && pos > 3 ? pos : 0;
+    // 换声 = 用新音色从同一片同一秒起播；从头讲则把分片断点一起清掉
+    resumePlaceRef.current = !restartFromZero ? placeNow : null;
     setResumeSec(resumeAtRef.current > 0 ? Math.floor(resumeAtRef.current) : 0);
     // 作废旧那一路的播放回调：否则旧音频的「播完」会把界面推到完成页
     playTokenRef.current++;
@@ -1103,8 +1161,10 @@ export default function StoryPlayScreen() {
     const pos = getClonedPosition();
     if (pos > 3 && story) {
       resumeAtRef.current = pos;
+      const place = getChunkPlace();
+      if (place) resumePlaceRef.current = place;
       setResumeSec(Math.floor(pos));
-      saveStoryPosition(story.id, pos);
+      saveStoryPosition(story.id, pos, place);
     }
     startingRef.current = false;
     if (clonedPlayingRef.current) {
@@ -1132,14 +1192,13 @@ export default function StoryPlayScreen() {
    */
   const handleResume = () => {
     void reassertAudioSession();
+    /**
+     * v93 #1：这里**不再** seek。
+     * 暂停只 pause 了当前这一片，player 的播放位置原样保留，resume 即从原处继续；
+     * 而 `resumeAtRef` 是「各片累计秒」，分片模式下拿它反推片索引会因估算误差跳到别的片，
+     * 反而把刚要续上的位置推偏（表现为"接着播却跳了一段"）。
+     */
     resumeClonedAudio();
-    const target = resumeAtRef.current;
-    if (target > 3) {
-      seekClonedAudio(target);
-      setTimeout(() => {
-        if (getClonedPosition() < target - 1.5) seekClonedAudio(target);
-      }, 600);
-    }
     cloudPausedRef.current = false;
     setIsPlaying(true);
     setPreparing(false);
@@ -1147,19 +1206,23 @@ export default function StoryPlayScreen() {
     startingRef.current = false;
     startProgressTicker(clonedPlayingRef.current);
     // 重启安全定时器（按剩余时长兜底；真实播完检测仍由引擎负责）
+    // 与 handlePlay 同理放宽 1.5 倍 + 60s，避免估算偏短时把故事提前掐断（v93 #1）
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    const estimatedMs =
+      displayLang === 'en'
+        ? Math.max(storyText.split(/\s+/).filter(Boolean).length * 450, 8000)
+        : Math.max(storyText.length * 210, 10000);
     const safeDur = clonedPlayingRef.current
-      ? ((story?.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
-      : (displayLang === 'en'
-          ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
-          : Math.max(storyText.length * 210, 10000));
-    safetyTimerRef.current = setTimeout(() => onEndedRef.current?.(), safeDur + 45000);
+      ? Math.max(story?.duration ? story.duration * 1000 : 0, estimatedMs)
+      : estimatedMs;
+    safetyTimerRef.current = setTimeout(() => onEndedRef.current?.(), safeDur * 1.5 + 60000);
   };
 
   const handleStop = () => {
     playTokenRef.current++;
     startingRef.current = false;
     stopStory();
+    setStoryResumePending(false);
     cancelSleepSession();
     setIsPlaying(false);
     setPreparing(false);
@@ -1168,6 +1231,7 @@ export default function StoryPlayScreen() {
     playingVoiceRef.current = ''; // 已彻底停止：没有「实际在播的音色」了
     // 停止 = 从头开始，断点清掉
     resumeAtRef.current = 0;
+    resumePlaceRef.current = null;
     setResumeSec(0);
     if (story) clearStoryPosition(story.id);
     if (progressInterval.current) clearInterval(progressInterval.current);
@@ -1177,6 +1241,7 @@ export default function StoryPlayScreen() {
   /** 从头播放（清掉断点后走正常播放流程） */
   const handlePlayFromStart = () => {
     resumeAtRef.current = 0;
+    resumePlaceRef.current = null;
     setResumeSec(0);
     if (story) clearStoryPosition(story.id);
     void handlePlay();
@@ -1189,6 +1254,7 @@ export default function StoryPlayScreen() {
     return () => {
       stopStory();
       cancelSleepSession();
+      setStoryResumePending(false);
       cloudPausedRef.current = false;
       playingVoiceRef.current = '';
       deactivateKeepAwake('rms-story').catch(() => {});

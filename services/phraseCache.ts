@@ -48,13 +48,20 @@ const NAME_KEYS = [
   'home.greetingNoon',
   'home.greetingAfternoon',
   'home.greetingEvening',
-  'home.farewell', // 含「再见 + 晚安」
+  // v94：告别语按时段拆成两套（白天「再见」/ 晚上「晚安」）。
+  // 两条都要预热，否则切后台时 cacheOnly 命中不了缓存，会退回系统音色（不是大姐姐的声音）。
+  'home.farewellDay',
+  'home.farewellNight',
 ];
 
-/** 与 _layout.tsx 的问候名字替换规则保持一致 */
-function applyName(base: string, name: string): string {
-  if (name) return base.replace('{name}', name);
-  return base.replace('，{name}！', '！').replace(', {name}!', '!');
+/**
+ * 昵称替换规则：**必须与 _layout.tsx 的告别/问候构建逐字一致**，否则缓存 key 对不上。
+ * 所以这里导出，由 _layout 直接复用同一份实现，杜绝两边各写一套再走偏。
+ */
+export function applyName(base: string, name: string): string {
+  if (name) return base.replace(/\{name\}/g, name);
+  // 没设昵称：把「，{name}」整个去掉，避免念出占位符或留下孤零零的逗号
+  return base.replace(/[，,]\s*\{name\}/g, '');
 }
 
 /** 构造与运行时完全一致的预热文本列表（含名字替换），保证缓存命中。

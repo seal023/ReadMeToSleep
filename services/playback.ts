@@ -4,6 +4,7 @@ import {
   stopClonedAudio,
   hasClonedVoice,
   prewarmClonedAudio,
+  type ChunkPlace,
 } from './clonedVoicePlayback';
 import { getPromptVoiceSetting } from './storage';
 import { DEFAULT_VOICE, normalizeVoiceId } from './voiceCatalog';
@@ -47,6 +48,31 @@ export function getLastPlayedVoice(): string {
   return lastPlayedVoice;
 }
 
+/**
+ * 「故事正在播」标志（2026-11-04，v93 #1）
+ * ---------------------------------------------------------------------------
+ * 回前台时 `GreetingOnOpen` 会播每日问候，而 `speakWithBestVoice` 默认先 `stopStory()`。
+ * 于是「上划退出 → 回来」的场景里，问候语会把刚重建的分片播放器连同 chunkState 一起清掉，
+ * 故事表现为「点了播放一直缓冲 / 没声音」。这里让问候先问一句「故事是不是在播 / 是不是
+ * 正在等续播」，是就让路，不打断孩子的故事。
+ */
+let storyPlaying = false;
+let storyResumePending = false;
+
+export function setStoryPlaying(v: boolean): void {
+  storyPlaying = v;
+}
+export function isStoryPlaying(): boolean {
+  return storyPlaying;
+}
+/** 进后台时置 true、续播真正发起后清 false：这期间问候语必须让路 */
+export function setStoryResumePending(v: boolean): void {
+  storyResumePending = v;
+}
+export function isStoryResumePending(): boolean {
+  return storyResumePending;
+}
+
 export async function playStory(
   text: string,
   voiceId: string,
@@ -55,10 +81,12 @@ export async function playStory(
   /**
    * startAt：从第几秒开始讲（换声 / 断点续播）。
    * 长故事走分片时，它会直接定位到对应那一篇起播，不再「从开头播一瞬再跳」。
+   * startChunk：更精确的「片索引 + 片内秒」断点，优先于 startAt（v93 #1）。
    */
-  opts?: { startAt?: number },
+  opts?: { startAt?: number; startChunk?: ChunkPlace },
 ): Promise<boolean> {
   const startAt = opts?.startAt && opts.startAt > 1 ? opts.startAt : undefined;
+  const startChunk = opts?.startChunk;
   for (const target of voiceCandidates(voiceId)) {
     const ok = await playClonedAudio(
       text,
@@ -66,22 +94,25 @@ export async function playStory(
       onDone,
       undefined,
       undefined,
-      startAt ? { startAt } : undefined,
+      startAt || startChunk ? { startAt, startChunk } : undefined,
       language,
     );
     if (ok) {
       lastPlayedVoice = target; // 记录真实生效的声线（供界面判断"点了没反应"）
+      storyPlaying = true;
       return true;
     }
   }
   // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
   lastPlayedVoice = 'system';
+  storyPlaying = true;
   textToSpeech(text, 'system', language, onDone);
   return false;
 }
 
 /** 停止一切播放（云端音频 + 系统音） */
 export function stopStory(): void {
+  storyPlaying = false;
   stopClonedAudio();
   stopSpeech();
 }

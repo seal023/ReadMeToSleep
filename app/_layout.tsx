@@ -15,10 +15,10 @@ import {
   getChildName, getPromptVoiceSetting, getVoiceSetting,
   migrateVoiceDefaultsOnce, migratePromptVoiceOnce,
 } from '../services/storage';
-import { speakWithBestVoice, stopStory } from '../services/playback';
+import { speakWithBestVoice, stopStory, isStoryPlaying, isStoryResumePending } from '../services/playback';
 import { invalidateAudioMode } from '../services/tts';
-import { reassertAudioSession } from '../services/clonedVoicePlayback';
-import { ensurePhraseWarmup, ensurePresetVoicesInstalled } from '../services/phraseCache';
+import { reassertAudioSession, isClonedAudioPlaying } from '../services/clonedVoicePlayback';
+import { ensurePhraseWarmup, ensurePresetVoicesInstalled, applyName } from '../services/phraseCache';
 
 /**
  * inactive → background 的间隔门槛（毫秒）。
@@ -37,6 +37,18 @@ function getGreetingKey(): string {
   if (h < 13) return 'home.greetingNoon';
   if (h < 18) return 'home.greetingAfternoon';
   return 'home.greetingEvening';
+}
+
+/**
+ * 告别语按时段分两套（2026-11-04，v93 反馈 #2）。
+ * 需求：「上划退出 App 时，只需要说再见 xx 就可以，或者根据手机时钟选择用语」。
+ * 原先固定一句「再见啦，xx！晚安，做个好梦～」——白天退出也在说晚安，而且话太长。
+ * 现在：18 点后到凌晨 6 点说「晚安啦，xx！」，其余时间说「再见啦，xx！」。
+ * 两句都进了 phraseCache 的预热清单，切后台时直接命中本地缓存，秒出。
+ */
+function getFarewellKey(): string {
+  const h = new Date().getHours();
+  return h >= 18 || h < 6 ? 'home.farewellNight' : 'home.farewellDay';
 }
 
 /**
@@ -98,11 +110,10 @@ function GreetingOnOpen() {
 
   /** 同步拼出问候 / 告别文案（与 phraseCache 的预热文本规则逐字一致，保证命中缓存） */
   const buildText = useCallback((kind: 'hello' | 'bye') => {
-    const base = kind === 'bye' ? tRef.current('home.farewell') : tRef.current(getGreetingKey());
-    const name = nameRef.current;
-    return name
-      ? base.replace('{name}', name)
-      : base.replace('，{name}！', '！').replace(', {name}!', '!');
+    const base =
+      kind === 'bye' ? tRef.current(getFarewellKey()) : tRef.current(getGreetingKey());
+    // 昵称替换规则直接复用 phraseCache 的那一份：两处各写一遍迟早会走偏，缓存就永远不命中
+    return applyName(base, nameRef.current);
   }, []);
 
   const speak = useCallback(async (kind: 'hello' | 'bye') => {
@@ -113,6 +124,13 @@ function GreetingOnOpen() {
       // 回到前台：顺手刷新告别缓存（昵称 / 声线可能刚在家长端改过）
       await refreshFarewellCache();
       if (!agreedRef.current) return;
+      /**
+       * 故事优先（v93 反馈 #1）：
+       * 回前台时若「故事被打断、正要续播」或「故事正在播」，一律不播每日问候。
+       * 因为 speakWithBestVoice 默认先 stopStory()——问候会把刚重建的分片播放器连同
+       * chunkState 一起清掉，孩子的感受就是「回到 App 点播放一直缓冲 / 没声音」。
+       */
+      if (isStoryResumePending() || isStoryPlaying() || isClonedAudioPlaying()) return;
       // 问候用最好的声音（克隆声优先；已预热过的问候句命中缓存、秒出）
       speakWithBestVoice(buildText('hello'), langRef.current, { voiceId: voiceRef.current });
       return;

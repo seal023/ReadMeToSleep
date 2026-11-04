@@ -75,6 +75,17 @@ interface ChunkState {
 }
 let chunkState: ChunkState | null = null;
 
+/**
+ * 分片播放的「精确断点」：片索引 + 片内秒数 + 片总数。
+ * ---------------------------------------------------------------------------
+ * 为什么不能只存秒数（v93 反馈 #1）：恢复会话时各片时长是先按字数**估算**的，
+ * 与真实 TTS 时长能差 20%~40%，片数一多（15–20 分钟故事约 80–150 片）误差累积到几分钟，
+ * 于是「听到一半」被定位到末尾几片 → 起播没几句就播完 → 直接跳提问环节。
+ * 而同样的文本 + 同样语言，`splitIntoChunks` 的切分结果是**确定**的，
+ * 所以片索引天然对齐，与估算无关；只有片内秒数需要估，误差不超过一片。
+ */
+export type ChunkPlace = { index: number; offset: number; total: number };
+
 /** 最近一次克隆声播放/合成失败的具体原因，供 UI 透出诊断（如试听失败弹窗） */
 let lastCloneError = '';
 export function getLastCloneError(): string {
@@ -649,6 +660,12 @@ export async function playClonedAudio(
      * 而且要多合成一次第 1 片，白等一轮（v91 #1）。
      */
     startAt?: number;
+    /**
+     * 精确断点（优先于 startAt）：片索引 + 片内秒数。
+     * 由调用方从本地存储恢复（App 被杀 / 上划退出后重新打开时用），
+     * 只在片总数与本次切分结果一致时才采信，否则退回 startAt 的估算定位。
+     */
+    startChunk?: ChunkPlace;
   },
   /** 文本语种：仅长文本分片切句时需要（中文按字符、英文按词估算长度） */
   language: 'zh' | 'en' = 'zh',
@@ -684,7 +701,20 @@ export async function playClonedAudio(
         let startIdx = 0;
         let startOffset = 0;
         const want = opts?.startAt ?? 0;
-        if (want > 1) {
+        const place = opts?.startChunk;
+        // ① 优先用「片索引断点」：与估算无关，最准（见 ChunkPlace 注释）
+        if (
+          place &&
+          place.total === chunks.length &&
+          place.index >= 0 &&
+          place.index < chunks.length &&
+          !(place.index === 0 && place.offset <= 1)
+        ) {
+          startIdx = place.index;
+          const cap = durations[startIdx] || 0;
+          startOffset = Math.max(0, cap > 0 ? Math.min(place.offset, cap) : place.offset);
+        } else if (want > 1) {
+          // ② 没有片断点（旧版本存的记录 / 首次升级）才退回按秒估算定位
           let acc = 0;
           for (let i = 0; i < chunks.length; i++) {
             if (acc + durations[i] > want) {
@@ -694,6 +724,16 @@ export async function playClonedAudio(
             }
             acc += durations[i];
             startIdx = i;
+          }
+          /**
+           * ③ 估算总时长明显短于断点秒数时，说明估算偏小、断点其实已接近或超过结尾：
+           * 此时若仍定位到末片，起播一两句就会触发「播完」→ 直接跳提问（v93 反馈 #1）。
+           * 宁可从头再讲一遍，也不要把孩子莫名推进问答环节。
+           */
+          const estTotal = durations.reduce((a, b) => a + b, 0);
+          if (estTotal > 0 && want >= estTotal * 0.95) {
+            startIdx = 0;
+            startOffset = 0;
           }
         }
         chunkState = {
@@ -1193,6 +1233,20 @@ export function getClonedPositionRaw(): number {
 export function getClonedPosition(): number {
   if (chunkState && chunkState.active) return getChunkPosition();
   return getClonedPositionRaw();
+}
+
+/**
+ * 当前分片断点（片索引 + 片内秒）。整段播放 / 未起播时返回 null。
+ * 调用方（故事页）把它落盘，下次打开 App 时据此「原处续播」。
+ */
+export function getChunkPlace(): ChunkPlace | null {
+  const cs = chunkState;
+  if (!cs || !cs.active || cs.current < 0) return null;
+  return {
+    index: cs.current,
+    offset: Math.max(0, getClonedPositionRaw()),
+    total: cs.chunks.length,
+  };
 }
 
 /** 当前片的总时长（秒），不含分片累计 —— 供分片累计与 armEndWatch 内部使用 */

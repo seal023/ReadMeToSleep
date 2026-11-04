@@ -474,7 +474,12 @@ export async function setSleepLockEnabled(enabled: boolean): Promise<void> {
 }
 
 // ---- 故事播放断点（v62 反馈 #2：锁屏/退出后回到播放页可接着听） ----
-type StoryPositionMap = Record<string, { pos: number; at: number }>;
+/**
+ * 分片断点（v93 #1）：除了秒数，再记「第几片 + 片内第几秒」。
+ * 秒数断点只能靠时长估算反推片位置，误差会随片数累积；片索引则与切分结果天然对齐。
+ */
+export type StoryPlace = { index: number; offset: number; total: number };
+type StoryPositionMap = Record<string, { pos: number; at: number; chunk?: StoryPlace }>;
 
 async function readPositions(): Promise<StoryPositionMap> {
   try {
@@ -487,14 +492,27 @@ async function readPositions(): Promise<StoryPositionMap> {
   }
 }
 
-/** 记录某篇故事听到第几秒；少于 3 秒视为「还没听进去」，直接清掉 */
-export async function saveStoryPosition(storyId: string, posSeconds: number): Promise<void> {
+/**
+ * 记录某篇故事听到第几秒；少于 3 秒视为「还没听进去」，直接清掉。
+ * place 传 undefined = 保留原有分片断点；传 null = 清掉分片断点。
+ */
+export async function saveStoryPosition(
+  storyId: string,
+  posSeconds: number,
+  place?: StoryPlace | null,
+): Promise<void> {
   try {
     const map = await readPositions();
     if (!Number.isFinite(posSeconds) || posSeconds < 3) {
       delete map[storyId];
     } else {
-      map[storyId] = { pos: Math.floor(posSeconds), at: Date.now() };
+      const prev = map[storyId];
+      const chunk = place === undefined ? prev?.chunk : place ?? undefined;
+      map[storyId] = {
+        pos: Math.floor(posSeconds),
+        at: Date.now(),
+        ...(chunk ? { chunk } : {}),
+      };
     }
     // 只留最近 60 篇，避免这份记录无限膨胀
     const kept = Object.entries(map)
@@ -511,6 +529,14 @@ export async function getStoryPosition(storyId: string): Promise<number> {
   const map = await readPositions();
   const v = map[storyId];
   return v && Number.isFinite(v.pos) && v.pos > 0 ? v.pos : 0;
+}
+
+/** 读取某篇故事的分片断点（片索引 + 片内秒；没有则返回 null） */
+export async function getStoryPlace(storyId: string): Promise<StoryPlace | null> {
+  const map = await readPositions();
+  const c = map[storyId]?.chunk;
+  if (!c || !Number.isFinite(c.index) || !Number.isFinite(c.total) || c.total <= 0) return null;
+  return { index: c.index, offset: Number.isFinite(c.offset) ? c.offset : 0, total: c.total };
 }
 
 /** 清除断点（从头播放 / 听完时调用） */
