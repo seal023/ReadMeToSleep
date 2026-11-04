@@ -124,7 +124,8 @@ export default function SettingsScreen() {
         声音选择属于家长配置，统一收在家长中心一处；孩子端设置页保持精简。
       */}
 
-      {/* 需求 3 占位：语音引导开关（真实语音识别待接入 STT） */}
+      {/* v95：原来的「开机提问（你想做什么呀）」卡片已从首页删除，这个开关改为
+          「语音介绍今日推荐」——开启后进首页会念一遍今天推荐的故事。 */}
       <View style={styles.card}>
         <View style={styles.cardLeft}>
           <ClayIcon name="mic" size={28} />

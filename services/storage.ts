@@ -360,7 +360,10 @@ export async function migratePromptVoiceOnce(): Promise<void> {
   }
 }
 
-/** 语音引导（开机提问）开关：默认关闭 */
+/**
+ * 「语音介绍今日推荐」开关（原「语音引导 / 开机提问」，提问卡片在 v95 已删除，
+ * 这个开关保留下来只负责一件事：进入首页时用语音念一遍今天推荐的故事）。默认关闭。
+ */
 export async function getVoiceGuidance(): Promise<boolean> {
   const val = await AsyncStorage.getItem(KEYS.VOICE_GUIDANCE);
   return val === '1';

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,47 @@ import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
-import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress, getPromptVoiceSetting } from '../../services/storage';
+import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress, getPromptVoiceSetting, CLASSIC_EN_IDS } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { getClonedTargets } from '../../services/voiceClone';
 import { useEntitlement } from '../../hooks/useEntitlement';
-import { speakWithBestVoice, speakPhrase } from '../../services/playback';
+import { speakWithBestVoice, isStoryPlaying, isStoryResumePending } from '../../services/playback';
+import storiesIndex from '../../data/classic-stories/stories-index.json';
 import type { RaccoState } from '../../types';
 
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
+
+/** 上次推荐过哪篇（跨启动记住，保证「每次都不一样」） */
+const REC_LAST_KEY = 'rms_last_rec_story';
+
+/** 故事分类 → 展示用的图标 / i18n key（与故事库页保持一致） */
+const REC_TAG_EMOJI: Record<string, string> = {
+  童话: '📖',
+  成长: '🌱',
+  寓言: '🦉',
+  动物: '🐾',
+  睡前: '🌙',
+  自然: '🍃',
+};
+const REC_TAG_KEY: Record<string, string> = {
+  童话: 'cat.fairy',
+  成长: 'cat.growth',
+  寓言: 'cat.fable',
+  动物: 'cat.animal',
+  睡前: 'cat.bedtime',
+  自然: 'cat.nature',
+};
+
+type ClassicIndexItem = {
+  id: string;
+  title: { zh: string; en: string };
+  tags: string[];
+  duration: number;
+  source: string;
+};
+
+/** 今日推荐卡的数据（从 100 篇公版故事里随机抽一篇） */
+type RecStory = { id: string; title: string; emoji: string; tag: string; minutes: number };
 
 function fmtDate(iso: string): string {
   if (!iso) return '';
@@ -52,7 +85,24 @@ export default function HomeTab() {
   const showPremiumCard = snapshot ? !snapshot.premium : false;
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
-  const [guideVisible, setGuideVisible] = useState(false);
+  /**
+   * 今日推荐（v95 反馈）
+   * -------------------------------------------------------------------------
+   * 原来首页有两块内容互相打架：
+   *   ①「你想做什么呀？」+ 听故事 / 去打卡 / 我再想想  —— 下面那排大按钮已经一模一样
+   *   ②「今日推荐 · 睡前 3 分钟」—— 恒定不变，点进去只是跳故事库，等于没有推荐
+   * 现在合成为一块：随机挑一篇真故事，点开直接听，每次进首页都不一样。
+   */
+  const [rec, setRec] = useState<RecStory | null>(null);
+  /** 语音推荐开关（沿用设置页原「语音引导」开关，语义改为「用语音介绍今天的推荐」） */
+  const [voiceRecOn, setVoiceRecOn] = useState(false);
+  /**
+   * t 每次渲染都是新函数（useLanguage 里没 memo），若作为 useFocusEffect 的依赖，
+   * 每次渲染都会重跑一遍、把推荐随机换掉。这里用 ref 拿到「最新的 t」，
+   * 依赖里只留 language，效果才不会抖。
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
   const [childName, setChildName] = useState('');
   // 2026-10-29：首启引导——首次启动（尚未设置宝宝昵称）时，第一步就询问"如何称呼宝贝"
   const [onboardVisible, setOnboardVisible] = useState(false);
@@ -113,25 +163,84 @@ export default function HomeTab() {
     setRaccoState(next);
   };
 
-  // 需求 3 占位：开启「语音引导」后，小浣熊用 TTS 语音提问并给予预设快捷操作
-  // （真实语音识别待接入 STT 后启用，目前可点选）
+  // 语音推荐开关：沿用设置页原来的「语音引导」开关（那个提问卡片已删除）
   useEffect(() => {
     let mounted = true;
     getVoiceGuidance().then((on) => {
-      if (!mounted) return;
-      if (on) {
-        setGuideVisible(true);
-        speakPhrase('guide', language);
-      }
+      if (mounted) setVoiceRecOn(on);
     });
     return () => {
       mounted = false;
     };
   }, []);
 
-  const speakGuide = () => {
-    speakPhrase('guide', language);
-  };
+  // 每次进入首页随机挑一篇（不与上次重复）；英文界面只在有英文正文的故事里挑
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        const all = storiesIndex as ClassicIndexItem[];
+        const pool = all.filter((s) => language !== 'en' || CLASSIC_EN_IDS.has(s.id));
+        if (!pool.length) return;
+        let last = '';
+        try {
+          last = (await AsyncStorage.getItem(REC_LAST_KEY)) || '';
+        } catch {
+          /* 读不到历史就随便挑 */
+        }
+        const fresh = pool.filter((s) => s.id !== last);
+        const usable = fresh.length ? fresh : pool;
+        const pick = usable[Math.floor(Math.random() * usable.length)];
+        try {
+          await AsyncStorage.setItem(REC_LAST_KEY, pick.id);
+        } catch {
+          /* 记不住也没关系 */
+        }
+        if (!alive) return;
+        const tagZh = pick.tags?.[0] || '';
+        const tagKey = REC_TAG_KEY[tagZh];
+        setRec({
+          id: pick.id,
+          title:
+            language === 'en'
+              ? pick.title?.en || pick.title?.zh || ''
+              : pick.title?.zh || pick.title?.en || '',
+          emoji: REC_TAG_EMOJI[tagZh] || '📖',
+          tag: tagZh ? (tagKey ? tRef.current(tagKey) : tagZh) : '',
+          minutes: Math.max(1, Math.round((pick.duration || 180) / 60)),
+        });
+      })();
+      return () => {
+        alive = false;
+      };
+    }, [language])
+  );
+
+  /** 推荐语（手动点 🔊 与自动播报共用同一句，保证命中同一份缓存） */
+  const recSpeech = useCallback(() => {
+    if (!rec) return '';
+    return tRef.current('home.recVoice').replace('{title}', rec.title);
+  }, [rec]);
+
+  const speakRec = useCallback(() => {
+    const text = recSpeech();
+    if (text) void speakWithBestVoice(text, language);
+  }, [recSpeech, language]);
+
+  // 开关打开时，冷启动进入首页会把今天的推荐念给孩子听（不识字也能知道推荐了哪篇）。
+  // 4.5 秒后才出声，等每日问候先说完；若孩子已经点开故事，则直接跳过，绝不打断。
+  // 只在「本次启动的第一次」念，之后回首页换成新一篇也不再念叨，避免每回一次就吵一次。
+  const recAnnouncedRef = useRef(false);
+  useEffect(() => {
+    if (!voiceRecOn || !rec || recAnnouncedRef.current) return;
+    const timer = setTimeout(() => {
+      recAnnouncedRef.current = true;
+      if (isStoryPlaying() || isStoryResumePending()) return;
+      const text = tRef.current('home.recVoice').replace('{title}', rec.title);
+      void speakWithBestVoice(text, language);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [voiceRecOn, rec, language]);
 
   // 声音克隆是产品灵魂，首页常驻入口（不再因「已克隆 / 点过稍后」而消失）。
   // 仅本次会话内可「稍后再说」临时收起，下次打开首页仍会显示，确保入口永远突出。
@@ -265,55 +374,46 @@ export default function HomeTab() {
         </View>
       </View>
 
-      {/* 需求 3 占位：语音引导卡片（开启语音引导时显示） */}
-      {guideVisible && (
-        <View style={styles.guideCard}>
-          <View style={styles.guideTop}>
-            <Racco state="listening" size={64} />
-            <View style={styles.guideBubble}>
-              <Text style={styles.guideText}>🎤 {t('home.guide.text')}</Text>
-              <TouchableOpacity onPress={speakGuide} style={styles.guideReplay}>
-                <Text style={styles.guideReplayText}>🔁 {t('home.guide.replay')}</Text>
-              </TouchableOpacity>
-            </View>
+      {/*
+        今日推荐（v95 反馈：与「你想做什么呀」合并）
+        -----------------------------------------------------------------------
+        以前这里是「你想做什么呀？」+ 听故事 / 去打卡 / 我再想想，
+        和下面那排大按钮完全重复；紧接着又是一张恒定不变的「今日推荐」卡片。
+        现在只留这一张：每次进首页从 100 篇公版故事里随机挑一篇，点开直接听。
+      */}
+      {rec && (
+        <TouchableOpacity
+          style={styles.recCard}
+          activeOpacity={0.85}
+          onPress={() => router.push(`/story/${rec.id}`)}
+        >
+          <View style={styles.recCover}>
+            <Text style={styles.recCoverEmoji}>{rec.emoji}</Text>
           </View>
-          <View style={styles.guideActions}>
-            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => router.push('/(tabs)/library')} pressScale={0.92} bounciness={16}>
-              <Text style={styles.guideBtnEmoji}>📚</Text>
-              <Text style={styles.guideBtnLabel}>{t('home.guide.listen')}</Text>
-            </ElasticPressable>
-            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => router.push('/story/travel-checkin')} pressScale={0.92} bounciness={16}>
-              <Text style={styles.guideBtnEmoji}>✈️</Text>
-              <Text style={styles.guideBtnLabel}>{t('home.guide.travel')}</Text>
-            </ElasticPressable>
-            <ElasticPressable containerStyle={styles.guideBtnCell} style={styles.guideBtn} onPress={() => setGuideVisible(false)} pressScale={0.92} bounciness={16}>
-              <Text style={styles.guideBtnEmoji}>😴</Text>
-              <Text style={styles.guideBtnLabel}>{t('home.guide.think')}</Text>
-            </ElasticPressable>
+          <View style={styles.recInfo}>
+            <Text style={styles.recKicker}>✨ {t('home.recTitle')}</Text>
+            <Text style={styles.recTitle} numberOfLines={1}>
+              {rec.title}
+            </Text>
+            <Text style={styles.recMeta} numberOfLines={1}>
+              {rec.tag ? `${rec.tag} · ` : ''}
+              {t('home.recMinutes').replace('{n}', String(rec.minutes))}
+            </Text>
           </View>
-          <Text style={styles.guideHint}>{t('home.guide.hint')}</Text>
-        </View>
+          <TouchableOpacity
+            style={styles.recSpeakBtn}
+            onPress={speakRec}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.recSpeak')}
+          >
+            <Text style={styles.recSpeakEmoji}>🔊</Text>
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
 
       {/* 需求 5：等级与奖励进度 */}
       <LevelCard />
-
-      <TouchableOpacity
-        style={styles.recCard}
-        activeOpacity={0.8}
-        onPress={() => router.push('/(tabs)/library')}
-      >
-        <View style={styles.recCover}>
-          <Text style={styles.recCoverEmoji}>📖</Text>
-        </View>
-        <View style={styles.recInfo}>
-          <Text style={styles.recTitle}>{t('home.recTitle')}</Text>
-          <View style={styles.recTags}>
-            <Text style={styles.recTag}>{t('home.recTag1')}</Text>
-            <Text style={styles.recTag}>{t('home.recTag2')}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
 
       <View style={styles.actions}>
         <TouchableOpacity
@@ -511,50 +611,63 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
+  // 今日推荐：左侧分类图标 + 标题 + 分类/时长 + 右侧语音按钮
   recCard: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    backgroundColor: '#FFF7EA',
     borderRadius: 22,
+    borderLeftWidth: 5,
+    borderLeftColor: '#F2A65A',
     marginHorizontal: 24,
     marginBottom: 20,
     padding: 14,
-    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.08)',
+    boxShadow: '0 3px 10px rgba(214, 150, 80, 0.18)',
     elevation: 3,
   },
   recCover: {
-    width: 80,
-    height: 80,
-    borderRadius: 18,
-    backgroundColor: '#E0E0E0',
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#FFE9CC',
     alignItems: 'center',
     justifyContent: 'center',
   },
   recCoverEmoji: {
-    fontSize: 32,
+    fontSize: 30,
   },
   recInfo: {
     flex: 1,
     marginLeft: 14,
-    justifyContent: 'center',
+    marginRight: 8,
+  },
+  recKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#C77B33',
+    letterSpacing: 0.4,
+    marginBottom: 3,
   },
   recTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#3D3229',
-    marginBottom: 8,
+    marginBottom: 5,
   },
-  recTags: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  recTag: {
+  recMeta: {
     fontSize: 12,
-    color: '#F2827F',
-    backgroundColor: '#FFF0F0',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    overflow: 'hidden',
+    color: '#8A7767',
+  },
+  recSpeakBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#FFE0B2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recSpeakEmoji: {
+    fontSize: 20,
   },
 
   actions: {
@@ -653,72 +766,6 @@ const styles = StyleSheet.create({
   recentItemSub: {
     fontSize: 12,
     color: '#A8988A',
-  },
-
-  // 需求 3 占位：语音引导卡片
-  guideCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    marginHorizontal: 24,
-    marginBottom: 20,
-    padding: 16,
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-    elevation: 3,
-  },
-  guideTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  guideBubble: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  guideText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#3D3229',
-  },
-  guideReplay: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    backgroundColor: '#FFF1DC',
-    borderRadius: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  guideReplayText: {
-    fontSize: 12,
-    color: '#7A6A5D',
-    fontWeight: '600',
-  },
-  guideActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  guideBtn: {
-    width: '100%',
-    borderRadius: 22,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: '#E8F1FF',
-  },
-  // 外层 Pressable 需要用 flex:1 撑开，否则三个按钮会缩在左侧（内层 flex 影响不到外层）
-  guideBtnCell: { flex: 1 },
-  guideBtnEmoji: {
-    fontSize: 26,
-    marginBottom: 4,
-  },
-  guideBtnLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#3B6FB0',
-  },
-  guideHint: {
-    fontSize: 11,
-    color: '#BDBDBD',
-    textAlign: 'center',
-    marginTop: 10,
   },
 
   // 首启昵称引导弹窗样式
