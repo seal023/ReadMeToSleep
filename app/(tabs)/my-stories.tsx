@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Link, router, useFocusEffect } from 'expo-router';
 import { getStories, deleteStory } from '../../services/storage';
@@ -31,6 +32,13 @@ const BADGES = [
 
 export default function MyStoriesScreen() {
   const { t } = useLanguage();
+  /**
+   * v100 反馈 #2：横屏时顶部三段 Tab 紧贴屏幕上沿，看着压抑。
+   * 与故事库一致：横屏补 16pt 顶部留白（竖屏不动）。
+   */
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const topPad = isLandscape ? 16 : 0;
   const [tab, setTab] = useState<Tab>('created');
   const [stories, setStories] = useState<Story[]>([]);
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -158,7 +166,7 @@ export default function MyStoriesScreen() {
 
   return (
     <CartoonScreen gradient="day" decor>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: topPad }]}>
       {/* Tab bar */}
       <View style={styles.tabBar}>
         {TABS.map(tabItem => (

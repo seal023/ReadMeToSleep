@@ -130,6 +130,11 @@ export default function LibraryScreen() {
    */
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  /**
+   * v100 反馈 #2：手机横屏时顶部几乎贴边（搜索框紧贴屏幕上沿），看着很压抑。
+   * CartoonScreen 里的 SafeAreaView 在横屏下顶边安全区为 0，页面得自己让出留白。
+   */
+  const headerPadTop = isLandscape ? 16 : 10;
   // 横屏手机 / iPad：卡片两列，一次能看到更多
   const twoCols = width >= 700 || isLandscape;
   const [filterOpen, setFilterOpen] = useState(false);
@@ -321,7 +326,7 @@ export default function LibraryScreen() {
     <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
       {/* 顶栏：小浣熊 + 搜索同一行，横屏时压到最小高度，把空间让给列表 */}
-      <View style={[styles.header, isLandscape && styles.headerLandscape]}>
+      <View style={[styles.header, isLandscape && styles.headerLandscape, { paddingTop: headerPadTop }]}>
         <Racco state="idle" size={isLandscape ? 54 : 78} />
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>🔍</Text>

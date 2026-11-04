@@ -281,6 +281,7 @@
   "vc.title": "Voice Cloning",
   "vc.gate": "Voice cloning is a premium feature",
   "vc.chooseTarget": "Choose a voice to clone",
+  "vc.clonedTag": "Cloned",
   "vc.mom": "Mom",
   "vc.dad": "Dad",
   "vc.grandma": "Grandma",

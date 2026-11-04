@@ -139,6 +139,12 @@ export default function VoiceClonePage() {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customTargets, setCustomTargets] = useState<{ key: CloneTarget; label: string; icon: string }[]>([]);
   /**
+   * v100 反馈 #1：已经克隆过的家人要在选择区里明确标出来（妈妈/外婆…），
+   * 否则家长看不出「这个声音是不是早就录好了」，容易重复录一遍。
+   * 这里存的是本机所有已克隆的 target key（含妈妈/爸爸/自定义）。
+   */
+  const [clonedKeys, setClonedKeys] = useState<Set<string>>(new Set());
+  /**
    * 每次进入本页都重新扫描已克隆对象。
    * v84：家长可能在「声音设置」里把某个声音改名或删掉了，
    * 若只在挂载时扫一次，返回本页还会看到旧的（甚至已删除的）对象。
@@ -159,6 +165,7 @@ export default function VoiceClonePage() {
             icon: LEGACY_TARGETS.find((l) => l.key === k)?.icon || '🧑',
           }));
         if (alive) setCustomTargets(extras);
+        if (alive) setClonedKeys(new Set(all));
       })();
       return () => {
         alive = false;
@@ -289,6 +296,8 @@ export default function VoiceClonePage() {
       // 克隆成功：自动把当前故事声音设为该亲属/自定义对象，让孩子立刻听到真人声
       if (res.ok) {
         await saveVoiceSetting(target);
+        // 刚克隆成功：立刻在对象上打出「已克隆」标记，不用退回上一页再进来
+        setClonedKeys((prev) => new Set(prev).add(target));
         // 记下当前提示音，成功页要如实告诉家长「提示音用的是哪个、没跟着变」
         try {
           setPromptVoiceId(await getPromptVoiceSetting());
@@ -383,18 +392,24 @@ export default function VoiceClonePage() {
         <>
           <Text style={styles.sectionTitle}>{t('vc.chooseTarget')}</Text>
           <View style={styles.segmented}>
-            {[...PRESET_TARGETS, ...customTargets].map((tg) => (
-              <TouchableOpacity
-                key={tg.key}
-                style={target === tg.key ? styles.segmentActive : styles.segmentBtn}
-                onPress={() => setTarget(tg.key)}
-              >
-                <Text style={styles.segmentIcon}>{tg.icon}</Text>
-                <Text style={target === tg.key ? styles.segmentActiveLabel : styles.segmentLabel}>
-                  {targetLabel(tg.key, t)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {[...PRESET_TARGETS, ...customTargets].map((tg) => {
+              const isCloned = clonedKeys.has(tg.key);
+              return (
+                <TouchableOpacity
+                  key={tg.key}
+                  style={target === tg.key ? styles.segmentActive : styles.segmentBtn}
+                  onPress={() => setTarget(tg.key)}
+                >
+                  <Text style={styles.segmentIcon}>{tg.icon}</Text>
+                  <Text style={target === tg.key ? styles.segmentActiveLabel : styles.segmentLabel}>
+                    {targetLabel(tg.key, t)}
+                  </Text>
+                  {isCloned && (
+                    <Text style={styles.segmentCloned}>✓ {t('vc.clonedTag')}</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
               style={styles.segmentBtn}
               onPress={() => setShowCustomInput(true)}
@@ -564,6 +579,8 @@ const styles = StyleSheet.create({
   segmentActive: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 18, backgroundColor: '#fff' },
   segmentIcon: { fontSize: 20 },
   segmentLabel: { fontSize: 13, color: '#A8988A' },
+  /** 已克隆标记：小一号的绿色「✓ 已克隆」，不挤占名字的空间 */
+  segmentCloned: { fontSize: 10, color: '#2E9E7E', fontWeight: '700', marginTop: 1 },
   segmentActiveLabel: { fontSize: 13, fontWeight: '600', color: '#3D3229' },
   textCard: { backgroundColor: '#fff', borderRadius: 18, padding: 12, marginBottom: 8 },
   subLabel: { fontSize: 12, color: '#A8988A', marginBottom: 4 },
