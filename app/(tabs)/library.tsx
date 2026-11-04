@@ -427,6 +427,12 @@ export default function LibraryScreen() {
       visible={filterOpen}
       transparent
       animationType="fade"
+      /**
+       * v96 反馈 #2：iOS 的 Modal 默认只支持竖屏，一旦弹出就会把整个界面掰回竖屏
+       * （孩子正横着用 iPad / 手机横屏，点「筛选」屏幕突然转正）。
+       * 显式声明四种方向，弹层跟随当前方向。
+       */
+      supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
       onRequestClose={() => setFilterOpen(false)}
     >
       <View style={styles.modalRoot}>

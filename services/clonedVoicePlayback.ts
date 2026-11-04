@@ -241,7 +241,7 @@ function resetEndWatch(): void {
 }
 
 /** 为当前 player 装上「播完只回调一次」的检测，onDone 为空则不做任何事 */
-function armEndWatch(onDone?: () => void): void {
+function armEndWatch(onDone?: () => void, markNaturalEnd = false): void {
   resetEndWatch();
   if (!onDone) return;
   endOnce = () => {
@@ -252,6 +252,13 @@ function armEndWatch(onDone?: () => void): void {
       endWatchTimer = null;
     }
     clearHardEnd();
+    /**
+     * v97 反馈 #4：单段音频（短故事 / 本地录音）走到这里是**整段自然播完**，
+     * 必须打上「自然结束」标记 —— 上层收到结束回调时用它一票通过，
+     * 不再用「位置是否到末尾」那套估算去猜（时长单位一旦有偏差就永远猜不中，
+     * 表现就是声音停了、界面还停在播放页）。分片模式由 tryAdvance 在末片设置。
+     */
+    if (markNaturalEnd && !(chunkState && chunkState.active)) naturalEnded = true;
     try {
       onDone();
     } catch {
@@ -663,6 +670,8 @@ async function startPlayback(
   onStart?: () => void,
   /** 快速模式：不等待音频会话配置完成就起播（切后台/锁屏后必须立刻出声的场景） */
   fast = false,
+  /** 整段自然播完时是否打「自然结束」标记（只有故事正文需要，提示音不需要） */
+  markNaturalEnd = false,
 ): Promise<boolean> {
   try {
     // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音。
@@ -700,7 +709,7 @@ async function startPlayback(
 
     const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
     currentPlayer = player;
-    armEndWatch(onDone);
+    armEndWatch(onDone, markNaturalEnd);
     player.play();
     // 起播成功即回调，让调用方的文字可以与声音同时出现
     try {
@@ -766,6 +775,12 @@ export async function playClonedAudio(
      * 只在片总数与本次切分结果一致时才采信，否则退回 startAt 的估算定位。
      */
     startChunk?: ChunkPlace;
+    /**
+     * 整段自然播完时打「自然结束」标记（v97）。
+     * 只有故事正文需要：让故事页在收到结束回调时一票通过，
+     * 不再用「位置是否到末尾」估算去猜；提示音（问候 / 反馈语）不设。
+     */
+    markNaturalEnd?: boolean;
   },
   /** 文本语种：仅长文本分片切句时需要（中文按字符、英文按词估算长度） */
   language: 'zh' | 'en' = 'zh',
@@ -787,7 +802,7 @@ export async function playClonedAudio(
         return false;
       }
       const file = cacheFile(fileName);
-      return await startPlayback(file.uri, onDone, onStart, opts?.fast);
+      return await startPlayback(file.uri, onDone, onStart, opts?.fast, opts?.markNaturalEnd);
     }
     // 长文本（如 15-20 分钟故事）走分片流式：先合成第 1 片就播、边播边合成后续，
     // 解决「整段合成完才出声 / 暂停后整段重缓冲」的问题（v90 #1/#2/#3）。
@@ -879,7 +894,7 @@ export async function playClonedAudio(
     }
     const file = cacheFile(fileName);
     if (abortCheck && !abortCheck()) return false;
-    return await startPlayback(file.uri, onDone, onStart, opts?.fast);
+    return await startPlayback(file.uri, onDone, onStart, opts?.fast, opts?.markNaturalEnd);
   } catch (err) {
     lastCloneError = String((err as any)?.message || err);
     console.warn('[clonedPlayback] play failed, fallback to system voice:', err);
@@ -1380,11 +1395,28 @@ export function resumeClonedAudio(): void {
  * 当前克隆声 / 本地音的播放位置（秒）。仅对 expo-audio 播放器有效；
  * 系统音（TTS）不支持，返回 0 —— 调用方据此决定是否显示真实进度 / 允许拖动快进。
  */
+/**
+ * 秒制归一（v97 反馈 #3/#4 根因）
+ * ---------------------------------------------------------------------------
+ * expo-audio 的 `player.duration` 在部分机型/系统版本上返回的是**毫秒**
+ * （例如 44686 实际表示 44.686 秒），而 `currentTime` 是秒。
+ * 两者混用会连锁出两个现象：
+ *   ① 界面上「还剩 744:46」——把 44686 当成了秒；
+ *   ② 播完判定 `pos >= dur - 1.5` 永远不成立 —— 声音停了，界面却停在播放页，
+ *      既不进「讲完啦」也不进提问环节。
+ * 这里统一折算：超过 1 小时（3600 秒）的值一律按毫秒处理。
+ * 我们最长的故事也只有 25 分钟（1500 秒），不会误伤。
+ */
+function toSec(v: number): number {
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return v > 3600 ? v / 1000 : v;
+}
+
 /** 当前片的播放位置（秒），不含分片累计 —— 供分片累计与 armEndWatch 内部使用 */
 export function getClonedPositionRaw(): number {
   try {
     const p = currentPlayer as unknown as { currentTime?: number } | null;
-    return p && typeof p.currentTime === 'number' ? p.currentTime : 0;
+    return p && typeof p.currentTime === 'number' ? toSec(p.currentTime) : 0;
   } catch {
     return 0;
   }
@@ -1414,7 +1446,7 @@ export function getChunkPlace(): ChunkPlace | null {
 export function getClonedDurationRaw(): number {
   try {
     const p = currentPlayer as unknown as { duration?: number } | null;
-    return p && typeof p.duration === 'number' ? p.duration : 0;
+    return p && typeof p.duration === 'number' ? toSec(p.duration) : 0;
   } catch {
     return 0;
   }

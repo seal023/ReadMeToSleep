@@ -80,21 +80,34 @@ export async function playStory(
   onDone?: () => void,
   /**
    * startAt：从第几秒开始讲（换声 / 断点续播）。
-   * 长故事走分片时，它会直接定位到对应那一篇起播，不再「从开头播一瞬再跳」。
+   * 长故事走分片时，它会直接定位到对应那一篇起播，不再「从开头讲一瞬再跳」。
    * startChunk：更精确的「片索引 + 片内秒」断点，优先于 startAt（v93 #1）。
+   * isStillWanted：v97 —— 每一段 await 前后都会问一次「这次播放还要不要」。
+   *   离开故事页 / 换了声线 / 已停止时返回 false，引擎会在**真正出声前**放弃，
+   *   避免「人已经不在这个页面了，声音却突然响起来」（反馈 #1：选完声音没点播放，
+   *   几秒后自己念起旧声线）。
    */
-  opts?: { startAt?: number; startChunk?: ChunkPlace },
+  opts?: {
+    startAt?: number;
+    startChunk?: ChunkPlace;
+    isStillWanted?: () => boolean;
+  },
 ): Promise<boolean> {
   const startAt = opts?.startAt && opts.startAt > 1 ? opts.startAt : undefined;
   const startChunk = opts?.startChunk;
+  const stillWanted = opts?.isStillWanted;
   for (const target of voiceCandidates(voiceId)) {
+    if (stillWanted && !stillWanted()) return false;
     const ok = await playClonedAudio(
       text,
       target as CloneTarget,
       onDone,
+      // abortCheck：引擎在每个合成/起播边界都会调它，false 即彻底放弃（不再出声）
+      stillWanted,
       undefined,
-      undefined,
-      startAt || startChunk ? { startAt, startChunk } : undefined,
+      startAt || startChunk
+        ? { startAt, startChunk, markNaturalEnd: true }
+        : { markNaturalEnd: true },
       language,
     );
     if (ok) {
@@ -104,6 +117,8 @@ export async function playStory(
     }
   }
   // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
+  // 但「已经离开页面」时不兜底 —— 否则一离开，离线系统音就会自己念起来
+  if (stillWanted && !stillWanted()) return false;
   lastPlayedVoice = 'system';
   storyPlaying = true;
   textToSpeech(text, 'system', language, onDone);

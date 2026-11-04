@@ -16,6 +16,7 @@ import {
   AppState,
   Modal,
   Pressable,
+  useWindowDimensions,
   type DimensionValue,
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
@@ -117,7 +118,7 @@ function persistQaClip(rawUri: string | null): string | null {
 }
 
 // 随声波形：播放时一排竖条循环跳动，暂停时静止——给不识字的孩子可见的「声音在流动」反馈
-function SoundWave({ playing }: { playing: boolean }) {
+function SoundWave({ playing, compact }: { playing: boolean; compact?: boolean }) {
   const bars = useRef(Array.from({ length: 22 }, () => new Animated.Value(0.3))).current;
   useEffect(() => {
     if (!playing) {
@@ -136,9 +137,12 @@ function SoundWave({ playing }: { playing: boolean }) {
     return () => anims.forEach((a) => a.stop());
   }, [playing]);
   return (
-    <View style={styles.waveWrap} pointerEvents="none">
+    <View style={[styles.waveWrap, compact && styles.waveWrapCompact]} pointerEvents="none">
       {bars.map((b, i) => (
-        <Animated.View key={i} style={[styles.waveBar, { transform: [{ scaleY: b }] }]} />
+        <Animated.View
+          key={i}
+          style={[styles.waveBar, compact && styles.waveBarCompact, { transform: [{ scaleY: b }] }]}
+        />
       ))}
     </View>
   );
@@ -147,6 +151,13 @@ function SoundWave({ playing }: { playing: boolean }) {
 export default function StoryPlayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, language: uiLang } = useLanguage();
+  /**
+   * v96 反馈 #3：横屏（手机横放 / iPad 横屏）时高度只有 300 多，
+   * 头部 + 进度条 + 波形 + 84pt 播放键 + 停止 + 时间条把正文挤成一条缝，
+   * 孩子只能看到一行字。下面播放页按横竖屏切换紧凑/常规两套尺寸。
+   */
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [story, setStory] = useState<Story | null>(null);
@@ -190,6 +201,13 @@ export default function StoryPlayScreen() {
   const clonedPlayingRef = useRef(false);
   // 页面是否仍在前台：失焦（切走/退出）后置 false，用于「AI 回答到达时若已离开则不朗读」
   const aliveRef = useRef(true);
+  /**
+   * 本页是否是**当前可见页**（v97 反馈 #1）。
+   * 故事页被 push 进路由栈后不会立刻卸载：用户退回故事库再打开另一篇时，
+   * 旧实例仍然挂着 AppState 监听。若不做这道校验，旧实例在回前台时会「自动续播」，
+   * 表现就是「新页面里没点播放、声音却响起来，而且播的是上一篇的声线」。
+   */
+  const focusedRef = useRef(true);
   // 播放按钮呼吸脉冲（isPlaying 时放大+收缩，直观提示「正在播放」）
   const playPulse = useRef(new Animated.Value(1)).current;
   const lastTotalDuration = useRef(0);
@@ -493,6 +511,9 @@ export default function StoryPlayScreen() {
           resumeAfterInterruptRef.current = false;
           setTimeout(() => {
             if (!aliveRef.current) return;
+            // v97：本页必须还是「当前可见页」才允许自动续播。
+            // 旧的故事页实例仍挂在栈里，不校验就会在别的页面上自己出声。
+            if (!focusedRef.current) return;
             if (phaseRef.current !== 'playing') return;
             void handlePlayRef.current();
           }, 350);
@@ -639,6 +660,14 @@ export default function StoryPlayScreen() {
     return () => { micPulse.setValue(1); };
   }, [isRecording]);
 
+  /**
+   * 挂载即清场（v97 反馈 #1）：新故事页进来时，先把可能残留的播放器 / 分片状态清掉。
+   * 否则上一篇（旧实例）遗留的声音会带进本页，看着像「没点播放自己念起来了」。
+   */
+  useEffect(() => {
+    stopStory();
+  }, []);
+
   useEffect(() => {
     return () => {
       stopStory();
@@ -653,8 +682,14 @@ export default function StoryPlayScreen() {
   useFocusEffect(
     useCallback(() => {
       aliveRef.current = true;
+      focusedRef.current = true;
       return () => {
         aliveRef.current = false;
+        focusedRef.current = false;
+        // 离开本页就作废「被打断后自动续播」的资格：
+        // 否则旧实例在回前台时还会自己接着播，声音出现在别的页面上（v97 反馈 #1）
+        resumeAfterInterruptRef.current = false;
+        setStoryResumePending(false);
         // 离开前先存断点，回来点播放就能接着听，而不是重头开始
         const pos = getClonedPosition();
         if (pos > 3 && storyRef.current) {
@@ -1004,6 +1039,13 @@ export default function StoryPlayScreen() {
   const handlePlay = async (voiceOverride?: string) => {
     handlePlayRef.current = handlePlay;
     if (!story) return;
+    /**
+     * v97 反馈 #1：已经离开本页就绝不起播。
+     * 起播是异步的（读设置 → 合成 → 建播放器，可能好几秒），
+     * 旧实例的这条链路跑完时会绕过所有界面状态，直接把声音放出来 ——
+     * 用户看到的就是「新页面没点播放，却响起了上一篇的声线」。
+     */
+    if (!focusedRef.current) return;
     const voice = voiceOverride ?? selectedVoice;
     playingVoiceRef.current = voice; // 记录本轮实际声线，供换声时判「真的没变化」
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
@@ -1142,6 +1184,12 @@ export default function StoryPlayScreen() {
       const used = await playStory(storyText, voice, displayLang, onEnded, {
         startAt: resumeAtRef.current,
         startChunk: resumePlace ?? undefined,
+        /**
+         * v97 反馈 #1：引擎在每次合成/起播边界都会问一次「还要不要播」。
+         * 只要已经离开本页、或这次播放被后来的操作作废，就在**出声之前**放弃，
+         * 不再出现「页面都换了，声音却自己起来」。
+         */
+        isStillWanted: () => token === playTokenRef.current && focusedRef.current,
       });
       if (token !== playTokenRef.current) return;
       setUsingClonedVoice(used);
@@ -1874,7 +1922,7 @@ export default function StoryPlayScreen() {
     
     return (
       <CartoonScreen gradient="day" decor>
-        <View style={styles.container}>
+        <View style={[styles.container, isLandscape && styles.containerL]}>
         <Animated.View
           pointerEvents="none"
           style={[
@@ -1885,20 +1933,25 @@ export default function StoryPlayScreen() {
             },
           ]}
         />
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, isLandscape && styles.headerRowL]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backBtnText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>{storyTitle || t('story.defaultTitle')}</Text>
+          <Text style={[styles.title, isLandscape && styles.titleL]}>{storyTitle || t('story.defaultTitle')}</Text>
           <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView style={styles.storyScroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.storyText}>{storyText || t('story.contentLoading')}</Text>
+        <ScrollView
+          style={[styles.storyScroll, isLandscape && styles.storyScrollL]}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
+            {storyText || t('story.contentLoading')}
+          </Text>
         </ScrollView>
 
         <View
-          style={styles.progressBar}
+          style={[styles.progressBar, isLandscape && styles.progressBarL]}
           onLayout={(e) => { barLayout.current.width = e.nativeEvent.layout.width; }}
           {...progressPan.panHandlers}
         >
@@ -1906,7 +1959,7 @@ export default function StoryPlayScreen() {
         </View>
         {seekToast ? <Text style={styles.seekToast}>{seekToast}</Text> : null}
 
-        <SoundWave playing={isPlaying} />
+        <SoundWave playing={isPlaying} compact={isLandscape} />
 
         {preparing ? (
           <View style={styles.preparingRow}>
@@ -1924,9 +1977,11 @@ export default function StoryPlayScreen() {
           原来播放、暂停、停止三个按钮同尺寸横排，视觉上不分主次，
           且快进快退在另一行，操作时要来回找。
         */}
-        <View style={styles.controls}>
+        {/* 控制区容器：竖屏上下两段（大圆钮 + 停止），横屏并成一行，把高度让给正文 */}
+        <View style={[styles.controlZone, isLandscape && styles.controlZoneL]}>
+        <View style={[styles.controls, isLandscape && styles.controlsL]}>
           <TouchableOpacity
-            style={styles.seekControl}
+            style={[styles.seekControl, isLandscape && styles.seekControlL]}
             onPress={() => handleSeekBy(-15)}
             activeOpacity={0.8}
           >
@@ -1936,7 +1991,7 @@ export default function StoryPlayScreen() {
 
           <Animated.View style={{ transform: [{ scale: playPulse }] }}>
             <TouchableOpacity
-              style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+              style={[styles.playBtn, isLandscape && styles.playBtnL, isPlaying && styles.playBtnActive]}
               onPress={() => {
                 if (isPlaying) {
                   handlePause();
@@ -1955,7 +2010,7 @@ export default function StoryPlayScreen() {
           </Animated.View>
 
           <TouchableOpacity
-            style={styles.seekControl}
+            style={[styles.seekControl, isLandscape && styles.seekControlL]}
             onPress={() => handleSeekBy(15)}
             activeOpacity={0.8}
           >
@@ -1964,16 +2019,17 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.stopRow}>
+        <View style={[styles.stopRow, isLandscape && styles.stopRowL]}>
           <TouchableOpacity style={styles.stopBtn} onPress={handleStop} activeOpacity={0.8}>
             <Text style={styles.stopBtnText}>
               ⏹️ {uiLang === 'en' ? 'Stop' : '停止播放'}
             </Text>
           </TouchableOpacity>
         </View>
+        </View>
 
         {resumeSec > 0 && !isPlaying ? (
-          <View style={styles.resumeRow}>
+          <View style={[styles.resumeRow, isLandscape && styles.resumeRowL]}>
             <Text style={styles.resumeText}>
               {uiLang === 'en'
                 ? `Last time stopped at ${formatClock(resumeSec)} — tap ▶ to continue`
@@ -1993,12 +2049,12 @@ export default function StoryPlayScreen() {
             ① 常显 = 这个故事还剩多久（跟着播放/暂停走）；
             ② 睡眠定时只在最后 5 分钟才出来，且写明「后自动停止」。
         */}
-        <View style={styles.storyTimeRow}>
+        <View style={[styles.storyTimeRow, isLandscape && styles.storyTimeRowL]}>
           <Text style={styles.storyTimeText}>⏳ {timeLabel}</Text>
         </View>
 
         {sleepRemaining > 0 && sleepRemaining <= 5 * 60 * 1000 ? (
-          <View style={styles.sleepBadge}>
+          <View style={[styles.sleepBadge, isLandscape && styles.sleepBadgeL]}>
             <Text style={styles.sleepBadgeText}>
               😴 {formatSleep(sleepRemaining)}
               {uiLang === 'en' ? ' until auto-stop' : ' 后自动停止播放'}
@@ -2013,7 +2069,7 @@ export default function StoryPlayScreen() {
           不识字的孩子也能认：左边耳朵图标 + 右边「换声音」＋下拉箭头，点了就有面板。
         */}
         <TouchableOpacity
-          style={styles.voiceBar}
+          style={[styles.voiceBar, isLandscape && styles.voiceBarL]}
           onPress={() => setVoiceSheetOpen(true)}
           activeOpacity={0.85}
         >
@@ -2054,6 +2110,8 @@ export default function StoryPlayScreen() {
         animationType="slide"
         onRequestClose={() => setVoiceSheetOpen(false)}
         statusBarTranslucent
+        /* 横屏下弹声线面板不能把屏幕掰回竖屏（同故事库筛选弹层） */
+        supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
       >
         <Pressable style={styles.sheetBackdrop} onPress={() => setVoiceSheetOpen(false)}>
           <Pressable style={styles.sheetCard} onPress={() => { /* 吞掉点击，避免穿透关闭 */ }}>
@@ -2453,8 +2511,8 @@ const styles = StyleSheet.create({
    * 这里给正文一个阅读宽度上限并居中 —— 手机上仍是满宽。
    */
   storyText: {
-    fontSize: 16,
-    lineHeight: 28,
+    fontSize: 18,
+    lineHeight: 30,
     color: '#3D3229',
     width: '100%',
     maxWidth: 780,
@@ -2601,6 +2659,31 @@ const styles = StyleSheet.create({
     borderColor: '#FFE0B2',
     elevation: 1,
   },
+  /**
+   * ── 横屏紧凑尺寸（v96 反馈 #3）─────────────────────────────────────────
+   * 手机横放 / iPad 横屏的有效高度只有 300 出头。原来「头部 44 + 波形 56 + 84pt 播放键
+   * + 停止 + 时间条 + 声音条」占掉大半，正文只剩一条缝（孩子只能看到一行字）。
+   * 横屏统一收小操作区，把省下来的高度全给正文，同时**放大字号**方便阅读。
+   */
+  containerL: { padding: 10 },
+  controlZone: { marginTop: 0 },
+  /** 横屏：快退 / 播放 / 快进 / 停止并成一行，省下约 30pt 给正文 */
+  controlZoneL: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
+  headerRowL: { marginBottom: 4 },
+  titleL: { fontSize: 17 },
+  storyScrollL: { padding: 12, borderRadius: 14 },
+  storyTextL: { fontSize: 21, lineHeight: 34, maxWidth: 1000 },
+  progressBarL: { height: 6, marginTop: 4 },
+  waveWrapCompact: { height: 22, marginTop: 2, gap: 4 },
+  waveBarCompact: { width: 5, height: 18 },
+  controlsL: { marginTop: 6, gap: 22 },
+  playBtnL: { width: 58, height: 58, borderRadius: 29, borderWidth: 3 },
+  seekControlL: { width: 40, height: 40, borderRadius: 20 },
+  stopRowL: { marginTop: 0 },
+  resumeRowL: { marginTop: 4 },
+  storyTimeRowL: { marginTop: 3, paddingVertical: 2, paddingHorizontal: 12 },
+  sleepBadgeL: { marginTop: 3, paddingVertical: 3 },
+  voiceBarL: { marginTop: 4, paddingVertical: 5, alignSelf: 'center' },
   voiceBarIcon: { fontSize: 17 },
   voiceBarText: { flex: 1, fontSize: 14, color: '#3D3229', fontWeight: '600' },
   voiceBarAction: { fontSize: 13, color: '#F7A072', fontWeight: '700' },
