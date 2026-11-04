@@ -344,6 +344,17 @@ export default function StoryPlayScreen() {
   const phaseRef = useRef<Phase>('playing');
   const isPlayingRef = useRef(false);
   const handlePlayRef = useRef<(v?: string) => void>(() => {});
+  /** handleResume 的 ref：回前台要「原地续上」，AppState 监听的闭包拿不到后定义的函数 */
+  const handleResumeRef = useRef<() => void>(() => {});
+  /**
+   * v98 反馈 #2：切后台再回来「马上跳到结束画面」的保护窗口。
+   * ---------------------------------------------------------------------------
+   * 从后台回到前台时，音频会话、播放器、位置读数都要重新对齐；这个窗口内收到的
+   * 「播完」信号几乎必然是误报（音频会话被系统收回时的假 ended / 位置读数错乱）。
+   * 窗口内一律不推进界面，最多自动从断点重起一次；重起后仍报结束才认。
+   */
+  const endGuardUntilRef = useRef(0);
+  const guardRetryRef = useRef(0);
   // 提问环节「按住说话、松开停止」的真实录音（expo-audio，与声音克隆页同款）
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈（不识字也能看懂）
@@ -462,9 +473,9 @@ export default function StoryPlayScreen() {
    * 暂停、并在打断结束后自动续播一个「孤儿播放器」——它的 React 状态（isPlaying）早已脱节，
    * 于是表现为「三角键却仍在响、再点播放一直缓冲、停止后重播直接跳提问」。
    * 这里统一处理 AppState 变化：
-   *   ① 进后台 / 来电（state 不再是 active）：若正在播放，主动停掉播放器 + 记住断点 +
+   *   ① 进后台 / 来电（state 不再是 active）：若正在播放，主动「暂停 + 记住断点」，
    *      屏蔽一切「播完」判定（setPlaybackInterrupted），不让系统留下孤儿播放器；
-   *   ② 回到前台：若这次只是被打断（resumeAfterInterruptRef），自动从断点续播，
+   *   ② 回到前台：若这次只是被打断（resumeAfterInterruptRef），原地续上（v98：不再销毁重建），
    *      状态与真实播放重新对齐；若原本就没在播（手动暂停等），重设音频会话、复位启动锁，
    *      回来点播放即可接着听。
    * 用 phaseRef / isPlayingRef / handlePlayRef 读最新值，避免闭包旧值。
@@ -474,7 +485,7 @@ export default function StoryPlayScreen() {
       const wasActive = appActiveRef.current;
       appActiveRef.current = state === 'active';
       if (state !== 'active') {
-        // 进后台 / 来电 / 锁屏：正在播放则主动停掉播放器 + 记断点 + 屏蔽播完判定
+        // 进后台 / 来电 / 锁屏：正在播放则先记断点 + 屏蔽播完判定
         if (isPlayingRef.current && phaseRef.current === 'playing') {
           const pos = getClonedPosition();
           if (pos > 3) resumeAtRef.current = pos;
@@ -487,9 +498,28 @@ export default function StoryPlayScreen() {
           setStoryResumePending(true);
           interruptedRef.current = true;
           resumeAfterInterruptRef.current = true;
-          stopStory();
           setPlaybackInterrupted(true);
-          playTokenRef.current++;
+          /**
+           * v98 反馈 #2（切后台回来立刻跳结束画面）的关键修复：
+           * ------------------------------------------------------------------
+           * 原来这里一律 `stopStory()` —— 把播放器、分片状态、位置全部销毁，
+           * 回前台再从断点**重建一路播放**。重建过程里涉及「重新合成 / 重新定位片 /
+           * 重新挂播完检测」，任何一环读数错乱（位置瞬间等于时长、假 ended、
+           * 估算误差把起点推到末片）都会被判成「播完了」，于是界面直接跳到结束页。
+           *
+           * 现在云端音频（克隆声 / 本地录音）**只暂停不销毁**：回前台调用
+           * resumeClonedAudio() 原地接着响，位置、分片、播放器都是原来那一份，
+           * 不存在重新定位，也就不可能「一回来就播完」。
+           * 只有系统音（TTS 无法暂停）仍走停止 + 回来重讲。
+           */
+          if (clonedPlayingRef.current) {
+            pauseClonedAudio();
+            cloudPausedRef.current = true; // 暂停态：点播放走「秒续」
+          } else {
+            playTokenRef.current++; // 系统音：作废这一轮回调，回来重讲
+            stopStory();
+            cloudPausedRef.current = false;
+          }
           startingRef.current = false;
           if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
           if (progressInterval.current) clearInterval(progressInterval.current);
@@ -507,16 +537,35 @@ export default function StoryPlayScreen() {
         interruptedRef.current = false;
         setPlaybackInterrupted(false);
         if (resumeAfterInterruptRef.current && phaseRef.current === 'playing') {
-          // 来电 / 切后台期间仍在听 → 自动从断点续播，状态与真实播放重新对齐
+          // 来电 / 切后台期间仍在听 → 自动接着播
           resumeAfterInterruptRef.current = false;
+          // 保护窗口：这段时间内的「播完」信号按误报处理（见 endGuardUntilRef）
+          endGuardUntilRef.current = Date.now() + 6000;
+          guardRetryRef.current = 0;
           setTimeout(() => {
             if (!aliveRef.current) return;
             // v97：本页必须还是「当前可见页」才允许自动续播。
             // 旧的故事页实例仍挂在栈里，不校验就会在别的页面上自己出声。
             if (!focusedRef.current) return;
             if (phaseRef.current !== 'playing') return;
+            if (clonedPlayingRef.current && cloudPausedRef.current) {
+              // 原地续上：复用暂停的那一路播放器，零重建、零定位
+              handleResumeRef.current();
+              /**
+               * 复核：iOS 在后台待久了仍可能把播放器彻底停掉（此时 resume 不报错也不出声）。
+               * 1.5 秒后确认真的在响，否则退回「从断点重起」这条路。
+               */
+              setTimeout(() => {
+                if (!aliveRef.current || !focusedRef.current) return;
+                if (phaseRef.current !== 'playing') return;
+                if (isClonedAudioPlaying()) return;
+                cloudPausedRef.current = false;
+                void handlePlayRef.current();
+              }, 1500);
+              return;
+            }
             void handlePlayRef.current();
-          }, 350);
+          }, 300);
         } else {
           // 原本就没在播（手动暂停等）：重设音频会话、复位启动锁，回来点播放即可接着听
           void reassertAudioSession();
@@ -1089,6 +1138,29 @@ export default function StoryPlayScreen() {
         // 避免 iOS 孤儿播放器的暂停被误判成「故事讲完 → 跳提问」（v86 反馈 #1）
         if (!appActiveRef.current || interruptedRef.current) return;
         /**
+         * v98 反馈 #2：刚从后台回到前台的保护窗口内，任何「播完」都按误报处理。
+         * 系统在收回 / 重建音频会话时常常给出假 ended，位置读数也会瞬时错乱；
+         * 一旦被当真，孩子看到的就是「回来还在播放页，一眨眼跳到结束页」。
+         * 窗口内不推进界面：最多自动从断点重起一次（guardRetryRef），重起后仍报结束才认。
+         */
+        if (Date.now() < endGuardUntilRef.current) {
+          if (guardRetryRef.current < 1) {
+            guardRetryRef.current += 1;
+            setTimeout(() => {
+              if (!aliveRef.current || !focusedRef.current) return;
+              if (phaseRef.current !== 'playing') return;
+              cloudPausedRef.current = false;
+              void handlePlayRef.current();
+            }, 700);
+          } else {
+            // 重起后仍立刻报结束：不跳结束页，老老实实停在播放页等孩子再点一次
+            setIsPlaying(false);
+            setPreparing(false);
+            if (progressInterval.current) clearInterval(progressInterval.current);
+          }
+          return;
+        }
+        /**
          * v79 修复：切到别的 App / 锁屏时，iOS 会收回音频会话，
          * 播放器（尤其云端合成音）常常立刻回调「播完了」——
          * 于是界面被误推到「讲完啦」，回到前台再点播放就直接进提问环节。
@@ -1340,6 +1412,7 @@ export default function StoryPlayScreen() {
     }
     setIsPlaying(false);
     setPreparing(false);
+    setStoryResumePending(false); // 手动暂停：不再需要「问候让路」
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
   };
@@ -1359,6 +1432,8 @@ export default function StoryPlayScreen() {
      */
     resumeClonedAudio();
     cloudPausedRef.current = false;
+    // 续播已经真正发起：解除「问候语让路」标记（否则本轮 App 生命周期内问候再也不会响）
+    setStoryResumePending(false);
     setIsPlaying(true);
     setPreparing(false);
     preparingRef.current = false;
@@ -1376,6 +1451,12 @@ export default function StoryPlayScreen() {
       : estimatedMs;
     safetyTimerRef.current = setTimeout(() => onEndedRef.current?.(), safeDur * 1.5 + 60000);
   };
+  /**
+   * 把最新一版 handleResume 挂到 ref 上（渲染期同步，不用 effect）。
+   * AppState 监听只订阅一次，闭包里拿不到后来定义的函数；
+   * 而「回前台原地续上」必须调到它，所以每次渲染都刷新一次。
+   */
+  handleResumeRef.current = handleResume;
 
   const handleStop = () => {
     playTokenRef.current++;

@@ -88,6 +88,29 @@ const KEYS = {
   PROMPT_VOICE_V92: 'rms_prompt_voice_v92',
 };
 
+/**
+ * 故事时长统一折算成「秒」（v98 反馈 #1）
+ * ---------------------------------------------------------------------------
+ * 项目里历史上存在两套单位，导致同一个数值在界面上有两种解释：
+ *   · 经典 / 长篇故事（data/classic-stories/*.json）：duration 是**秒**，如 646；
+ *   · AI 创作故事（services/ai.ts 的 estimateDuration）：duration 是**分钟**，如 3。
+ * 于是《小马的清晨山路》（AI 创作、3 分钟）在播放页显示成「故事约 0:03」，
+ * 一点播放又按真实音频算出「还剩 2:17」——上下两处自相矛盾。
+ *
+ * 这里统一折成秒：≤30 一律按分钟理解（App 里没有 30 秒以内的故事），其余按秒。
+ * 新写入的故事也走同一折算，历史数据在读取时自动纠正，不需要单独迁移。
+ */
+export function storyDurationSec(duration?: number | null): number {
+  const d = Number(duration) || 0;
+  if (d <= 0) return 0;
+  return d <= 30 ? Math.round(d * 60) : Math.round(d);
+}
+
+/** 读取时统一 duration 单位，避免各处自己判断 */
+function normalizeStoryDuration(story: Story): Story {
+  return { ...story, duration: storyDurationSec(story.duration) };
+}
+
 export interface ParentComment {
   text: string;
   updatedAt: string;
@@ -131,18 +154,23 @@ const DEFAULT_SENSITIVE_WORDS: SensitiveWords = {
 
 export async function saveStory(story: Story): Promise<void> {
   const stories = await getStories();
-  const idx = stories.findIndex(s => s.id === story.id);
+  // 写入前统一成「秒」，避免 AI 创作故事（estimateDuration 按分钟）混进同一个数组
+  const normalized = normalizeStoryDuration(story);
+  const idx = stories.findIndex(s => s.id === normalized.id);
   if (idx >= 0) {
-    stories[idx] = story;
+    stories[idx] = normalized;
   } else {
-    stories.push(story);
+    stories.push(normalized);
   }
   await AsyncStorage.setItem(KEYS.STORIES, JSON.stringify(stories));
 }
 
 export async function getStories(): Promise<Story[]> {
   const raw = await AsyncStorage.getItem(KEYS.STORIES);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const list = JSON.parse(raw) as Story[];
+  // 历史记录里 duration 可能是分钟（AI 创作故事），读取时统一折算成秒（见 storyDurationSec）
+  return Array.isArray(list) ? list.map(normalizeStoryDuration) : [];
 }
 
 export async function getStory(id: string): Promise<Story | null> {

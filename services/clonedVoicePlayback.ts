@@ -282,7 +282,8 @@ function armEndWatch(onDone?: () => void, markNaturalEnd = false): void {
     if (endFired) return;
     const dur = getClonedDurationRaw();
     const pos = getClonedPositionRaw();
-    if (dur > 0.4 && pos >= dur - 1.5) endOnce?.();
+    // 上界保护同轮询：位置读数离谱（毫秒/旧值）时不当成「播完」（v98）
+    if (dur > 0.4 && pos <= dur * 1.5 + 2 && pos >= dur - 1.5) endOnce?.();
   };
   acceptEnd = acceptEndSignal;
   endWatchTimer = setInterval(() => {
@@ -323,7 +324,17 @@ function armEndWatch(onDone?: () => void, markNaturalEnd = false): void {
        */
       const cum = getChunkPosition();
       if (cum > maxPos) maxPos = cum;
-      if (!chunkState.paused && rdur > 0.4 && rpos >= rdur - 0.6) endOnce?.();
+      /**
+       * v98：位置读数「明显超出时长」时不判片尾。
+       * -------------------------------------------------------------------
+       * 部分机型/系统在重建播放器、seek、切后台回来时，会短暂把 currentTime
+       * 报成毫秒或上一次的值（例如 2000 而该片只有 22 秒）。原来的判据只有
+       * `rpos >= rdur - 0.6`，遇到这种离谱读数就会立刻判「本片播完」→ 一片接一片
+       * 地空推进，几秒之内走到末片 → 整段判播完，界面直接跳结束页。
+       * 加一道上界（1.5 倍 + 2 秒）把这类坏读数挡在外面。
+       */
+      const posSane = rpos <= rdur * 1.5 + 2;
+      if (!chunkState.paused && rdur > 0.4 && posSane && rpos >= rdur - 0.6) endOnce?.();
       /**
        * v95 修复：等下一片等太久 → 跳过它继续。
        * ---------------------------------------------------------------------
@@ -364,7 +375,8 @@ function armEndWatch(onDone?: () => void, markNaturalEnd = false): void {
     }
     lastPos = pos;
     // ① 位置到末尾（原有判据）
-    if (dur >= maxDur - 0.6 && pos >= dur - 0.6) {
+    //    同样加上界：读数离谱（毫秒 / 重建播放器时的旧值）时不判播完（v98）
+    if (dur >= maxDur - 0.6 && pos <= dur * 1.5 + 2 && pos >= dur - 0.6) {
       endOnce?.();
       return;
     }
