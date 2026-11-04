@@ -764,8 +764,16 @@ export default function StoryPlayScreen() {
     };
   }, [story?.id, selectedVoice, displayLang]);
 
-  // 听完一个故事：记入已听列表 + 刷新连续天数 + 结算等级与勋章（需求 5）
-  // 放在 completed（故事讲完）而非 finished（答完题），听完立刻给正反馈
+  /**
+   * 听完一个故事：记入已听列表 + 刷新连续天数（需求 5）。
+   *
+   * v96 调整（用户反馈「奖励要在听完故事、答完 3 个问题之后才给」）：
+   * 这里只记录收听数据，等级 / 勋章的结算挪到第 1 轮问答结清时（settleRewardAfterQa）。
+   * 记录仍留在这个时机，避免孩子听完就退出、统计里却什么都没留下。
+   */
+  const rewardBaselineRef = useRef<{ storyId: string; level: number } | null>(null);
+  const rewardSettledRef = useRef(false);
+
   useEffect(() => {
     if (phase !== 'completed' || !story) return;
     let cancelled = false;
@@ -775,6 +783,12 @@ export default function StoryPlayScreen() {
         if (cancelled) return;
 
         const beforeLevel = getLevel(p.listenedStories.length);
+        // 记住「这个故事之前」的等级，供问答结束后判断是否升级。
+        // 只记一次：这个 effect 可能因 story 引用变化重跑，重跑时故事已在列表里，
+        // 再取 beforeLevel 就等于 afterLevel，升级永远检不出来。
+        if (!rewardBaselineRef.current || rewardBaselineRef.current.storyId !== story.id) {
+          rewardBaselineRef.current = { storyId: story.id, level: beforeLevel.level };
+        }
 
         if (!p.listenedStories.includes(story.id)) {
           p.listenedStories.push(story.id);
@@ -796,38 +810,86 @@ export default function StoryPlayScreen() {
           p.lastListenDate = today;
         }
 
-        // 结算勋章（含当月 / 整年等新增激励项）
-        const extras = computeRewardExtras(p.listenLog);
-        const fresh = getNewBadges(
-          {
-            listenedCount: p.listenedStories.length,
-            streakDays: p.streakDays,
-            checkInCount: p.checkIns.length,
-            monthCount: extras.monthCount,
-            listenSpanDays: extras.listenSpanDays,
-          },
-          p.badges,
-        );
-        if (fresh.length) {
-          p.badges = [...p.badges, ...fresh.map((b) => b.id)];
-        }
-
+        // 只把收听数据落盘；勋章 / 等级留到答完 3 个问题后一起结算
         await saveProgress(p);
-        if (cancelled) return;
-
-        // 升级优先展示，其次才是新勋章
-        const afterLevel = getLevel(p.listenedStories.length);
-        if (afterLevel.level > beforeLevel.level) {
-          setLevelUp(afterLevel);
-        } else if (fresh.length) {
-          setNewBadge(fresh[0]);
-        }
       } catch (err) {
         console.error('Save progress error:', err);
       }
     })();
     return () => { cancelled = true; };
   }, [phase, story]);
+
+  /**
+   * 答完第 1 轮 3 个问题后结算奖励（v96 用户要求）。
+   *
+   * 「提问环节不计入奖励」——答对答错都不额外加分，这里只用收听数据（篇数、连续天数、
+   * 打卡、跨月等）算等级与勋章。所以结算逻辑本身没变，变的是触发时机：
+   * 从「故事讲完」改到「3 个问题都答完」，孩子答完题才看到奖励动画。
+   */
+  const settleRewardAfterQa = useCallback(async () => {
+    if (rewardSettledRef.current || !story) return;
+    rewardSettledRef.current = true;
+    try {
+      const p = await getProgress();
+      if (!aliveRef.current) return;
+
+      // 结算勋章（含当月 / 整年等新增激励项）
+      const extras = computeRewardExtras(p.listenLog);
+      const fresh = getNewBadges(
+        {
+          listenedCount: p.listenedStories.length,
+          streakDays: p.streakDays,
+          checkInCount: p.checkIns.length,
+          monthCount: extras.monthCount,
+          listenSpanDays: extras.listenSpanDays,
+        },
+        p.badges,
+      );
+      if (fresh.length) {
+        p.badges = [...p.badges, ...fresh.map((b) => b.id)];
+        await saveProgress(p);
+      }
+      if (!aliveRef.current) return;
+
+      // 升级优先展示，其次才是新勋章
+      const afterLevel = getLevel(p.listenedStories.length);
+      const beforeLevel = rewardBaselineRef.current?.level ?? afterLevel.level;
+      if (afterLevel.level > beforeLevel) {
+        setLevelUp(afterLevel);
+      } else if (fresh.length) {
+        setNewBadge(fresh[0]);
+      }
+    } catch (err) {
+      rewardSettledRef.current = false; // 允许下次再试
+      console.error('Settle reward error:', err);
+    }
+  }, [story]);
+
+  /**
+   * 奖励动画层（升级优先，其次新勋章）。
+   * v96：从「故事讲完」页移到答题结束后的页面 —— 孩子答完 3 个问题才看到奖励。
+   */
+  const rewardOverlay = (
+    <>
+      <RewardAnimation
+        visible={!!levelUp}
+        emoji={levelUp?.emoji ?? '🎉'}
+        title={t('reward.levelUp')}
+        subtitle={levelUp ? `Lv.${levelUp.level} · ${uiLang === 'en' ? levelUp.nameEn : levelUp.name}` : ''}
+        desc={t('reward.keepGoing')}
+        onDone={() => setLevelUp(null)}
+      />
+      <RewardAnimation
+        visible={!levelUp && !!newBadge}
+        emoji={newBadge?.emoji ?? '🏅'}
+        clayIcon="badge"
+        title={t('reward.newBadge')}
+        subtitle={newBadge?.name ?? ''}
+        desc={newBadge?.desc}
+        onDone={() => setNewBadge(null)}
+      />
+    </>
+  );
 
   // 加载家长悄悄话（需求 2）：故事载入后即读取，存在则以淡入动画展示
   useEffect(() => {
@@ -1362,6 +1424,8 @@ export default function StoryPlayScreen() {
         if (qaIndex < qaQuestions.length - 1) {
           setQaIndex(qaIndex + 1);
         } else {
+          // 3 个问题都答完了 → 这时才结算奖励（听完故事 + 答完题才给，见 settleRewardAfterQa）
+          void settleRewardAfterQa();
           setPhase('qa_round2');
         }
       };
@@ -1483,10 +1547,13 @@ export default function StoryPlayScreen() {
     startQaRecording();
   };
 
-  /** 确认这一题答完了 → 记日志并进入下一题（原自动推进逻辑搬到这里） */
-  const confirmVoiceAnswer = () => {
+  /**
+   * 语音题的共同收尾：清干净状态并推进。
+   * record=true 时把这次回答记进回顾日志（跳过则不记，避免日志里出现空回答）。
+   */
+  const finishVoiceQuestion = (record: boolean) => {
     const q = qaQuestions[qaIndex];
-    if (q) {
+    if (record && q) {
       setQaRound1Log((prev) => [
         ...prev,
         { q: q.question, a: qaAnswerText || t('story.qa.voiceAnswer') },
@@ -1500,9 +1567,21 @@ export default function StoryPlayScreen() {
     if (qaIndex < qaQuestions.length - 1) {
       setQaIndex(qaIndex + 1);
     } else {
+      // 3 题都过了（最后一题是语音题）→ 此时结算奖励
+      void settleRewardAfterQa();
       setPhase('qa_round2');
     }
   };
+
+  /** 确认这一题答完了 → 记日志并进入下一题 */
+  const confirmVoiceAnswer = () => finishVoiceQuestion(true);
+
+  /**
+   * 跳过语音题（v96）：麦克风没授权、设备录不上、或孩子就是不想说话时，
+   * 也要能往下走 —— 奖励改成答完 3 题才给，万一卡在这一题，孩子永远拿不到奖励。
+   * 「提问环节不计入奖励」，所以跳过不扣分、不影响奖励。
+   */
+  const skipVoiceQuestion = () => finishVoiceQuestion(false);
 
   // 第 1 轮语音题：点一下开始录、再点一下结束。
   // 原来是「按住说话、松开结束」，孩子习惯轻点，松手时 prepareToRecordAsync 还没完成，
@@ -2023,29 +2102,13 @@ export default function StoryPlayScreen() {
         <View style={styles.completedContainer}>
           <Racco state="happy" size={150} />
           <Text style={styles.completedText}>{t('story.completed.text')}</Text>
+          {/* v96：奖励改成答完 3 个问题才给，这里先把「奖励在后头」讲清楚，
+              孩子知道答题不是白答的，也避免家长以为奖励丢了 */}
+          <Text style={styles.completedHint}>{t('story.completed.rewardHint')}</Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setQaLoading(true); setPhase('qa_round1'); generateQuestions(); }}>
             <Text style={styles.primaryBtnText}>{t('story.completed.enterQa')}</Text>
           </TouchableOpacity>
         </View>
-
-        {/* 需求 2/5：升级与新勋章用动画展现。升级优先，播完再显示勋章 */}
-        <RewardAnimation
-          visible={!!levelUp}
-          emoji={levelUp?.emoji ?? '🎉'}
-          title={t('reward.levelUp')}
-          subtitle={levelUp ? `Lv.${levelUp.level} · ${uiLang === 'en' ? levelUp.nameEn : levelUp.name}` : ''}
-          desc={t('reward.keepGoing')}
-          onDone={() => setLevelUp(null)}
-        />
-        <RewardAnimation
-          visible={!levelUp && !!newBadge}
-          emoji={newBadge?.emoji ?? '🏅'}
-          clayIcon="badge"
-          title={t('reward.newBadge')}
-          subtitle={newBadge?.name ?? ''}
-          desc={newBadge?.desc}
-          onDone={() => setNewBadge(null)}
-        />
       </>
       </CartoonScreen>
     );
@@ -2165,6 +2228,12 @@ export default function StoryPlayScreen() {
                       <Text style={styles.replayQText}>🔊 {t('story.qa.replayQuestion')}</Text>
                     </TouchableOpacity>
                   )}
+                  {/* 不想说 / 录不上：也能往下走，不让孩子卡在这一题、拿不到奖励 */}
+                  {!isRecording && (
+                    <TouchableOpacity style={styles.skipQBtn} onPress={skipVoiceQuestion}>
+                      <Text style={styles.skipQText}>{t('story.qa.skipVoice')}</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               )
             )}
@@ -2258,6 +2327,8 @@ export default function StoryPlayScreen() {
       </TouchableOpacity>
       </View>
 
+      {/* 答完 3 个问题后，奖励动画在这里出现（升级 / 新勋章） */}
+      {rewardOverlay}
       </CartoonScreen>
     );
   }
@@ -2350,6 +2421,8 @@ export default function StoryPlayScreen() {
         <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
       </TouchableOpacity>
     </View>
+    {/* 万一孩子手快直接点到「晚安」页，奖励动画也跟着过来，不会白答 */}
+    {rewardOverlay}
     </CartoonScreen>
   );
 }
@@ -2562,7 +2635,16 @@ const styles = StyleSheet.create({
   sheetHint: { fontSize: 12, color: '#8A7B6E', textAlign: 'center', marginTop: 4 },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
-  completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 24 },
+  completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 8 },
+  /** 完成页的「答题得奖励」提示：弱化处理，别抢主标题 */
+  completedHint: {
+    fontSize: 14,
+    color: '#A8988A',
+    textAlign: 'center',
+    maxWidth: 300,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
 
   qaRoundTitle: { fontSize: 20, fontWeight: 'bold', color: '#3D3229', textAlign: 'center', marginTop: 20, marginBottom: 16 },
   qaQuestion: { fontSize: 18, color: '#3D3229', textAlign: 'center', marginBottom: 24, lineHeight: 28 },
@@ -2632,6 +2714,9 @@ const styles = StyleSheet.create({
   // 再听一遍题目
   replayQBtn: { marginTop: 18, paddingVertical: 10, paddingHorizontal: 18 },
   replayQText: { fontSize: 14, color: '#9B7EDE', fontWeight: '700' },
+  /** 语音题的「跳过这题」：刻意做得比「再听一遍」更淡，不当主按钮抢注意力 */
+  skipQBtn: { marginTop: 2, paddingVertical: 8, paddingHorizontal: 18 },
+  skipQText: { fontSize: 13, color: '#B9AFA4', fontWeight: '600' },
   feedbackText: { fontSize: 20, color: '#F7A072', fontWeight: 'bold', textAlign: 'center', marginTop: 24 },
   qaLoadingWrap: { alignItems: 'center', marginTop: 40 },
   qaLoadingText: { fontSize: 15, color: '#A8988A', marginTop: 16 },
