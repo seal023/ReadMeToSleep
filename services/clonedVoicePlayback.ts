@@ -36,6 +36,40 @@ type AudioPlayerLike = {
 
 let currentPlayer: AudioPlayerLike | null = null;
 
+/**
+ * 分片流式播放状态（v90 反馈 #1/#3）
+ * ---------------------------------------------------------------------------
+ * 长故事（数千字）原来整段合成一个巨大 mp3 → 首次要等整段合成完才播、暂停后
+ * 重播又重新 load 巨大文件。改为「分片 TTS + 边播边合成」：长文本切成若干片，
+ * 每片独立合成小 mp3，合成第 1 片就播，边播边预取后续片，片间无缝衔接；
+ * 暂停 = pause 当前片（不销毁），恢复 = resume（不重新合成/load）。
+ * 短文本仍走原整段逻辑。currentPlayer 仍指向「当前在播的那一片」的 player，
+ * 片切换时更新，从而复用 armEndWatch 的轮询检测。
+ */
+const CHUNK_THRESHOLD_CHARS = 480; // 文本超过此字符数即走分片（中文约 480 字 / 英文约 320 词）
+const CHUNK_TARGET_CHARS = 280; // 每片目标长度（中文）；英文按约 3 倍字符折算
+const CHUNK_PRELOAD = 2; // 当前片播放时，后台预取接下来的片数
+
+interface ChunkState {
+  active: boolean;
+  chunks: string[];
+  target: CloneTarget;
+  language: 'zh' | 'en';
+  onDone?: () => void;
+  abortCheck?: () => boolean;
+  onStart?: () => void;
+  fast?: boolean;
+  durations: number[]; // 每片真实时长（秒），播放后逐片填入
+  synthDone: boolean[];
+  synthRunning: Set<number>;
+  current: number; // 当前播放片索引（-1=尚未起播）
+  paused: boolean;
+  pendingAdvance: boolean; // 当前片已播完，但下一片尚未合成好，等待中
+  started: boolean;
+  onStartFired: boolean; // 整体 onStart 是否已触发（仅第一片出声时触发一次）
+}
+let chunkState: ChunkState | null = null;
+
 /** 最近一次克隆声播放/合成失败的具体原因，供 UI 透出诊断（如试听失败弹窗） */
 let lastCloneError = '';
 export function getLastCloneError(): string {
@@ -78,6 +112,13 @@ export function setPlaybackInterrupted(v: boolean): void {
 export function isPlaybackInterrupted(): boolean {
   return interrupted;
 }
+/**
+ * 手动暂停标志（v90 #2）：pauseClonedAudio 只 pause 当前 player 不销毁，
+ * 若不在「播完」检测里屏蔽，停滞检测器会把"暂停"误判成"故事讲完"把孩子推到提问环节。
+ * 由 pauseClonedAudio / resumeClonedAudio 置位 / 复位；stopClonedAudio 整体停止时清掉。
+ */
+let userPaused = false;
+
 /** onEnded 事件的守门人（只有真到末尾才放行），见 armEndWatch 内注释 */
 let acceptEnd: (() => void) | null = null;
 // 出现过的最大时长：长音频起播/缓冲抖动时 duration 可能瞬间回退，
@@ -178,8 +219,8 @@ function armEndWatch(onDone?: () => void): void {
    */
   const acceptEndSignal = () => {
     if (endFired) return;
-    const dur = getClonedDuration();
-    const pos = getClonedPosition();
+    const dur = getClonedDurationRaw();
+    const pos = getClonedPositionRaw();
     if (dur > 0.4 && pos >= dur - 1.5) endOnce?.();
   };
   acceptEnd = acceptEndSignal;
@@ -187,6 +228,12 @@ function armEndWatch(onDone?: () => void): void {
     if (endFired || !currentPlayer) return;
     // 打断期间（来电 / 切后台）屏蔽一切「播完」判定，避免孤儿播放器的暂停被误判为结束
     if (interrupted) {
+      stallTicks = 0;
+      return;
+    }
+    // 手动暂停期间同样屏蔽：pauseClonedAudio 只 pause 不销毁 player，否则停滞检测会
+    // 把"暂停"误判成"故事讲完"（v90 #2）
+    if (userPaused) {
       stallTicks = 0;
       return;
     }
@@ -198,6 +245,19 @@ function armEndWatch(onDone?: () => void): void {
     // 若直接拿「当前很小的 dur」去比 pos 就会误判「已播完」→ 故事没讲完就跳结束。
     // 故跟踪出现过的最大时长，仅当「当前 dur 没有异常回退」且「位置接近真实时长」才判结束。
     if (dur > maxDur) maxDur = dur;
+    // —— 分片流式模式：仅「当前片到末尾」判结束（切下一片 / 故事结束），
+    //    禁用「中途停顿判停」，避免网络卡顿被误判成片播完而跳片；暂停时亦不判。
+    if (chunkState && chunkState.active) {
+      // ⚠️ 必须用「当前片」的原始位置/时长，不能用累计值：
+      //    累计 pos 永远小于累计总时长（除最后一片），用累计值判「到末尾」会导致
+      //    片与片之间永远不切换 —— 只有整段最后一片播完才结束。
+      const rdur = getClonedDurationRaw();
+      const rpos = getClonedPositionRaw();
+      const p = currentPlayer as unknown as { playing?: boolean } | null;
+      if (p && typeof p.playing === 'boolean' && p.playing) sawPlaying = true;
+      if (!chunkState.paused && rdur > 0.4 && rpos >= rdur - 0.6) endOnce?.();
+      return;
+    }
     // 记录起播位置与推进情况（断点续播时起播位置就是 seek 到的秒数）
     if (startPos === 0 && pos > 0) startPos = pos;
     if (pos > maxPos) maxPos = pos;
@@ -336,9 +396,34 @@ async function ensureSynthFile(
  * 用于故事页打开时后台预热，点播放即可几乎瞬时出声。
  * 任何失败都静默忽略（正常播放时会再走一次合成并透出错误）。
  */
-export async function prewarmClonedAudio(text: string, target: CloneTarget): Promise<void> {
+export async function prewarmClonedAudio(
+  text: string,
+  target: CloneTarget,
+  language: 'zh' | 'en' = 'zh',
+): Promise<void> {
   try {
     if (!text || text.trim().length < 2) return;
+    // 长文本按分片预热：避免一次性合成整段大文件（v90 #1/#3 同源）。
+    // 进故事页即预热各片，点播放时多半已落盘 → 几乎瞬时出声。
+    if (text.length > CHUNK_THRESHOLD_CHARS) {
+      const chunks = splitIntoChunks(text, language);
+      const CONCURRENCY = 3;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < chunks.length) {
+          const c = chunks[cursor++];
+          try {
+            await ensureSynthFile(c, target, cacheFileName(c, target));
+          } catch {
+            /* 单条失败不影响其它 */
+          }
+        }
+      };
+      const workers: Promise<void>[] = [];
+      for (let i = 0; i < Math.min(CONCURRENCY, chunks.length); i++) workers.push(worker());
+      await Promise.all(workers);
+      return;
+    }
     const fileName = cacheFileName(text, target);
     if (cacheFile(fileName).exists) return;
     await ensureSynthFile(text, target, fileName);
@@ -423,6 +508,19 @@ async function startPlayback(
       await modeTask;
     }
 
+    // 防御（v90 #3）：任何路径遗留的旧 player 必须先彻底停掉再建新的。
+    // 之前的实现直接覆盖 currentPlayer 引用，一旦某个旧 player 没被回收，
+    // 它就会继续出声 —— 表现正是「选了内置大姐姐，耳朵里还是上一个克隆声」。
+    if (currentPlayer) {
+      try {
+        currentPlayer.pause();
+        currentPlayer.remove();
+      } catch {
+        /* 忽略回收异常 */
+      }
+      currentPlayer = null;
+    }
+
     const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
     currentPlayer = player;
     armEndWatch(onDone);
@@ -477,18 +575,55 @@ export async function playClonedAudio(
    * fast：不等待音频会话配置就起播，进一步压缩切后台时的起播延迟。
    */
   opts?: { cacheOnly?: boolean; fast?: boolean },
+  /** 文本语种：仅长文本分片切句时需要（中文按字符、英文按词估算长度） */
+  language: 'zh' | 'en' = 'zh',
 ): Promise<boolean> {
   // 先停掉上一段，避免叠加
   stopClonedAudio();
   lastCloneError = '';
 
   try {
-    const fileName = cacheFileName(text, target);
-    if (opts?.cacheOnly && !cacheFile(fileName).exists) {
-      // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
-      void prewarmClonedAudio(text, target);
-      return false;
+    // cacheOnly：只播已落盘音频，绝不现场合成（锁屏告别等必须立刻出声）。
+    // 长文本同样跳过分片，直接走整段已缓存文件。
+    if (opts?.cacheOnly) {
+      const fileName = cacheFileName(text, target);
+      if (!cacheFile(fileName).exists) {
+        // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
+        void prewarmClonedAudio(text, target, language);
+        return false;
+      }
+      const file = cacheFile(fileName);
+      return await startPlayback(file.uri, onDone, onStart, opts?.fast);
     }
+    // 长文本（如 15-20 分钟故事）走分片流式：先合成第 1 片就播、边播边合成后续，
+    // 解决「整段合成完才出声 / 暂停后整段重缓冲」的问题（v90 #1/#2/#3）。
+    if (text.length > CHUNK_THRESHOLD_CHARS) {
+      const chunks = splitIntoChunks(text, language);
+      if (chunks.length > 1) {
+        chunkState = {
+          active: true,
+          chunks,
+          target,
+          language,
+          onDone,
+          abortCheck,
+          onStart,
+          fast: opts?.fast,
+          durations: new Array(chunks.length).fill(0),
+          synthDone: new Array(chunks.length).fill(false),
+          synthRunning: new Set<number>(),
+          current: -1,
+          paused: false,
+          pendingAdvance: false,
+          started: false,
+          onStartFired: false,
+        };
+        // 起播第 1 片（合成完即播，无需等整段）
+        return await playChunkIndex(0);
+      }
+      // 切不出多片（极少）：退回整段逻辑
+    }
+    const fileName = cacheFileName(text, target);
     const res = await ensureSynthFile(text, target, fileName);
     // 合成期间可能已有更新的旁白请求进来，若已被取代则放弃，不覆盖新声
     if (abortCheck && !abortCheck()) return false;
@@ -511,7 +646,8 @@ export async function playClonedAudio(
  * 克隆声播放进度跳转（进度条拖动）。positionSeconds 为跳转目标位置（秒）。
  * 仅对 expo-audio 播放器有效；系统音（TTS）不支持 seek，调用方需自行判断。
  */
-export function seekClonedAudio(positionSeconds: number): void {
+/** 当前片跳转（毫秒），不含跨片逻辑 —— 供分片 seek 内部使用 */
+export function seekClonedAudioRaw(positionSeconds: number): void {
   try {
     if (currentPlayer && typeof currentPlayer.seekTo === 'function') {
       // expo-audio 的 seekTo 接收毫秒，需把秒换算成毫秒
@@ -520,6 +656,15 @@ export function seekClonedAudio(positionSeconds: number): void {
   } catch {
     /* 忽略 seek 异常 */
   }
+}
+
+/** 跳转（秒）：分片模式跨片定位，否则当前片 seek */
+export function seekClonedAudio(positionSeconds: number): void {
+  if (chunkState && chunkState.active) {
+    seekChunk(positionSeconds);
+    return;
+  }
+  seekClonedAudioRaw(positionSeconds);
 }
 
 /**
@@ -543,6 +688,12 @@ export async function reassertAudioSession(): Promise<void> {
 /** 停止当前克隆声播放 */
 export function stopClonedAudio(): void {
   resetEndWatch();
+  userPaused = false; // 整体停止：暂停态失效
+  // 清分片状态（分片播放被整体停止时）
+  if (chunkState) {
+    chunkState.active = false;
+    chunkState = null;
+  }
   try {
     if (currentPlayer) {
       currentPlayer.pause();
@@ -555,10 +706,354 @@ export function stopClonedAudio(): void {
 }
 
 /**
+ * 分片流式引擎（v90 反馈 #1/#2/#3）
+ * ---------------------------------------------------------------------------
+ * 仅长文本（> CHUNK_THRESHOLD_CHARS）走分片；短文本/提示音/本地录音仍走整段逻辑。
+ * currentPlayer 始终指向「当前在播的那一片」的 player，片间切换先停旧片再建新片，
+ * 复用 armEndWatch 的轮询做「当前片到末尾」检测；整段结束只在最后一片播完时触发 onDone。
+ */
+
+/** 只停当前 player（不清除 chunkState），用于分片间切换 / 暂停 */
+function stopCurrentPlayerOnly(): void {
+  try {
+    if (currentPlayer) {
+      currentPlayer.pause();
+      currentPlayer.remove();
+    }
+  } catch {
+    /* 忽略 */
+  }
+  currentPlayer = null;
+}
+
+/**
+ * 把长文本切成若干「片」：尽量在句子/段落边界切，避免把一句话拦腰截断。
+ * 中文按字符数、英文按词估算长度。返回至少 1 片。
+ */
+function splitIntoChunks(text: string, language: 'zh' | 'en'): string[] {
+  const raw = (text || '').trim();
+  if (!raw) return [];
+  const targetChars = language === 'zh' ? CHUNK_TARGET_CHARS : CHUNK_TARGET_CHARS * 3;
+  if (raw.length <= targetChars) return [raw];
+  const delims = language === 'zh' ? '。！？；…\n' : '.!?;\n';
+  const chunks: string[] = [];
+  let start = 0;
+  const n = raw.length;
+  while (start < n) {
+    let end = Math.min(start + targetChars, n);
+    if (end < n) {
+      // 往回找最近的断句符（最多回找 targetChars 的一半）
+      const lo = Math.max(start, end - Math.floor(targetChars / 2));
+      let found = -1;
+      for (let j = end - 1; j >= lo; j--) {
+        if (delims.includes(raw[j])) {
+          found = j + 1;
+          break;
+        }
+      }
+      if (found > start) {
+        end = found;
+      } else {
+        // 往前找断句符
+        const hi = Math.min(n, end + Math.floor(targetChars / 2));
+        let found2 = -1;
+        for (let j = end; j < hi; j++) {
+          if (delims.includes(raw[j])) {
+            found2 = j + 1;
+            break;
+          }
+        }
+        if (found2 > start) end = found2;
+      }
+    }
+    const piece = raw.slice(start, end).trim();
+    if (piece.length > 0) chunks.push(piece);
+    start = end;
+  }
+  return chunks.length ? chunks : [raw];
+}
+
+/** 分片模式：累计播放位置（秒）= 已播完各片时长之和 + 当前片位置 */
+function getChunkPosition(): number {
+  const cs = chunkState;
+  if (!cs) return 0;
+  let pos = 0;
+  for (let i = 0; i < cs.current; i++) pos += cs.durations[i] || 0;
+  if (cs.current >= 0 && cs.current < cs.chunks.length) pos += getClonedPositionRaw();
+  return pos;
+}
+
+/** 按文本长度估算单片时长（秒），作为未播放片的兜底，使进度条稳定不跳变 */
+function estimateChunkDuration(text: string, language: 'zh' | 'en'): number {
+  if (language === 'zh') return Math.max(text.length * 0.21, 1);
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(words * 0.45, 1);
+}
+
+/** 分片模式：总时长（秒）= 各片时长之和（已播片用真实值，未播片用估算，进度条稳定） */
+function getChunkDuration(): number {
+  const cs = chunkState;
+  if (!cs) return 0;
+  let total = 0;
+  for (let i = 0; i < cs.chunks.length; i++) {
+    const d = cs.durations[i] || 0;
+    total += d > 0 ? d : estimateChunkDuration(cs.chunks[i], cs.language);
+  }
+  return total;
+}
+
+/** 分片模式：跨片跳转（秒） */
+function seekChunk(sec: number): void {
+  const cs = chunkState;
+  if (!cs) {
+    seekClonedAudioRaw(sec);
+    return;
+  }
+  const target = Math.max(0, sec);
+  // 定位目标秒数落在哪一片
+  let acc = 0;
+  let idx = 0;
+  for (let i = 0; i < cs.chunks.length; i++) {
+    const d = cs.durations[i] || 0;
+    if (acc + d > target) {
+      idx = i;
+      break;
+    }
+    acc += d;
+    idx = i;
+  }
+  const fileName = cacheFileName(cs.chunks[idx], cs.target);
+  const offset = Math.max(0, target - acc);
+  // 落在「当前正在播的那一片」里：直接 seek 当前播放器，不重建、不重新 load
+  // （暂停 → 再播放的秒续就走这条路，真正做到零缓冲）
+  if (idx === cs.current && currentPlayer) {
+    seekClonedAudioRaw(offset);
+    return;
+  }
+  if (cacheFile(fileName).exists) {
+    cs.current = idx;
+    stopCurrentPlayerOnly();
+    void startPlayback(cacheFile(fileName).uri, () => handleChunkEnded(idx), undefined, true);
+    seekClonedAudioRaw(offset);
+    // 新建的 player 立刻 seek 会被忽略，稍后再补一次（目标时间落在该片内部）
+    setTimeout(() => {
+      if (!chunkState || !chunkState.active || chunkState.current !== idx) return;
+      if (getClonedPositionRaw() < offset - 1) seekClonedAudioRaw(offset);
+    }, 500);
+  } else {
+    // 该片尚未合成：从这一片重新开始分片流程（之前进度作废，自然续播到末尾）
+    cs.current = idx - 1;
+    void playChunkIndex(idx);
+  }
+}
+
+/** 起播指定片（合成→播放）。返回是否成功起播（首片失败=整体失败） */
+async function playChunkIndex(i: number): Promise<boolean> {
+  const cs = chunkState;
+  if (!cs || !cs.active) return false;
+  if (i < 0 || i >= cs.chunks.length) return false;
+  if (cs.abortCheck && !cs.abortCheck()) {
+    cs.active = false;
+    chunkState = null;
+    return false;
+  }
+  const fileName = cacheFileName(cs.chunks[i], cs.target);
+  const res = await ensureSynthFile(cs.chunks[i], cs.target, fileName);
+  if (!cs || !cs.active) return false;
+  if (cs.abortCheck && !cs.abortCheck()) {
+    cs.active = false;
+    chunkState = null;
+    return false;
+  }
+  if (!res.ok) {
+    lastCloneError = res.error || ts('vc.diag.synthFail');
+    console.warn('[clonedPlayback] chunk synth failed:', lastCloneError);
+    if (i === 0) {
+      cs.active = false;
+      chunkState = null;
+      return false;
+    }
+    // 非首片失败：标记跳过，尝试下一片继续（绝不让一片失败卡死整段）
+    cs.synthDone[i] = false;
+    if (i < cs.chunks.length - 1) {
+      void playChunkIndex(i + 1);
+      return true;
+    }
+    if (cs.onDone) cs.onDone();
+    cs.active = false;
+    chunkState = null;
+    return false;
+  }
+  cs.synthDone[i] = true;
+  cs.current = i;
+  cs.paused = false;
+  cs.started = true;
+  stopCurrentPlayerOnly();
+  const firstChunk = !cs.onStartFired;
+  if (firstChunk) cs.onStartFired = true;
+  // 片间切换用 fast（音频会话第 1 片就已配置好，再 await 一次只会让片与片之间多出空档）
+  const ok = await startPlayback(
+    cacheFile(fileName).uri,
+    () => handleChunkEnded(i),
+    firstChunk ? cs.onStart : undefined,
+    firstChunk ? cs.fast : true,
+  );
+  if (!ok) {
+    if (i === 0) {
+      cs.active = false;
+      chunkState = null;
+      return false;
+    }
+    if (i < cs.chunks.length - 1) {
+      void playChunkIndex(i + 1);
+      return true;
+    }
+    if (cs.onDone) cs.onDone();
+    cs.active = false;
+    chunkState = null;
+    return false;
+  }
+  // 预取后续 CHUNK_PRELOAD 片（后台并发合成，边播边缓冲）
+  for (let k = 1; k <= CHUNK_PRELOAD; k++) {
+    const j = i + k;
+    if (j < cs.chunks.length) void prewarmChunk(j);
+  }
+  return true;
+}
+
+/** 当前片正常播完：推进到下一片；最后一片则整段结束 */
+function handleChunkEnded(i: number): void {
+  const cs = chunkState;
+  if (!cs || !cs.active) return;
+  if (i >= 0 && i < cs.durations.length) {
+    const d = getClonedDurationRaw() || 0;
+    if (d > 0) cs.durations[i] = d;
+  }
+  if (cs.paused) return; // 暂停态下的结束信号忽略（恢复后由 tryAdvance 接管）
+  tryAdvance();
+}
+
+/** 尝试从当前片的下一部推进；未就绪则预取并挂起 pendingAdvance */
+function tryAdvance(): void {
+  const cs = chunkState;
+  if (!cs || !cs.active) return;
+  if (cs.paused) {
+    cs.pendingAdvance = true;
+    return;
+  }
+  let next = cs.current + 1;
+  while (next < cs.chunks.length) {
+    const fileName = cacheFileName(cs.chunks[next], cs.target);
+    if (cacheFile(fileName).exists) {
+      cs.pendingAdvance = false;
+      void playChunkIndex(next);
+      return;
+    }
+    if (cs.synthDone[next] === false) {
+      next++;
+      continue;
+    } // 跳过已失败片
+    // 未就绪且未判失败：触发预取并等待
+    cs.pendingAdvance = true;
+    void prewarmChunk(next);
+    return;
+  }
+  // 没有下一片（都跳完 / 已是最后）→ 整段结束
+  cs.pendingAdvance = false;
+  if (cs.onDone) cs.onDone();
+  cs.active = false;
+  chunkState = null;
+}
+
+/** 预取某片（命中缓存/正在合成则跳过）。合成完成后若正等它，立即推进 */
+async function prewarmChunk(j: number): Promise<void> {
+  const cs = chunkState;
+  if (!cs || !cs.active) return;
+  if (cs.synthDone[j] || cs.synthRunning.has(j)) return;
+  cs.synthRunning.add(j);
+  const fileName = cacheFileName(cs.chunks[j], cs.target);
+  const res = await ensureSynthFile(cs.chunks[j], cs.target, fileName);
+  if (!cs || !cs.active) {
+    cs?.synthRunning.delete(j);
+    return;
+  }
+  cs.synthRunning.delete(j);
+  cs.synthDone[j] = res.ok;
+  if (!res.ok) {
+    // 预取失败：若正在等这一片，则跳过它继续推进
+    if (cs.pendingAdvance && cs.current + 1 === j) {
+      cs.pendingAdvance = false;
+      tryAdvance();
+    }
+    return;
+  }
+  if (cs.pendingAdvance && cs.current + 1 === j) {
+    cs.pendingAdvance = false;
+    void playChunkIndex(j);
+  }
+}
+
+/**
+ * 暂停当前克隆声/本地录音播放（分片模式只 pause 当前片，不销毁、不重新合成/load）。
+ * 用于「暂停 → 再播放」时复用同一路播放，避免整段重缓冲（v90 #2）。
+ * 系统音（TTS）无法暂停，调用方需自行判断（isClonedAudioPlaying）。
+ */
+export function pauseClonedAudio(): void {
+  userPaused = true; // 屏蔽「播完」检测，避免停滞判定把暂停误判成结束
+  if (chunkState && chunkState.active) {
+    if (currentPlayer && typeof currentPlayer.pause === 'function') {
+      try {
+        currentPlayer.pause();
+      } catch {
+        /* ignore */
+      }
+    }
+    chunkState.paused = true;
+    return;
+  }
+  if (currentPlayer && typeof currentPlayer.pause === 'function') {
+    try {
+      currentPlayer.pause();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
+ * 恢复播放（与 pauseClonedAudio 配对）。分片模式恢复当前片；若暂停期间当前片已播完
+ * （pendingAdvance）则尝试推进到下一片。
+ */
+export function resumeClonedAudio(): void {
+  userPaused = false; // 恢复「播完」检测
+  if (chunkState && chunkState.active) {
+    if (currentPlayer && typeof currentPlayer.play === 'function') {
+      try {
+        currentPlayer.play();
+      } catch {
+        /* ignore */
+      }
+    }
+    const wasPending = chunkState.paused;
+    chunkState.paused = false;
+    if (wasPending && chunkState.pendingAdvance) tryAdvance();
+    return;
+  }
+  if (currentPlayer && typeof currentPlayer.play === 'function') {
+    try {
+      currentPlayer.play();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/**
  * 当前克隆声 / 本地音的播放位置（秒）。仅对 expo-audio 播放器有效；
  * 系统音（TTS）不支持，返回 0 —— 调用方据此决定是否显示真实进度 / 允许拖动快进。
  */
-export function getClonedPosition(): number {
+/** 当前片的播放位置（秒），不含分片累计 —— 供分片累计与 armEndWatch 内部使用 */
+export function getClonedPositionRaw(): number {
   try {
     const p = currentPlayer as unknown as { currentTime?: number } | null;
     return p && typeof p.currentTime === 'number' ? p.currentTime : 0;
@@ -567,14 +1062,26 @@ export function getClonedPosition(): number {
   }
 }
 
-/** 当前克隆声 / 本地音的总时长（秒）；未加载完成返回 0 */
-export function getClonedDuration(): number {
+/** 播放位置（秒）：分片模式返回累计值，否则返回当前片位置 */
+export function getClonedPosition(): number {
+  if (chunkState && chunkState.active) return getChunkPosition();
+  return getClonedPositionRaw();
+}
+
+/** 当前片的总时长（秒），不含分片累计 —— 供分片累计与 armEndWatch 内部使用 */
+export function getClonedDurationRaw(): number {
   try {
     const p = currentPlayer as unknown as { duration?: number } | null;
     return p && typeof p.duration === 'number' ? p.duration : 0;
   } catch {
     return 0;
   }
+}
+
+/** 总时长（秒）：分片模式返回累计值，否则返回当前片时长 */
+export function getClonedDuration(): number {
+  if (chunkState && chunkState.active) return getChunkDuration();
+  return getClonedDurationRaw();
 }
 
 /**

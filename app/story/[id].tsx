@@ -29,7 +29,7 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor 
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, clearStoryPosition, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -155,6 +155,15 @@ export default function StoryPlayScreen() {
   // v79：声音选择改为常显大按钮，不再需要展开/收起状态
   // v81：可选声音统一从 voiceCatalog 取（内置样本 + 手机语音 + 真正克隆过的亲人）
   const [selectedVoice, setSelectedVoice] = useState('preset:cherry');
+  /**
+   * v90 #3：本轮「实际正在播」的音色。
+   * 之前 pickVoice 用 `id === selectedVoice` 判「没变化」直接 return，
+   * 但 selectedVoice 只是设置值——如果正在响的那一路其实是别的声线
+   * （上一路没停干净 / 设置刚被别处改过），点选同名项会被误判成无操作，
+   * 孩子听到的就一直是旧声（典型表现：选了大姐姐，耳朵里还是克隆声）。
+   * 现在只有「和实际在播的音色也一致」才算没变化。
+   */
+  const playingVoiceRef = useRef('');
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>(PRESET_VOICE_OPTIONS);
   // v80 #3：正在播的到底是谁的声音？——显示当前生效的音色名（未克隆=云端预置音色）
   const [voiceIsCloned, setVoiceIsCloned] = useState(false);
@@ -262,6 +271,10 @@ export default function StoryPlayScreen() {
   const resumeAtRef = useRef(0);
   /** 断点秒数（用于界面提示，不参与播放逻辑） */
   const [resumeSec, setResumeSec] = useState(0);
+  /** 云端音频被手动暂停（只 pause 未停），再点播放走「秒续」而非重新缓冲（v90 #2） */
+  const cloudPausedRef = useRef(false);
+  /** 当前播放的「播完」信号处理函数（句柄），供恢复播放时复用同一 onEnded（含 token 校验） */
+  const onEndedRef = useRef<(() => void) | null>(null);
   /** 是否刚从后台/锁屏回来过（回来时要把界面状态与音频会话对齐） */
   const interruptedRef = useRef(false);
   /** story 的 ref 镜像：失焦清理是空依赖的 useCallback，拿不到最新 story */
@@ -696,7 +709,7 @@ export default function StoryPlayScreen() {
           ? selectedVoice
           : presetTargetFor(selectedVoice);
       if (!target || cancelled) return;
-      prewarmClonedAudio(storyText, target);
+      prewarmClonedAudio(storyText, target, displayLang);
     })();
     return () => {
       cancelled = true;
@@ -853,6 +866,7 @@ export default function StoryPlayScreen() {
     handlePlayRef.current = handlePlay;
     if (!story) return;
     const voice = voiceOverride ?? selectedVoice;
+    playingVoiceRef.current = voice; // 记录本轮实际声线，供换声时判「真的没变化」
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
@@ -860,6 +874,7 @@ export default function StoryPlayScreen() {
     startingAtRef.current = Date.now();
     const token = ++playTokenRef.current;
     endFiredRef.current = false;
+    cloudPausedRef.current = false; // 重新起播：不再是「暂停态」，恢复路径失效
     // 先彻底停掉任何在播的音频，避免叠加
     stopStory();
     if (progressInterval.current) clearInterval(progressInterval.current);
@@ -932,6 +947,8 @@ export default function StoryPlayScreen() {
         endFiredRef.current = true;
         handleStoryEnded();
       };
+      // 句柄存到 ref，供「恢复播放」路径复用同一 onEnded（含 token 校验），避免重复实现
+      onEndedRef.current = onEnded;
 
       // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成），与克隆声共用全局 player
       if (story.audioUri) {
@@ -1019,7 +1036,8 @@ export default function StoryPlayScreen() {
    * 现在：记住当前播放位置 → 用新声线从同一位置重新起播，进度无缝衔接。
    */
   const pickVoice = (id: string) => {
-    if (!id || id === selectedVoice) return;
+    // 只有「设置值」和「实际在播的音色」都一致，才算真的没变化（见 playingVoiceRef 注释）
+    if (!id || (id === selectedVoice && id === playingVoiceRef.current)) return;
     const wasPlaying = isPlaying;
     const pos = getClonedPosition();
     const dur = getClonedDuration();
@@ -1042,6 +1060,7 @@ export default function StoryPlayScreen() {
     playTokenRef.current++;
     startingRef.current = false;
     stopStory();
+    cloudPausedRef.current = false; // 换声 = 彻底重起，暂停态失效
     setIsPlaying(false);
     setPreparing(false);
     if (progressInterval.current) clearInterval(progressInterval.current);
@@ -1060,14 +1079,54 @@ export default function StoryPlayScreen() {
       setResumeSec(Math.floor(pos));
       saveStoryPosition(story.id, pos);
     }
-    // 作废进行中的播放回调，并解除并发锁，避免暂停后点播放被拦
-    playTokenRef.current++;
     startingRef.current = false;
-    stopStory();
+    if (clonedPlayingRef.current) {
+      // 云端音频（克隆声/本地录音）：只 pause 当前路播放器，不销毁、不重新合成/load，
+      // 再点播放可秒续（v90 #2）。暂停期间的「播完」检测由引擎屏蔽。
+      pauseClonedAudio();
+      cloudPausedRef.current = true;
+    } else {
+      // 系统音 TTS 无法暂停，只能整段停止；恢复时从断点起讲。
+      // 含「还在准备声音」的阶段：必须作废这次播放回调，否则合成完成后会自己接着响。
+      playTokenRef.current++;
+      stopStory();
+      cloudPausedRef.current = false;
+    }
     setIsPlaying(false);
     setPreparing(false);
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+  };
+
+  /**
+   * v90 #2：云端音频被手动暂停后，点播放「秒续」——复用同一路 player，不重新合成/load。
+   * 仅当 cloudPausedRef 为 true 且仍是云端音频时走此路径；其余情况（系统音 / 已彻底停止）
+   * 由 handlePlay 重新起播。
+   */
+  const handleResume = () => {
+    void reassertAudioSession();
+    resumeClonedAudio();
+    const target = resumeAtRef.current;
+    if (target > 3) {
+      seekClonedAudio(target);
+      setTimeout(() => {
+        if (getClonedPosition() < target - 1.5) seekClonedAudio(target);
+      }, 600);
+    }
+    cloudPausedRef.current = false;
+    setIsPlaying(true);
+    setPreparing(false);
+    preparingRef.current = false;
+    startingRef.current = false;
+    startProgressTicker(clonedPlayingRef.current);
+    // 重启安全定时器（按剩余时长兜底；真实播完检测仍由引擎负责）
+    if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    const safeDur = clonedPlayingRef.current
+      ? ((story?.duration || Math.ceil(storyText.length * 0.21) || 30) * 1000)
+      : (displayLang === 'en'
+          ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
+          : Math.max(storyText.length * 210, 10000));
+    safetyTimerRef.current = setTimeout(() => onEndedRef.current?.(), safeDur + 45000);
   };
 
   const handleStop = () => {
@@ -1078,6 +1137,8 @@ export default function StoryPlayScreen() {
     setIsPlaying(false);
     setPreparing(false);
     setProgress(0);
+    cloudPausedRef.current = false;
+    playingVoiceRef.current = ''; // 已彻底停止：没有「实际在播的音色」了
     // 停止 = 从头开始，断点清掉
     resumeAtRef.current = 0;
     setResumeSec(0);
@@ -1101,6 +1162,8 @@ export default function StoryPlayScreen() {
     return () => {
       stopStory();
       cancelSleepSession();
+      cloudPausedRef.current = false;
+      playingVoiceRef.current = '';
       deactivateKeepAwake('rms-story').catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1621,7 +1684,17 @@ export default function StoryPlayScreen() {
           <Animated.View style={{ transform: [{ scale: playPulse }] }}>
             <TouchableOpacity
               style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-              onPress={() => (isPlaying ? handlePause() : handlePlay())}
+              onPress={() => {
+                if (isPlaying) {
+                  handlePause();
+                  return;
+                }
+                if (cloudPausedRef.current && clonedPlayingRef.current) {
+                  handleResume();
+                  return;
+                }
+                handlePlay();
+              }}
               activeOpacity={0.9}
             >
               <Text style={styles.playIcon}>{isPlaying ? '⏸️' : '▶️'}</Text>

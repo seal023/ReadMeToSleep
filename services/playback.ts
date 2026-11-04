@@ -47,7 +47,15 @@ export async function playStory(
   onDone?: () => void,
 ): Promise<boolean> {
   for (const target of voiceCandidates(voiceId)) {
-    const ok = await playClonedAudio(text, target as CloneTarget, onDone);
+    const ok = await playClonedAudio(
+      text,
+      target as CloneTarget,
+      onDone,
+      undefined,
+      undefined,
+      undefined,
+      language,
+    );
     if (ok) return true;
   }
   // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
@@ -141,6 +149,7 @@ export async function speakWithBestVoice(
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
           { cacheOnly: true, fast: opts.fast !== false },
+          language,
         );
         if (ok) return true;
       } catch {
@@ -168,6 +177,7 @@ export async function speakWithBestVoice(
           () => mySeq === speakSeq,
           () => opts.onStart?.(),
           { fast: opts.fast },
+          language,
         );
         if (ok) return true;
         // 关键修复（#4/#5）：若本请求已被更新的旁白请求取代（abortCheck 失败），
