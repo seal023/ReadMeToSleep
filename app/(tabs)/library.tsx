@@ -4,8 +4,11 @@ import {
   Text,
   TextInput,
   FlatList,
+  ScrollView,
+  Modal,
   TouchableOpacity,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
@@ -120,6 +123,16 @@ const SORT_KEYS: { key: 'recommend' | 'durationAsc' | 'durationDesc' | 'name'; l
 export default function LibraryScreen() {
   const router = useRouter();
   const { t, language } = useLanguage();
+  /**
+   * v95 反馈 #2：原来 3 行筛选 chip（长度 / 类型 / 语言+排序）在竖屏吃掉半个屏幕，
+   * 列表只剩一条缝；横屏时 header+筛选把高度占满，FlatList 没有剩余高度 → 完全划不动。
+   * 现在：分类 chip 单行横向滚动，长度/语言/排序收进「筛选」弹层；FlatList 显式 flex:1。
+   */
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  // 横屏手机 / iPad：卡片两列，一次能看到更多
+  const twoCols = width >= 700 || isLandscape;
+  const [filterOpen, setFilterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('classic');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -216,7 +229,7 @@ export default function LibraryScreen() {
 
   const renderClassic = ({ item }: { item: StoryItem }) => (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle]}
       activeOpacity={0.7}
       onPress={() => router.push(`/story/${item.id}`)}
     >
@@ -244,7 +257,7 @@ export default function LibraryScreen() {
 
   const renderAi = ({ item }: { item: Story }) => (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle]}
       activeOpacity={0.7}
       onPress={() => router.push(`/story/${item.id}`)}
     >
@@ -266,7 +279,7 @@ export default function LibraryScreen() {
 
   const renderTravel = ({ item }: { item: Progress['checkIns'][number] }) => (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle]}
       activeOpacity={0.7}
       onPress={() => router.push('/story/travel-checkin')}
     >
@@ -297,11 +310,17 @@ export default function LibraryScreen() {
     return renderTravel({ item: item as Progress['checkIns'][number] });
   };
 
+  /** 已启用的「非默认」筛选数，显示在筛选按钮上，避免收进弹层后不知道有没有筛 */
+  const activeFilterCount =
+    (lengthFilter !== 'all' ? 1 : 0) + (langFilter !== 'all' ? 1 : 0) + (sortKey !== 'recommend' ? 1 : 0);
+
   return (
+    <>
     <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
-      <View style={styles.header}>
-        <Racco state="idle" size={100} />
+      {/* 顶栏：小浣熊 + 搜索同一行，横屏时压到最小高度，把空间让给列表 */}
+      <View style={[styles.header, isLandscape && styles.headerLandscape]}>
+        <Racco state="idle" size={isLandscape ? 54 : 78} />
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
@@ -310,9 +329,10 @@ export default function LibraryScreen() {
             placeholderTextColor="#999"
             value={search}
             onChangeText={setSearch}
+            returnKeyType="search"
           />
           {search ? (
-            <TouchableOpacity onPress={() => setSearch('')}>
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.clearBtn}>✕</Text>
             </TouchableOpacity>
           ) : null}
@@ -333,25 +353,19 @@ export default function LibraryScreen() {
         ))}
       </View>
 
+      {/*
+        分类改成**单行横向滚动**：原来 7 个分类 + 4 个时长 + 3 个语言 + 4 个排序
+        挤成 4 行，竖屏占掉半屏、横屏直接把列表压没（无法上滑）。
+        现在常驻只有这一行，长度 / 语言 / 排序收进右侧「筛选」弹层。
+      */}
       {activeTab === 'classic' && (
-        <>
-          {/* 长度档筛选 */}
-          <View style={styles.tagBarWrap}>
-            {LENGTH_FILTERS.map((f) => (
-              <TouchableOpacity
-                key={f.key}
-                style={lengthFilter === f.key ? styles.tagChipActive : styles.tagChip}
-                onPress={() => setLengthFilter(f.key)}
-              >
-                <Text style={lengthFilter === f.key ? styles.tagChipTextActive : styles.tagChipText}>
-                  {t(f.labelKey)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* 类型筛选 */}
-          <View style={styles.tagBarWrap}>
+        <View style={styles.chipBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroll}
+            style={styles.chipScrollWrap}
+          >
             <TouchableOpacity
               style={!activeTag ? styles.tagChipActive : styles.tagChip}
               onPress={() => setActiveTag(null)}
@@ -371,10 +385,87 @@ export default function LibraryScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
+          </ScrollView>
+          <TouchableOpacity
+            style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnOn]}
+            onPress={() => setFilterOpen(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.filterBtnText, activeFilterCount > 0 && styles.filterBtnTextOn]}>
+              ⚙️ {t('library.filter')}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <FlatList
+        style={styles.listFlex}
+        data={listData}
+        // 列数变化必须换 key，否则 FlatList 复用旧布局会错位
+        key={twoCols ? 'grid' : 'row'}
+        numColumns={twoCols ? 2 : 1}
+        columnWrapperStyle={twoCols ? styles.columnWrap : undefined}
+        keyExtractor={(item, index) => {
+          const it = item as any;
+          return it?.id ?? `${it?.location ?? 'x'}_${it?.date ?? index}`;
+        }}
+        renderItem={renderItem}
+        contentContainerStyle={listData.length ? styles.list : styles.emptyList}
+        showsVerticalScrollIndicator={!isLandscape}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>📚</Text>
+            <Text style={styles.emptyText}>{t('library.empty')}</Text>
+          </View>
+        }
+      />
+      </View>
+    </CartoonScreen>
+
+    {/* 筛选弹层：长度 / 语言 / 排序 */}
+    <Modal
+      visible={filterOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setFilterOpen(false)}
+    >
+      <View style={styles.modalRoot}>
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setFilterOpen(false)}
+        />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>{t('library.filterTitle')}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setLengthFilter('all');
+                setLangFilter('all');
+                setSortKey('recommend');
+              }}
+            >
+              <Text style={styles.sheetReset}>{t('library.reset')}</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* 语言 + 排序 */}
-          <View style={styles.tagBarWrap}>
+          <Text style={styles.sheetLabel}>{t('library.byLength')}</Text>
+          <View style={styles.sheetRow}>
+            {LENGTH_FILTERS.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={lengthFilter === f.key ? styles.tagChipActive : styles.tagChip}
+                onPress={() => setLengthFilter(f.key)}
+              >
+                <Text style={lengthFilter === f.key ? styles.tagChipTextActive : styles.tagChipText}>
+                  {t(f.labelKey)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sheetLabel}>{t('library.byLang')}</Text>
+          <View style={styles.sheetRow}>
             {LANG_FILTERS.map((f) => (
               <TouchableOpacity
                 key={f.key}
@@ -386,7 +477,10 @@ export default function LibraryScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-            <View style={styles.filterDivider} />
+          </View>
+
+          <Text style={styles.sheetLabel}>{t('library.bySort')}</Text>
+          <View style={styles.sheetRow}>
             {SORT_KEYS.map((s) => (
               <TouchableOpacity
                 key={s.key}
@@ -399,43 +493,35 @@ export default function LibraryScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </>
-      )}
 
-      <FlatList
-        data={listData}
-        keyExtractor={(item, index) => {
-          const it = item as any;
-          return it?.id ?? `${it?.location ?? 'x'}_${it?.date ?? index}`;
-        }}
-        renderItem={renderItem}
-        contentContainerStyle={listData.length ? styles.list : styles.emptyList}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📚</Text>
-            <Text style={styles.emptyText}>{t('library.empty')}</Text>
-          </View>
-        }
-      />
+          <TouchableOpacity style={styles.sheetDone} onPress={() => setFilterOpen(false)}>
+            <Text style={styles.sheetDoneText}>{t('common.done')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </CartoonScreen>
+    </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { alignItems: 'center', paddingTop: 16, paddingBottom: 8 },
-  searchBox: {
+  // 小浣熊与搜索框同一行：竖屏 Racco 78px，横屏 54px，整体高度不再吃掉半屏
+  header: {
     flexDirection: 'row', alignItems: 'center',
-    width: '88%', backgroundColor: '#fff',
-    borderRadius: 26, paddingHorizontal: 14,
-    borderWidth: 1, borderColor: '#F0D9B5',
-    height: 42, marginTop: 4,
+    paddingTop: 10, paddingBottom: 4, paddingHorizontal: 14,
+  },
+  headerLandscape: { paddingTop: 2, paddingBottom: 0 },
+  searchBox: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 26, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: '#F0D9B5', height: 40, marginLeft: 6,
+    maxWidth: 640,
   },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: '#3D3229', height: '100%' },
   clearBtn: { fontSize: 14, color: '#A8988A', marginLeft: 4 },
-  tabRow: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 8 },
+  tabRow: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 6, marginTop: 2 },
   tabBtn: {
     flex: 1, paddingVertical: 8, alignItems: 'center',
     borderRadius: 24, marginHorizontal: 4,
@@ -448,9 +534,20 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 13, color: '#A8988A', fontWeight: '500' },
   tabLabelActive: { fontSize: 13, color: '#fff', fontWeight: '700' },
-  tagBarWrap: {
-    flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 6,
+  // 单行分类条：左侧横向滚动，右侧固定「筛选」按钮
+  chipBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingLeft: 8, paddingRight: 10, paddingVertical: 2, marginBottom: 2,
   },
+  chipScrollWrap: { flex: 1 },
+  chipScroll: { alignItems: 'center', paddingRight: 4 },
+  filterBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: '#FFF0D6', borderWidth: 1, borderColor: '#F0D9B5', marginLeft: 6,
+  },
+  filterBtnOn: { backgroundColor: '#FFB347', borderColor: '#FF8C00' },
+  filterBtnText: { fontSize: 12, color: '#8A7A6A', fontWeight: '700' },
+  filterBtnTextOn: { color: '#fff' },
   tagChip: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 22,
     backgroundColor: '#FFF0D6', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#F0D9B5',
@@ -462,15 +559,19 @@ const styles = StyleSheet.create({
   tagChipText: { fontSize: 13, color: '#3D3229', fontWeight: '600' },
   tagChipTextActive: { fontSize: 13, color: '#fff', fontWeight: '600' },
   filterDivider: { width: 1, height: 22, backgroundColor: '#E8D5B5', marginHorizontal: 8, marginVertical: 4 },
-  list: { paddingHorizontal: 12, paddingTop: 8 },
+  // 关键修复：FlatList 必须占满剩余高度，否则横屏时内容被挤出屏幕且无法上滑
+  listFlex: { flex: 1 },
+  columnWrap: { gap: 10 },
+  list: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: 24 },
   card: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 22,
-    /** iPad 横屏：卡片限宽居中，不拉成整屏一条 */
-    width: '100%', maxWidth: 820, alignSelf: 'center',
     padding: 14, marginBottom: 10,
     boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)', elevation: 2,
   },
+  /** 单列：撑满一行；两列（横屏 / iPad）：均分宽度 */
+  cardSingle: { width: '100%' },
+  cardHalf: { flex: 1 },
   cardLeft: { marginRight: 12 },
   cardEmoji: { fontSize: 32 },
   cardCenter: { flex: 1 },
@@ -487,4 +588,32 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', marginTop: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 16, color: '#A8988A' },
+
+  // 筛选弹层
+  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  sheet: {
+    backgroundColor: '#FFFBF4',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 28,
+  },
+  sheetHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: '#3D3229' },
+  sheetReset: { fontSize: 13, color: '#FF8C00', fontWeight: '600' },
+  sheetLabel: { fontSize: 12, color: '#A8988A', fontWeight: '600', marginTop: 12, marginBottom: 2 },
+  sheetRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  sheetDone: {
+    marginTop: 20, height: 46, borderRadius: 23,
+    backgroundColor: '#FFB347', alignItems: 'center', justifyContent: 'center',
+  },
+  sheetDoneText: { fontSize: 16, color: '#fff', fontWeight: '700' },
 });

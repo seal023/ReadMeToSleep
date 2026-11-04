@@ -257,6 +257,12 @@ export default function StoryPlayScreen() {
   const commentScale = useRef(new Animated.Value(0.6)).current;
   // 睡眠定时：倒计时剩余（ms，>0 表示会话进行中）与「到点是否锁定」标记
   const [sleepRemaining, setSleepRemaining] = useState(0);
+  /**
+   * v95 反馈 #1：故事页底部显示的应该是**这个故事还剩多久讲完**，
+   * 而不是家长端设的睡眠定时（15 分钟那种）——孩子和家长都看不懂那个数字从哪来。
+   * remainSec 跟着真实播放位置走：暂停即停、快退快进立即变、停止归零。
+   */
+  const [remainSec, setRemainSec] = useState(0);
   const [sleepLocked, setSleepLocked] = useState(false);
   /** 到点关屏：纯黑遮罩（iOS 没有公开的「主动熄屏」API，用黑屏 + 释放常亮近似） */
   const [screenOff, setScreenOff] = useState(false);
@@ -862,6 +868,7 @@ export default function StoryPlayScreen() {
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     if (progressInterval.current) clearInterval(progressInterval.current);
     setProgress(100);
+    setRemainSec(0);
     setIsPlaying(false);
     setPhase('completed');
     // 听完了，断点作废（下次从头开始才是对的）
@@ -884,6 +891,8 @@ export default function StoryPlayScreen() {
         if (dur > 0) {
           lastTotalDuration.current = dur * 1000;
           setProgress(Math.min(100, (pos / dur) * 100));
+          // 剩余时间 = 真实总时长 - 真实播放位置（暂停时 pos 不前进，倒计时自然停住）
+          setRemainSec(Math.max(0, Math.round(dur - pos)));
         }
       }, 250);
     } else {
@@ -892,9 +901,12 @@ export default function StoryPlayScreen() {
           ? Math.max((storyText.split(/\s+/).filter(Boolean).length) * 450, 8000)
           : Math.max(storyText.length * 210, 10000);
       lastTotalDuration.current = totalDuration;
+      setRemainSec(Math.round(totalDuration / 1000));
       const step = 100 / (totalDuration / 500);
       progressInterval.current = setInterval(() => {
         setProgress((prev) => (prev >= 100 ? 100 : prev + step));
+        // 系统音拿不到真实播放位置，按同一个 500ms 节拍递减（暂停时 ticker 已停，不会继续减）
+        setRemainSec((prev) => Math.max(0, prev - 0.5));
       }, 500);
     }
   };
@@ -921,6 +933,7 @@ export default function StoryPlayScreen() {
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
     setProgress(0);
+    setRemainSec(0);
     // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
     setIsPlaying(true);
     setPreparing(true);
@@ -1227,6 +1240,7 @@ export default function StoryPlayScreen() {
     setIsPlaying(false);
     setPreparing(false);
     setProgress(0);
+    setRemainSec(0);
     cloudPausedRef.current = false;
     playingVoiceRef.current = ''; // 已彻底停止：没有「实际在播的音色」了
     // 停止 = 从头开始，断点清掉
@@ -1728,6 +1742,20 @@ export default function StoryPlayScreen() {
   if (phase === 'playing') {
     // 声线名不再取 VOICES 里的中文字面量（英文模式下会露出中文），改用 i18n 键
     const progressWidth = `${progress}%` as DimensionValue;
+    /** 故事总时长（秒）：优先真实音频时长，其次故事自带 duration */
+    const totalStorySec = Math.round(
+      (lastTotalDuration.current || (story?.duration || 0) * 1000) / 1000,
+    );
+    // 播放中 / 暂停中（有进度）都显示「还剩 X」，暂停时数字自然停住不动；
+    // 还没开始听则显示「故事约 X」。
+    const showRemain = isPlaying || preparing || progress > 0;
+    const timeLabel = showRemain
+      ? uiLang === 'en'
+        ? `${formatClock(remainSec)} left`
+        : `还剩 ${formatClock(remainSec)}`
+      : uiLang === 'en'
+      ? `About ${formatClock(totalStorySec)}`
+      : `故事约 ${formatClock(totalStorySec)}`;
     
     return (
       <CartoonScreen gradient="day" decor>
@@ -1844,9 +1872,22 @@ export default function StoryPlayScreen() {
           </View>
         ) : null}
 
-        {sleepRemaining > 0 ? (
+        {/*
+          v95 反馈 #1：这里原来显示的是睡眠定时的剩余（家长端设了 15 分钟就是 😴 15:00），
+          孩子和家长都以为是「这个故事要讲 15 分钟」。现在拆成两件事：
+            ① 常显 = 这个故事还剩多久（跟着播放/暂停走）；
+            ② 睡眠定时只在最后 5 分钟才出来，且写明「后自动停止」。
+        */}
+        <View style={styles.storyTimeRow}>
+          <Text style={styles.storyTimeText}>⏳ {timeLabel}</Text>
+        </View>
+
+        {sleepRemaining > 0 && sleepRemaining <= 5 * 60 * 1000 ? (
           <View style={styles.sleepBadge}>
-            <Text style={styles.sleepBadgeText}>😴 {formatSleep(sleepRemaining)}</Text>
+            <Text style={styles.sleepBadgeText}>
+              😴 {formatSleep(sleepRemaining)}
+              {uiLang === 'en' ? ' until auto-stop' : ' 后自动停止播放'}
+            </Text>
           </View>
         ) : null}
 
@@ -2654,6 +2695,17 @@ const styles = StyleSheet.create({
   qaRecapQ: { fontSize: 14, fontWeight: '600', color: '#33691E', marginBottom: 4, lineHeight: 20 },
   qaRecapA: { fontSize: 14, color: '#555', lineHeight: 21 },
   // 睡眠定时倒计时徽标（播放页底部）
+  storyTimeRow: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  storyTimeText: { fontSize: 14, color: '#6B5B95', fontWeight: '700' },
   sleepBadge: {
     alignSelf: 'center', marginTop: 10, paddingVertical: 6, paddingHorizontal: 16,
     borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.85)',
