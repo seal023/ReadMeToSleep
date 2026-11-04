@@ -149,7 +149,13 @@ function SoundWave({ playing, compact }: { playing: boolean; compact?: boolean }
 }
 
 export default function StoryPlayScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  /**
+   * `autoplay=1`：从「我的故事」卡片上的「▶ 播放」进来时，加载完就直接开讲，
+   * 不再要求孩子在播放页上再点一次播放键（v99 反馈 #3）。
+   */
+  const { id, autoplay } = useLocalSearchParams<{ id: string; autoplay?: string }>();
+  const autoPlayRef = useRef(autoplay === '1' || autoplay === 'true');
+  const autoPlayStartedRef = useRef(false);
   const { t, language: uiLang } = useLanguage();
   /**
    * v96 反馈 #3：横屏（手机横放 / iPad 横屏）时高度只有 300 多，
@@ -621,6 +627,14 @@ export default function StoryPlayScreen() {
           }
         } catch {
           /* 读不到断点就当从头播 */
+        }
+        // 「我的故事」卡片上的 ▶：进来直接开讲，省掉再点一次播放键
+        if (autoPlayRef.current && !autoPlayStartedRef.current) {
+          autoPlayStartedRef.current = true;
+          setTimeout(() => {
+            if (!aliveRef.current || !focusedRef.current) return;
+            void handlePlayRef.current();
+          }, 450);
         }
       } catch (err) {
         console.error('Load story error:', err);
@@ -1341,6 +1355,15 @@ export default function StoryPlayScreen() {
   };
 
   /**
+   * handlePlay 每次渲染都会重建，而非点击路径（自动播放、回前台续播）拿到的可能是旧闭包：
+   * 统一在这里同步进 ref。之前 ref 只在 handlePlay 内部赋值，导致「还没点过播放」时
+   * 这几条路径都拿到空函数，表现为点了播放按钮没反应。
+   */
+  useEffect(() => {
+    handlePlayRef.current = handlePlay;
+  });
+
+  /**
    * v80 #2：播放中换声**立即生效**。
    * ---------------------------------------------------------------------------
    * 原来这里只 `setSelectedVoice(id)`，正在播的那段音频不会重起，
@@ -1986,9 +2009,24 @@ export default function StoryPlayScreen() {
   if (phase === 'playing') {
     // 声线名不再取 VOICES 里的中文字面量（英文模式下会露出中文），改用 i18n 键
     const progressWidth = `${progress}%` as DimensionValue;
-    /** 故事总时长（秒）：优先真实音频时长，其次故事自带 duration */
+    /**
+     * 故事总时长（秒）：优先真实音频时长，其次故事自带 duration。
+     * duration 缺失（老录音、异常数据）时按正文长度估一个，不要显示「故事约 0:00」。
+     */
+    const storyDurSec = story?.duration || 0;
+    const estimatedSec =
+      storyDurSec > 0
+        ? storyDurSec
+        : Math.max(
+            60,
+            Math.round(
+              (displayLang === 'en'
+                ? (story?.contentEn || story?.content || '').length / 12
+                : (story?.content || '').length / 4),
+            ),
+          );
     const totalStorySec = Math.round(
-      (lastTotalDuration.current || (story?.duration || 0) * 1000) / 1000,
+      (lastTotalDuration.current || estimatedSec * 1000) / 1000,
     );
     // 播放中 / 暂停中（有进度）都显示「还剩 X」，暂停时数字自然停住不动；
     // 还没开始听则显示「故事约 X」。

@@ -76,46 +76,64 @@ export default function MyStoriesScreen() {
     ]);
   };
 
-  const handlePlay = (id: string) => {
+  /**
+   * v99 反馈 #3：整张卡片都是「进入故事」的点击区，右侧那颗按钮是「立刻播放」。
+   * 删除从按钮行里撤掉，改成「长按卡片」——避免孩子误触把故事删掉。
+   */
+  const handleOpen = (id: string) => {
     router.push(`/story/${id}`);
+  };
+
+  const handlePlay = (id: string) => {
+    router.push(`/story/${id}?autoplay=1`);
   };
 
   // ---- AI生成 ----
   const renderCreatedItem = ({ item }: { item: Story }) => (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.85}
+      onPress={() => handleOpen(item.id)}
+      onLongPress={() => handleDelete(item.id)}
+      delayLongPress={600}
+    >
       <View style={styles.cardMain}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.cardMeta}>{fmtDate(item.createdAt)}</Text>
         <Text style={styles.cardMeta}>{fmtDuration(item.duration)}</Text>
       </View>
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => handlePlay(item.id)}>
-          <Text style={styles.iconText}>▶️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => handleDelete(item.id)}>
-          <Text style={styles.iconText}>🗑️</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+      <TouchableOpacity
+        style={styles.playBtn}
+        onPress={() => handlePlay(item.id)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.playBtnText}>▶ {t('myStories.playNow')}</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
   );
 
   // ---- 我的录音 ----
   const renderRecordedItem = ({ item }: { item: Story }) => (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.85}
+      onPress={() => handleOpen(item.id)}
+      onLongPress={() => handleDelete(item.id)}
+      delayLongPress={600}
+    >
       <View style={styles.cardMain}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.cardMeta}>{fmtDate(item.createdAt)}</Text>
         <Text style={styles.cardMeta}>{fmtDuration(item.duration)}</Text>
       </View>
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => handlePlay(item.id)}>
-          <Text style={styles.iconText}>▶️</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => handleDelete(item.id)}>
-          <Text style={styles.iconText}>🗑️</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+      <TouchableOpacity
+        style={styles.playBtn}
+        onPress={() => handlePlay(item.id)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Text style={styles.playBtnText}>▶ {t('myStories.playNow')}</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
   );
 
   // ---- 旅行打卡 ----
@@ -134,6 +152,9 @@ export default function MyStoriesScreen() {
       <Text style={styles.emptyText}>{text}</Text>
     </View>
   );
+
+  /** 卡片操作说明：点一下进去听、长按删除（删除不再做成按钮，避免误触） */
+  const ListHint = () => <Text style={styles.listHint}>{t('myStories.listHint')}</Text>;
 
   return (
     <CartoonScreen gradient="day" decor>
@@ -159,6 +180,7 @@ export default function MyStoriesScreen() {
           data={filtered}
           keyExtractor={item => item.id}
           renderItem={renderCreatedItem}
+          ListHeaderComponent={filtered.length > 0 ? <ListHint /> : null}
           contentContainerStyle={filtered.length === 0 ? { flex: 1 } : undefined}
           ListEmptyComponent={
             <EmptyState emoji="📝" text={t('myStories.empty.created')} />
@@ -172,6 +194,7 @@ export default function MyStoriesScreen() {
             data={filtered}
             keyExtractor={item => item.id}
             renderItem={renderRecordedItem}
+            ListHeaderComponent={filtered.length > 0 ? <ListHint /> : null}
             contentContainerStyle={filtered.length === 0 ? { flex: 1 } : undefined}
             ListEmptyComponent={
               <EmptyState emoji="🎤" text={t('myStories.empty.recorded')} />
@@ -282,20 +305,30 @@ const styles = StyleSheet.create({
     color: '#A8988A',
     marginBottom: 2,
   },
-  cardActions: {
-    flexDirection: 'row',
-    gap: 4,
+  listHint: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    marginTop: 12,
+    fontSize: 12,
+    color: '#A8988A',
   },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 24,
-    backgroundColor: '#FFF0ED',
+  /** 「立刻播放」胶囊按钮（点卡片本身是进入故事页，两者职责分开） */
+  playBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    backgroundColor: '#F2827F',
+    marginLeft: 8,
   },
-  iconText: {
-    fontSize: 14,
+  playBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
   },
   empty: {
     flex: 1,

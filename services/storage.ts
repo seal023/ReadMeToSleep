@@ -100,15 +100,17 @@ const KEYS = {
  * 这里统一折成秒：≤30 一律按分钟理解（App 里没有 30 秒以内的故事），其余按秒。
  * 新写入的故事也走同一折算，历史数据在读取时自动纠正，不需要单独迁移。
  */
-export function storyDurationSec(duration?: number | null): number {
+export function storyDurationSec(duration?: number | null, type?: Story['type']): number {
   const d = Number(duration) || 0;
   if (d <= 0) return 0;
+  // 录音故事（record.tsx）的 duration 本来就是秒：20 秒的录音不能被当成 20 分钟
+  if (type === 'recorded') return Math.round(d);
   return d <= 30 ? Math.round(d * 60) : Math.round(d);
 }
 
 /** 读取时统一 duration 单位，避免各处自己判断 */
 function normalizeStoryDuration(story: Story): Story {
-  return { ...story, duration: storyDurationSec(story.duration) };
+  return { ...story, duration: storyDurationSec(story.duration, story.type) };
 }
 
 export interface ParentComment {

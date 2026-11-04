@@ -219,7 +219,9 @@ export default function LibraryScreen() {
   const effLang: 'zh' | 'en' = classicResult ? classicResult.effLang : language;
   const classicList: StoryItem[] = classicResult ? classicResult.list : [];
 
-  const fmtDuration = (sec: number) => `${Math.floor(sec / 60)} ${t('common.minute')}`;
+  // 不足 1 分钟的故事直接显示秒，别显示成「0 分钟」（时长单位统一走 storage.storyDurationSec 折算）
+  const fmtDuration = (sec: number) =>
+    sec >= 60 ? `${Math.floor(sec / 60)} ${t('common.minute')}` : `${Math.round(sec)} ${t('common.second')}`;
 
   const fmtDate = (iso: string) => {
     if (!iso) return '';

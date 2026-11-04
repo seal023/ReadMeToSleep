@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import Racco from '../../components/common/Racco';
@@ -8,7 +8,11 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
+import { textToSpeech } from '../../services/tts';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
+
+/** 点小浣熊时轮流说的话：先讲「这里能做什么」，再讲「以后能陪你聊天」 */
+const RACCO_REPLIES = ['settings.racco.reply1', 'settings.racco.reply2'];
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
@@ -16,6 +20,32 @@ export default function SettingsScreen() {
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
   const [childName, setChildNameState] = useState('');
+
+  /**
+   * v99 反馈 #1：页面顶部的小浣熊原来只是张图片（Racco 没挂 onPress），
+   * 点了完全没反应，看着像坏掉了。现在点它会换一句话并念出来
+   *（不识字的孩子也能听懂），气泡里那句「有什么需要帮忙的吗？」保留，
+   * 以后接入「点小浣熊就能提问/聊天」时，这里就是现成的入口。
+   */
+  const [raccoLine, setRaccoLine] = useState('');
+  const [raccoHappy, setRaccoHappy] = useState(false);
+  const raccoTapIdx = useRef(0);
+  const raccoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const tapRacco = () => {
+    const key = RACCO_REPLIES[raccoTapIdx.current % RACCO_REPLIES.length];
+    raccoTapIdx.current += 1;
+    const line = t(key);
+    setRaccoLine(line);
+    setRaccoHappy(true);
+    void textToSpeech(line, undefined, language === 'en' ? 'en' : 'zh');
+    if (raccoTimer.current) clearTimeout(raccoTimer.current);
+    raccoTimer.current = setTimeout(() => setRaccoHappy(false), 2800);
+  };
+
+  useEffect(() => () => {
+    if (raccoTimer.current) clearTimeout(raccoTimer.current);
+  }, []);
 
   /**
    * 昵称改了以后：新的问候 / 告别是全新文本，内置 mp3 里没有，
@@ -62,10 +92,11 @@ export default function SettingsScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.raccoWrap}>
         <Racco
-          state="idle"
+          state={raccoHappy ? 'happy' : 'idle'}
           size={120}
           showSpeechBubble
-          speechText={t('settings.racco.idle')}
+          speechText={raccoLine || t('settings.racco.idle')}
+          onPress={tapRacco}
         />
       </View>
 
