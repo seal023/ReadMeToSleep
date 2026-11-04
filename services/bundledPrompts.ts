@@ -19,7 +19,8 @@ import { seedBundledAudio } from './clonedVoicePlayback';
  * 结束检测都以该路径为准；复制一份（约 4–6MB，一次性）换来零改动与行为一致。
  *
  * 何时跑：隐私政策同意后（本地复制本来不发网络，但放在同一时机避免启动拥堵）。
- * 幂等：flag 里记 manifest 版本 + 条目数，升级新增句子会自动补齐，已存在的秒跳过。
+ * 幂等：flag 里记 manifest 版本 + 条目数；同一版本只跑一次，升级（版本号变化）时
+ * 重跑一遍并**强制覆盖**同名旧文件——内置音频是定稿版本，覆盖安装不能留旧声线。
  */
 
 const INSTALL_FLAG = 'rms_bundled_prompts_installed_v1';
@@ -65,7 +66,7 @@ export async function installBundledPrompts(): Promise<BundledInstallResult> {
         if (!asset.localUri) await asset.downloadAsync();
         const uri = asset.localUri || asset.uri;
         if (!uri) continue;
-        if (await seedBundledAudio(entry.text, entry.target, uri)) installed++;
+        if (await seedBundledAudio(entry.text, entry.target, uri, { overwrite: true })) installed++;
       } catch {
         /* 单条失败跳过，运行时仍可联网补 */
       }

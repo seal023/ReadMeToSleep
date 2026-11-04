@@ -396,10 +396,21 @@ export async function seedBundledAudio(
   text: string,
   target: CloneTarget,
   srcUri: string,
+  opts?: { overwrite?: boolean },
 ): Promise<boolean> {
   try {
     const dest = cacheFile(cacheFileName(text, target));
-    if (dest.exists) return true;
+    if (dest.exists) {
+      // 默认「命中即跳过」（运行时补装只补缺失）；overwrite=true 用于随包内置资源
+      // 的版本升级：内置音频是开发期定稿版本，必须覆盖历史联网合成留下的旧文件，
+      // 否则覆盖安装（不删 App）后仍会听到上一版的声线 / 旧 WAV 内容伪装成 .mp3。
+      if (!opts?.overwrite) return true;
+      try {
+        dest.delete();
+      } catch {
+        /* 删不掉就退回覆盖写 */
+      }
+    }
     const bytes = await new File(srcUri).bytes();
     if (!bytes || bytes.length < 500) return false;
     if (!dest.exists) {
