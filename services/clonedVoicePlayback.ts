@@ -582,20 +582,26 @@ async function startPlayback(
       /* 忽略会话配置异常，继续尝试播放 */
     });
     if (!fast) {
-      await modeTask;
+      /**
+       * v94 反馈 #1：换声时「一直缓冲、就是不出声」。
+       * `setAudioModeAsync` 在刚拆掉一路播放器 / 系统刚收回过音频会话时，偶发卡住不返回，
+       * 而它后面就是建播放器 + play()，于是卡在这里 = 界面上永远在缓冲。
+       * 给它 700ms 预算：还没配好就先起播（会话多半已经可用），绝不为此无限等。
+       */
+      await Promise.race([modeTask, new Promise((resolve) => setTimeout(resolve, 700))]);
     }
 
     // 防御（v90 #3）：任何路径遗留的旧 player 必须先彻底停掉再建新的。
     // 之前的实现直接覆盖 currentPlayer 引用，一旦某个旧 player 没被回收，
     // 它就会继续出声 —— 表现正是「选了内置大姐姐，耳朵里还是上一个克隆声」。
+    //
+    // v94 反馈 #1：pause 和 remove **必须各自 try**。原来写在一个 try 里，
+    // pause 一抛（player 已被系统回收时很常见），remove 就被跳过，
+    // 旧音色的音频继续从头念 —— 于是「界面显示温柔女声，耳朵里是大哥哥」。
     if (currentPlayer) {
-      try {
-        currentPlayer.pause();
-        currentPlayer.remove();
-      } catch {
-        /* 忽略回收异常 */
-      }
+      const stale = currentPlayer;
       currentPlayer = null;
+      hardStopPlayer(stale);
     }
 
     const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
@@ -744,7 +750,9 @@ export async function playClonedAudio(
           onDone,
           abortCheck,
           onStart,
-          fast: opts?.fast,
+          // 续播 / 换声（带断点）时音频会话必然已经配置过 → 直接 fast 起播，
+          // 不在 setAudioModeAsync 上多等（v94 #1「换声后一直缓冲」的另一半）
+          fast: opts?.fast ?? (want > 1 || !!place),
           durations,
           synthDone: new Array(chunks.length).fill(false),
           synthRunning: new Set<number>(),
@@ -832,14 +840,7 @@ export function stopClonedAudio(): void {
     chunkState.active = false;
     chunkState = null;
   }
-  try {
-    if (currentPlayer) {
-      currentPlayer.pause();
-      currentPlayer.remove();
-    }
-  } catch {
-    /* 忽略停止异常 */
-  }
+  hardStopPlayer(currentPlayer);
   currentPlayer = null;
 }
 
@@ -851,16 +852,29 @@ export function stopClonedAudio(): void {
  * 复用 armEndWatch 的轮询做「当前片到末尾」检测；整段结束只在最后一片播完时触发 onDone。
  */
 
-/** 只停当前 player（不清除 chunkState），用于分片间切换 / 暂停 */
-function stopCurrentPlayerOnly(): void {
+/**
+ * 彻底停掉一个播放器：`pause` 与 `remove` **各自 try**。
+ * ---------------------------------------------------------------------------
+ * 原来两者写在一个 try 里，pause 一抛（player 已被系统回收时很常见）就跳过 remove，
+ * 旧播放器继续出声 —— v94 反馈 #1「界面显示温柔女声，耳朵里是大哥哥」正是这个。
+ */
+function hardStopPlayer(p: AudioPlayerLike | null): void {
+  if (!p) return;
   try {
-    if (currentPlayer) {
-      currentPlayer.pause();
-      currentPlayer.remove();
-    }
+    p.pause();
   } catch {
     /* 忽略 */
   }
+  try {
+    p.remove();
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 只停当前 player（不清除 chunkState），用于分片间切换 / 暂停 */
+function stopCurrentPlayerOnly(): void {
+  hardStopPlayer(currentPlayer);
   currentPlayer = null;
 }
 

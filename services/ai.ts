@@ -413,6 +413,14 @@ export async function generateStory(
     '- 结尾必须是安宁、助眠的收束，例如"晚安""做个好梦"。',
     '- 不得出现暴力、恐怖、惊吓、死亡、争吵、负面情绪描写。',
     '- 不得出现任何真实品牌、真实人名、网址或联系方式。',
+    '- 不得出现武器（枪、刀、匕首等）、毒品（鸦片、大麻等）、犯罪、走私、血腥伤害等内容。',
+    /**
+     * v94 反馈 #3 的核心修复：家长给的主题里带危险元素时，模型以前会「忠于主题」把它写进故事，
+     * 只是换个说法（pistol instead of gun、"poppies for medicine" instead of opium），
+     * 既不安全、也绕过了按字面匹配的敏感词过滤。
+     * 现在明确要求：**替换掉这些元素**，而不是在故事里提及/否认它们。
+     */
+    '- 【主题净化】如果主题或细节里出现武器、毒品、犯罪、伤害等不适合儿童的元素，必须**直接替换成安全的日常事物**（例如枪→水壶、刀→铅笔、毒品→向日葵、罪犯→路过的旅人），并且**绝对不要在故事里提到原来的词**，也不要写成「听说有人带枪其实没有」这种仍在提及的方式，故事要顺着替换后的内容自然展开。',
     avoidRule,
     '【输出格式】只输出一个 JSON 对象，不要任何解释、不要 markdown 代码块、不要前后缀文字：',
     '{"title": "故事标题", "content": "故事正文"}',
@@ -421,15 +429,24 @@ export async function generateStory(
     .filter(Boolean)
     .join('\n');
 
-  const user = [
-    `请创作一个睡前故事。`,
-    `【最重要的要求】故事必须紧紧围绕下面用户给出的主题来写，主题是什么就写什么，绝不能替换或偏离主题。`,
-    `主题：${theme || '温馨的睡前时光'}`,
-    protagonist ? `主角：${protagonist}（必须以它作为故事的主角）` : '',
-    details ? `需要包含的细节：${details}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  /** 同一套结构拼两版 user：原始主题 + 净化主题（重写时用后者，避免模型又"紧扣"危险元素） */
+  const buildUser = (t: string, d: string) =>
+    [
+      `请创作一个睡前故事。`,
+      `【最重要的要求】故事必须紧紧围绕下面用户给出的主题来写，主题是什么就写什么，绝不能替换或偏离主题。`,
+      `主题：${t}`,
+      protagonist ? `主角：${protagonist}（必须以它作为故事的主角）` : '',
+      d ? `需要包含的细节：${d}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+  const safeTheme = neutralizeTheme(theme) || '温馨的睡前时光';
+  const user = buildUser(theme || '温馨的睡前时光', details ? String(details) : '');
+  const safeUser = buildUser(safeTheme, details ? neutralizeTheme(String(details)) : '');
+
+  // 家长词 + 内置儿童安全词，一起作为「生成后必须扫一遍」的底线
+  const safetyWords = [...(sensitiveWords || []), ...(isZh ? SAFETY_WORDS_ZH : SAFETY_WORDS_EN)];
 
   try {
     const raw = await chat(system, user, 0.8, lenTokens);
@@ -450,14 +467,15 @@ export async function generateStory(
       title = plain.split(/\r?\n/)[0].replace(/^#+\s*/, '').slice(0, 30) || title;
     }
 
-    // 敏感词硬过滤：生成后扫描，命中则带具体违禁词重试一次；仍命中则字符串替换兜底
-    // （家长设的违禁词绝不能原样交付给孩子——软约束不可靠，这里做最后一道闸）
-    const guarded = await enforceSensitiveWords(
+    // 内容安全硬过滤：家长词 + 内置儿童安全词一起扫，命中则用「净化后的主题」重写一次；
+    // 仍命中则字符串替换兜底（绝不能让违禁内容原样交付给孩子——软约束不可靠）
+    const guarded = await enforceStorySafety(
       content,
       title,
-      sensitiveWords || [],
+      safetyWords,
+      isZh,
       system,
-      user,
+      safeUser,
       lenTokens,
     );
 
@@ -473,64 +491,135 @@ export async function generateStory(
 }
 
 // ---------------------------------------------------------------------------
-// 敏感词硬过滤（家长端设置后，绝不能把违禁词原样交付给孩子）
+// 内容安全过滤（v94 反馈 #3 重做）
 // ---------------------------------------------------------------------------
+/**
+ * 内置儿童安全词（与家长设置无关的底线）。
+ *
+ * 为什么必须有：家长输入 gun / dagger / opium，模型只要换个写法（pistol、dagger、
+ * "poppies—we grow them for medicine and seeds"）就能完全绕过「按字面匹配家长词」的过滤，
+ * 结果一篇提枪、提匕首、提罂粟的故事原样交给孩子。
+ * 所以这里内置一份中英同义词表，生成后强制扫一遍，命中就重写。
+ */
+const SAFETY_WORDS_EN = [
+  'gun', 'guns', 'pistol', 'pistols', 'rifle', 'rifles', 'shotgun', 'firearm', 'firearms',
+  'weapon', 'weapons', 'bullet', 'bullets', 'bomb', 'bombs', 'explosive', 'explosives',
+  'dagger', 'daggers', 'knife', 'knives', 'blade', 'blades', 'sword', 'swords',
+  'opium', 'heroin', 'cocaine', 'marijuana', 'cannabis', 'narcotic', 'narcotics',
+  'drug', 'drugs', 'poppy', 'poppies',
+  'kill', 'kills', 'killed', 'killing', 'murder', 'murdered', 'stab', 'stabbed', 'stabbing',
+  'shoot', 'shooting', 'shot', 'blood', 'bloody', 'corpse', 'gang', 'gangster', 'gangsters',
+  'smuggle', 'smuggler', 'smugglers', 'trafficker', 'traffickers', 'violence', 'violent',
+];
+const SAFETY_WORDS_ZH = [
+  '手枪', '步枪', '枪支', '枪', '子弹', '武器', '炸药', '炸弹',
+  '匕首', '利刃', '刀剑',
+  '鸦片', '海洛因', '大麻', '可卡因', '毒品', '吸毒', '贩毒',
+  '杀人', '杀死', '谋杀', '刺伤', '开枪', '枪击', '血腥', '尸体', '暴力', '犯罪集团', '走私',
+];
 
-/** 忽略大小写扫描文本，返回命中的敏感词列表 */
-function findSensitiveHits(text: string, words: string[]): string[] {
-  if (!text || !words?.length) return [];
-  const lower = text.toLowerCase();
-  return words.filter((w) => w && w.trim() && lower.includes(w.toLowerCase()));
+/** 主题净化表：把危险元素直接换成安全的日常事物（英文按整词替换，中文按词替换） */
+const THEME_NEUTRALIZE: { re: RegExp; to: string }[] = [
+  // 冠词一起吃掉再补上，否则会出现「Carrying a a water bottle」这种双冠词
+  { re: /\b(?:(?:a|an|the)\s+)?(?:guns?|pistols?|rifles?|shotguns?|firearms?|weapons?|bullets?|bombs?|explosives?)\b/gi, to: 'a water bottle' },
+  { re: /\b(?:(?:a|an|the)\s+)?(?:knife|knives|daggers?|blades?|swords?)\b/gi, to: 'a pencil' },
+  { re: /\b(?:opium|heroin|cocaine|marijuana|cannabis|narcotics?|drugs?|popp(?:y|ies))\b/gi, to: 'sunflowers' },
+  { re: /\b(?:gangsters?|smugglers?|traffickers?|gangs?|criminals?)\b/gi, to: 'travellers' },
+  { re: /\b(?:kill|kills|killed|killing|murder|murdered|stab|stabbed|stabbing|shoot|shooting|shot)\b/gi, to: 'greet' },
+  { re: /(?:一[把支杆])?(?:手枪|步枪|枪支|枪|子弹|武器|炸药|炸弹)/g, to: '一壶水' },
+  { re: /(?:一[把支])?(?:匕首|利刃|刀剑)/g, to: '一支铅笔' },
+  { re: /(?:鸦片|海洛因|大麻|可卡因|毒品|吸毒|贩毒)/g, to: '向日葵' },
+  { re: /(?:犯罪集团|走私|杀人|杀死|谋杀|刺伤|开枪|枪击|血腥|尸体|暴力)/g, to: '打招呼' },
+];
+
+/** 把主题 / 细节里的危险元素换成安全等价物（生成前预净化，重写时用） */
+function neutralizeTheme(text: string | undefined): string {
+  let out = String(text || '');
+  if (!out.trim()) return '';
+  // 中英两套规则都跑：主题语言与界面语言不一定一致（家长可能贴一段英文进来）
+  for (const { re, to } of THEME_NEUTRALIZE) {
+    out = out.replace(re, to);
+  }
+  return out.trim();
 }
 
-/** 把命中的敏感词统一替换成安全中性词，作为最后兜底（保证绝不出违禁词） */
-function replaceSensitive(text: string, words: string[]): string {
+/** 扫描命中词：中文按包含匹配，英文按整词匹配（避免 drugstore / skirting 这类误命中） */
+function findSafetyHits(text: string, words: string[], isZh: boolean): string[] {
+  if (!text || !words?.length) return [];
+  const seen = new Set<string>();
+  for (const raw of words) {
+    const w = (raw || '').trim();
+    if (!w || seen.has(w)) continue;
+    if (isZh) {
+      if (text.includes(w)) seen.add(w);
+    } else {
+      const esc = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${esc}\\b`, 'i').test(text)) seen.add(w);
+    }
+  }
+  return Array.from(seen);
+}
+
+/** 最后一道兜底：命中词统一替换成中性词（保证绝不出违禁词，哪怕句子会略生硬） */
+function replaceSafetyWords(text: string, words: string[], isZh: boolean): string {
   let out = text;
-  for (const w of words) {
-    if (!w || !w.trim()) continue;
-    const safe = '好玩的东西';
-    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(escaped, 'gi'), safe);
+  const safe = isZh ? '小玩意儿' : 'something fun';
+  for (const raw of words) {
+    const w = (raw || '').trim();
+    if (!w) continue;
+    const esc = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = isZh ? new RegExp(esc, 'g') : new RegExp(`\\b${esc}\\b`, 'gi');
+    out = out.replace(re, (m) =>
+      !isZh && m && m[0] === m[0].toUpperCase()
+        ? safe.charAt(0).toUpperCase() + safe.slice(1)
+        : safe,
+    );
   }
   return out;
 }
 
 /**
- * 生成后敏感词兜底：命中则带具体违禁词整篇重写一次；仍命中则字符串替换。
- * 返回保证不含违禁词的正文（最坏情况用替换兜底）。
+ * 生成后内容安全兜底：命中（家长词 + 内置安全词）→ 用**净化后的主题**整篇重写一次；
+ * 仍命中 → 字符串替换兜底。标题也一起检查、一起处理。
  */
-async function enforceSensitiveWords(
+async function enforceStorySafety(
   content: string,
   title: string,
   words: string[],
+  isZh: boolean,
   system: string,
-  user: string,
+  safeUser: string,
   maxTokens?: number,
 ): Promise<{ title: string; content: string }> {
-  const hit = findSensitiveHits(content, words);
+  const hit = findSafetyHits(`${title}\n${content}`, words, isZh);
   if (hit.length === 0) return { title, content };
 
   try {
     const retrySystem =
       system +
-      `\n【强制重申】绝对、彻底不要出现以下违禁词或任何同类危险/暴力内容：${hit.join('、')}。` +
-      `上一次生成仍包含它们，这是不合格的，请重新创作一个完全不含这些词的故事。`;
-    const raw2 = await chat(retrySystem, user, 0.9, maxTokens);
+      `\n【强制重申】上一版故事的标题或正文里出现了不该给 3-8 岁孩子看的词：${hit.join('、')}。` +
+      `请完全重新创作一版：把这些元素换成主题里已经给出的安全事物，` +
+      `全文（含标题）一个都不许再出现，也不要用"听说/传说里有过"这类暗示方式提及。`;
+    const raw2 = await chat(retrySystem, safeUser, 0.85, maxTokens);
     const p2 = extractJson(raw2 || '');
-    if (p2?.content) {
-      const c2 = String(p2.content).trim();
-      if (findSensitiveHits(c2, words).length === 0) {
-        return {
-          title: String(p2.title || '').trim() || title,
-          content: c2,
-        };
-      }
-      return { title, content: replaceSensitive(c2, words) };
+    const c2 = p2?.content ? String(p2.content).trim() : '';
+    const t2 = p2?.title ? String(p2.title).trim() : title;
+    if (c2 && findSafetyHits(`${t2}\n${c2}`, words, isZh).length === 0) {
+      return { title: t2 || title, content: c2 };
+    }
+    if (c2) {
+      return {
+        title: replaceSafetyWords(t2 || title, words, isZh),
+        content: replaceSafetyWords(c2, words, isZh),
+      };
     }
   } catch {
     /* 落到下方替换兜底 */
   }
-  return { title, content: replaceSensitive(content, words) };
+  return {
+    title: replaceSafetyWords(title, words, isZh),
+    content: replaceSafetyWords(content, words, isZh),
+  };
 }
 
 /**

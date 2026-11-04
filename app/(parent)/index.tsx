@@ -65,7 +65,9 @@ export default function ParentIndex() {
       return;
     }
     await saveParentPin(digits1);
-    router.push('/(parent)/hub');
+    // 用 replace：把「密码门」从栈里换掉，之后从家长中心退出/右滑返回会直接回到孩子端，
+    // 而不是又落回这个密码页（v94 反馈 #2）
+    router.replace('/(parent)/hub');
   };
 
   // ---- Unlock flow ----
@@ -101,7 +103,8 @@ export default function ParentIndex() {
         }
         return;
       }
-      router.push('/(parent)/hub');
+      // 同上：replace 掉密码门，家长模式里再返回时直接回孩子端（v94 反馈 #2）
+      router.replace('/(parent)/hub');
     } catch {
       Alert.alert(t('parentPin.wrongTitle'), t('parentPin.verifyFail'));
     }

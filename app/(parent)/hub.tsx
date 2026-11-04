@@ -66,7 +66,16 @@ export default function ParentHub() {
     { icon: '🚪', title: t('parentHub.card.exit.title'), desc: t('parentHub.card.exit.desc'), action: () => {
       Alert.alert(t('parentHub.exitTitle'), t('parentHub.exitMsg'), [
         { text: t('common.cancel') },
-        { text: t('parentHub.exit'), style: 'destructive', onPress: () => router.back() },
+        {
+          text: t('parentHub.exit'),
+          style: 'destructive',
+          /**
+           * v94 反馈 #2：原来用 router.back() —— 栈里下面还有「密码门」那一页，
+           * 于是每次退出家长模式都退回到输密码界面。现在直接 replace 回孩子端，
+           * 家长相关的页面整体出栈；右滑返回同理（栈里只剩孩子端）。
+           */
+          onPress: () => router.replace('/(tabs)'),
+        },
       ]);
     }},
   ], [t]);
