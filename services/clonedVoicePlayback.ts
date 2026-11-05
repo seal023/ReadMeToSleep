@@ -1109,6 +1109,25 @@ export function stopClonedAudio(): void {
 }
 
 /**
+ * 开启一次「全新的」播放会话（v105 反馈 #4）
+ * ---------------------------------------------------------------------------
+ * 上划退出 / 锁屏后，上一次会话在原生层留下了几样**挂在模块上**的状态：
+ *   · `naturalEnded`（上一轮真的播完过 → 新会话的第一次结束信号会被一票放行）
+ *   · `userPaused` / `interrupted`（暂停 / 打断屏蔽位没清 → 检测器行为错乱）
+ *   · `endWatch` 的定时器与 `endFired` 去重位
+ * 这些都不会随 React 状态复位。孩子回到界面点播放时，残留的「已播完」标记
+ * 会让一次假 ended 立刻通过校验，界面直接被推进提问环节 —— 正是本次反馈的现象。
+ * 所以每次真正起播前，把这一整套会话状态清零，从「没播过、没暂停、没结束」开始。
+ */
+export function beginPlaybackSession(): void {
+  interrupted = false;
+  userPaused = false;
+  naturalEnded = false;
+  resetEndWatch();
+  if (chunkState) chunkState.paused = false;
+}
+
+/**
  * 分片流式引擎（v90 反馈 #1/#2/#3）
  * ---------------------------------------------------------------------------
  * 仅长文本（> CHUNK_THRESHOLD_CHARS）走分片；短文本/提示音/本地录音仍走整段逻辑。

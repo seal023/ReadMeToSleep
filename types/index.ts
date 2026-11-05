@@ -72,7 +72,7 @@ export interface LanguageContextType {
 export type LocaleValue = string | { [key: string]: LocaleValue };
 export type LocaleDict = Record<string, LocaleValue>;
 
-/** 故事时长分级：short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟 */
+/** 故事时长分级（v105 精简）：short 3-5 分钟 / medium 5-10 分钟；long 保留仅为兼容旧数据，一律按 medium 处理 */
 export type StoryLength = 'short' | 'medium' | 'long';
 
 export interface GenerateStoryParams {

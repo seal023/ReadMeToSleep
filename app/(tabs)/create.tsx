@@ -21,9 +21,12 @@ import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import type { Story, Language, RaccoState, GenerateStoryParams } from '@/types';
 
 // 出海适配：海外用户到新加坡节点延迟偏高。
-// 软提示阈值 15s（显示"AI 还在努力写故事"安抚），硬超时 60s（断网/节点不可达时抛错走友好提示，绝不卡死）。
+// 软提示阈值 15s（显示"AI 还在努力写故事"安抚），硬超时按档位给：
+//   3-5 分钟档 60s；5-10 分钟档正文几乎翻倍（最多 2000 字 / 1300 词），模型出稿更久，
+//   给到 95s（服务层自己的请求超时是 90s，UI 必须比它宽，否则会先于服务层放弃并误报超时）。
 const SLOW_HINT_MS = 15000;
 const GEN_HARD_TIMEOUT_MS = 60000;
+const GEN_HARD_TIMEOUT_LONG_MS = 95000;
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -34,8 +37,8 @@ export default function CreateScreen() {
   const [details, setDetails] = useState('');
   // 默认跟随当前界面语言：英文界面下生成英文故事；用户仍可用 chip 手动覆盖
   const [storyLang, setStoryLang] = useState<Language>(uiLang);
-  // 时长分级：short 3-4 分钟 / medium 10-15 分钟 / long 20-30 分钟
-  const [storyLength, setStoryLength] = useState<'short' | 'medium' | 'long'>('short');
+  // 时长分级（v105 精简）：3-5 分钟 / 5-10 分钟两档。20 分钟以上的长故事已彻底下线（成本红线）
+  const [storyLength, setStoryLength] = useState<'short' | 'medium'>('short');
   // 在「设置」里切换语言时，同步把默认生成语言切过去（除非用户已手动选了别的）
   useEffect(() => {
     setStoryLang(uiLang);
@@ -157,7 +160,8 @@ export default function CreateScreen() {
         );
       });
     try {
-      const result = await withTimeout(generateStory(params), GEN_HARD_TIMEOUT_MS);
+      const hardMs = storyLength === 'short' ? GEN_HARD_TIMEOUT_MS : GEN_HARD_TIMEOUT_LONG_MS;
+      const result = await withTimeout(generateStory(params), hardMs);
 
       /** 落库 + 进故事页（不涉及额度：额度只由 ai.ts 在云端成功时记一次） */
       const openStory = async (): Promise<string> => {
@@ -285,6 +289,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.input}
           placeholder={t('create.ph.theme')}
+          placeholderTextColor="#B9AFA6"
           value={theme}
           onChangeText={setTheme}
         />
@@ -295,6 +300,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.input}
           placeholder={t('create.ph.protagonist')}
+          placeholderTextColor="#B9AFA6"
           value={protagonist}
           onChangeText={setProtagonist}
         />
@@ -305,6 +311,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.inputMultiline}
           placeholder={t('create.ph.details')}
+          placeholderTextColor="#B9AFA6"
           value={details}
           onChangeText={setDetails}
           multiline
@@ -328,14 +335,14 @@ export default function CreateScreen() {
       </View>
 
       <View style={styles.langRow}>
-        {(['short', 'medium', 'long'] as const).map((len) => (
+        {(['short', 'medium'] as const).map((len) => (
           <TouchableOpacity
             key={len}
             style={storyLength === len ? styles.chipActive : styles.chip}
             onPress={() => setStoryLength(len)}
           >
             <Text style={storyLength === len ? styles.chipTextActive : styles.chipText}>
-              {len === 'short' ? t('create.lenShort') : len === 'medium' ? t('create.lenMedium') : t('create.lenLong')}
+              {len === 'short' ? t('create.lenShort') : t('create.lenMedium')}
             </Text>
           </TouchableOpacity>
         ))}
@@ -392,7 +399,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#B794F4',
   },
   genSpark: { position: 'absolute', fontSize: 16 },
-  title: { fontSize: 24, color: '#3D3229', textAlign: 'center', marginBottom: 20, fontWeight: '700' },
+  title: { fontSize: 24, color: '#3D3229', textAlign: 'center', marginBottom: 14, fontWeight: '700' },
   slowHint: {
     fontSize: 14,
     color: '#A8988A',
@@ -401,35 +408,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     flexShrink: 1,
   },
+  /**
+   * 输入卡片（v105 反馈 #3）：主题 / 主角这两栏的提示语原来显得特别大、
+   * 上下留白也散。这里统一到全 App 的输入规范：
+   *   圆角 18 / 竖向内边距 12 / 图标 18（垂直居中）/ 提示文字 15 号、行高 20。
+   * 两栏之间的间距 12 → 10，标题下留白 20 → 14，整体收紧一档。
+   */
   card: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     backgroundColor: '#FFF',
-    borderRadius: 22,
-    padding: 14,
-    marginBottom: 12,
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.06)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)',
     elevation: 2,
   },
-  icon: { fontSize: 22, marginRight: 10, marginTop: 2 },
+  icon: { fontSize: 18, lineHeight: 22, marginRight: 8 },
   quota: {
     fontSize: 12,
     color: '#7A6A5D',
     textAlign: 'center',
     marginBottom: 10,
   },
-  input: { flex: 1, fontSize: 16, color: '#3D3229', padding: 0 },
-  inputMultiline: { flex: 1, fontSize: 16, color: '#3D3229', padding: 0, minHeight: 60, textAlignVertical: 'top' },
-  langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 16, gap: 12 },
+  input: { flex: 1, fontSize: 15, lineHeight: 20, color: '#3D3229', padding: 0 },
+  inputMultiline: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#3D3229',
+    padding: 0,
+    minHeight: 56,
+    textAlignVertical: 'top',
+  },
+  langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 12, gap: 10 },
   chip: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 24,
+    borderRadius: 22,
     backgroundColor: '#FFE0B2',
   },
-  chipActive: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 24, backgroundColor: '#F2827F' },
-  chipText: { fontSize: 15, color: '#3D3229' },
-  chipTextActive: { fontSize: 15, color: '#3D3229', fontWeight: '600' },
+  chipActive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, backgroundColor: '#F2827F' },
+  chipText: { fontSize: 14, color: '#3D3229' },
+  chipTextActive: { fontSize: 14, color: '#3D3229', fontWeight: '600' },
   btn: {
     backgroundColor: '#EE8B5E',
     borderRadius: 24,

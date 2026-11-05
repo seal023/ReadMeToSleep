@@ -443,26 +443,31 @@ export async function generateStory(
     return { ...pickFallbackStory(theme, protagonist), origin: 'fallback', fallbackReason: 'quota' };
   }
 
-  // 时长分级 → 字数/词数要求 + 输出 token 上限
-  // ⚠️ v104 成本红线：所有 AI 故事统一 5-10 分钟，绝不超过 10 分钟（长篇小说档也只到 9-10 分钟）
+  // ⚠️ v104 成本红线：所有 AI 故事绝不超过 10 分钟；v105 起 UI 只保留 3-5 / 5-10 两档
   //    这既是成本约束，也是体验约束——睡前故事太长孩子听不完、也费 TTS 算力。
+  // 时长分级 → 字数/词数要求 + 输出 token 上限
+  // ⚠️ v105：档位精简为两档 —— short 3-5 分钟 / medium 5-10 分钟。
+  //    20 分钟以上的「长故事」已从创作页彻底下线（TTS 成本红线 + 睡前故事听不完），
+  //    旧参数里若仍有 'long'，一律按 medium 处理，保证老缓存/老调用不会走空。
   const lenRule = (
     isZh
       ? {
-          short: '正文字数 1000-1300 个汉字（约 5-6 分钟）',
-          medium: '正文字数 1500-1700 个汉字（约 7-8 分钟）',
-          long: '正文字数 1800-2000 个汉字（约 9-10 分钟），**绝对不超过 2000 字**（这是硬上限，必须严格满足）',
+          short: '正文字数 700-1000 个汉字（约 3-5 分钟）',
+          medium:
+            '正文字数 1200-2000 个汉字（约 5-10 分钟），**绝对不超过 2000 字**（这是硬上限，必须严格满足）',
+          long: '正文字数 1200-2000 个汉字（约 5-10 分钟），**绝对不超过 2000 字**（这是硬上限，必须严格满足）',
         }
       : {
-          short: 'about 600-800 English words (about 5-6 minutes)',
-          medium: 'about 900-1100 English words (about 7-8 minutes)',
-          long: 'about 1200-1300 English words (about 9-10 minutes), and **NEVER more than 1300 words** (hard upper limit, strict)',
+          short: 'about 400-650 English words (about 3-5 minutes)',
+          medium:
+            'about 800-1300 English words (about 5-10 minutes), and **NEVER more than 1300 words** (hard upper limit, strict)',
+          long: 'about 800-1300 English words (about 5-10 minutes), and **NEVER more than 1300 words** (hard upper limit, strict)',
         }
   )[length] as string;
 
   // 物理上限：即便模型想写长，也在 token 层面被挡住（zh≈1.5 tokens/字，en≈1.3 tokens/词，留安全余量）
   const lenTokens = (
-    { short: 1500, medium: 2200, long: 2800 } as Record<StoryLength, number>
+    { short: 1800, medium: 3000, long: 3000 } as Record<StoryLength, number>
   )[length];
 
   const langName = isZh ? '简体中文' : 'English';
