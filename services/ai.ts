@@ -573,7 +573,7 @@ export async function generateStory(
      * 收听、重播、书架、经典库、命中缓存、AI 失败降级，全部不会经过这一行。
      * 记账放在服务层而不是 UI，任何新入口都无法漏记或错记。
      */
-    if (countQuota) {
+    if (countQuota && !params.isCancelled?.()) {
       await recordStoryGenerated({
         storyLength: length === 'short' ? 'short' : 'long',
         source,

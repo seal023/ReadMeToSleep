@@ -83,6 +83,14 @@ export default function CreateScreen() {
 
     // 读取家长设置的敏感词（同时纳入缓存键：换词表必须重新生成）
     const sensitive = await getSensitiveWords();
+    /**
+     * v105：每一次生成请求各自持有一张「放弃票」。
+     * 弱网 / 跨洋链路下，UI 的 60 秒硬超时先触发、底层请求却在 65 秒才成功，
+     * 于是「界面已经提示超时，额度却被扣掉一次」。
+     * 超时那一刻把票作废，服务层记账前问一次，界面判定失败的那次就绝不会 +1；
+     * 点「重试」会新建一张票，旧请求即使晚到也不会顶掉新请求的计数。
+     */
+    const myReq: { cancelled: boolean } = { cancelled: false };
     const params: GenerateStoryParams = {
       theme,
       protagonist,
@@ -92,6 +100,8 @@ export default function CreateScreen() {
       sensitiveWords: [...sensitive.words, ...sensitive.phrases],
       // 记账在 services/ai.ts 里做：只有云端真写成稿子才 +1，这里不再自行扣次数
       source: 'create',
+      // 超时/放弃后，服务层就不再记账（见 myReq 注释）
+      isCancelled: () => myReq.cancelled,
     };
     const cacheKey = storyCacheKey(params);
 
@@ -136,7 +146,11 @@ export default function CreateScreen() {
     // 把 generateStory 包一层硬超时，避免弱网下无限转圈
     const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
       new Promise<T>((resolve, reject) => {
-        const id = setTimeout(() => reject(new Error('GEN_TIMEOUT')), ms);
+        const id = setTimeout(() => {
+          // ★ 先作废这张「放弃票」再 reject：底层请求即使稍后成功，也不会扣当日次数
+          myReq.cancelled = true;
+          reject(new Error('GEN_TIMEOUT'));
+        }, ms);
         p.then(
           (v) => { clearTimeout(id); resolve(v); },
           (e) => { clearTimeout(id); reject(e); },
