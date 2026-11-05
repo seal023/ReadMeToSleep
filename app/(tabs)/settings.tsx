@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput, Linking } from 'react-native';
 import { router } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -10,6 +10,10 @@ import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getProm
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { speakWithBestVoice } from '../../services/playback';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
+
+/** 隐私政策 / 使用条款（出海合规必备，COPPA / GDPR 要求清晰可访问的英文入口） */
+const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
+const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 
 /** 点小浣熊时轮流说的话：先讲「这里能做什么」，再讲「以后能陪你聊天」 */
 const RACCO_REPLIES = ['settings.racco.reply1', 'settings.racco.reply2'];
@@ -217,6 +221,23 @@ export default function SettingsScreen() {
         <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
 
+      {/* 隐私与条款：出海合规必备（COPPA / GDPR），设置页一级必须有清晰的英文入口 */}
+      <View style={styles.legalCard}>
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardIcon}>🔒</Text>
+          <Text style={styles.cardText}>{t('settings.privacy.title')}</Text>
+        </View>
+        <View style={styles.legalRow}>
+          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)}>
+            <Text style={styles.legalLink}>{t('settings.privacy.privacy')}</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>·</Text>
+          <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}>
+            <Text style={styles.legalLink}>{t('settings.privacy.terms')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/*
         v84 反馈 #7：「会员中心」与「关于」两处从孩子端设置页撤掉，统一收进家长模式。
         —— 会员/订阅属于家长付费决策，放孩子能碰到的地方容易误触；
@@ -275,6 +296,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#3D3229',
     fontWeight: '600',
+    // 出海适配：英文卡片标题（如 "Voice Cloning"）更长，允许收缩换行避免挤压箭头
+    flexShrink: 1,
   },
   cardTextWrap: {
     flex: 1,
@@ -343,4 +366,26 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
   },
+  legalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    padding: 16,
+    marginTop: 4,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+    elevation: 2,
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  legalLink: {
+    fontSize: 14,
+    color: '#9B7EDE',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  legalDot: { color: '#A8988A', fontSize: 14 },
 });

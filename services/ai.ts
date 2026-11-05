@@ -150,16 +150,20 @@ async function chat(
 ): Promise<string> {
   if (!AI_CONFIG.apiKey) {
     // 未配置 Key：不发起网络请求，让上层降级到内置故事库
-    Alert.alert('AI 未配置', 'EXPO_PUBLIC_AI_API_KEY 为空，AI 将降级到本地故事');
+    if (__DEV__) {
+      Alert.alert('AI 未配置', 'EXPO_PUBLIC_AI_API_KEY 为空，AI 将降级到本地故事');
+    }
     throw new Error('AI_API_KEY_NOT_CONFIGURED');
   }
   // 端点也没解析出来（既没有 Base URL，也没有 workspace id）：
   // 明确报错，不要拼出相对路径去请求一个不存在的地址
   if (!AI_CONFIG.baseUrl) {
-    Alert.alert(
-      'AI 未配置端点',
-      'EXPO_PUBLIC_AI_BASE_URL 与 EXPO_PUBLIC_VOICE_WORKSPACE_ID 都为空，无法确定百炼端点。'
-    );
+    if (__DEV__) {
+      Alert.alert(
+        'AI 未配置端点',
+        'EXPO_PUBLIC_AI_BASE_URL 与 EXPO_PUBLIC_VOICE_WORKSPACE_ID 都为空，无法确定百炼端点。'
+      );
+    }
     throw new Error('AI_ENDPOINT_NOT_CONFIGURED');
   }
   let res;
@@ -210,22 +214,26 @@ async function chat(
     } else if (status === 401) {
       hint = '\n\n👉 Key 无效或已轮换，去百炼控制台重新复制一把。';
     }
-    Alert.alert(
-      'AI 请求失败（诊断）',
-      `status: ${status ?? '无'}\n` +
-        `url: ${url}\n` +
-        `地址来源: ${originSource()}（env=环境变量 / workspace=由空间ID推导）\n` +
-        `hasKey: ${!!AI_CONFIG.apiKey}\n` +
-        `message: ${err?.message ?? '无'}\n` +
-        `data: ${
-          typeof data === 'string'
-            ? data.slice(0, 200)
-            : data
-            ? JSON.stringify(data).slice(0, 200)
-            : '无'
-        }` +
-        hint
-    );
+    // ⚠️ 出海：诊断信息（含内部端点 URL）只在开发包里弹出，
+    // 生产包绝不向海外用户暴露端点/密钥痕迹，也不要弹中文。失败交由上层降级处理。
+    if (__DEV__) {
+      Alert.alert(
+        'AI 请求失败（诊断）',
+        `status: ${status ?? '无'}\n` +
+          `url: ${url}\n` +
+          `地址来源: ${originSource()}（env=环境变量 / workspace=由空间ID推导）\n` +
+          `hasKey: ${!!AI_CONFIG.apiKey}\n` +
+          `message: ${err?.message ?? '无'}\n` +
+          `data: ${
+            typeof data === 'string'
+              ? data.slice(0, 200)
+              : data
+              ? JSON.stringify(data).slice(0, 200)
+              : '无'
+          }` +
+          hint
+      );
+    }
     throw err;
   }
 
@@ -293,7 +301,33 @@ function estimateDuration(content: string, language: 'zh' | 'en'): number {
     language === 'zh'
       ? Math.max(1, Math.ceil(content.replace(/\s/g, '').length / 200))
       : Math.max(1, Math.ceil(content.split(/\s+/).filter(Boolean).length / 130));
-  return minutes * 60;
+  // ⚠️ 成本硬红线（v104）：AI 生成故事时长强制 ≤10 分钟，绝不超
+  return Math.min(minutes * 60, 600);
+}
+
+/**
+ * 成本硬红线（v104）：所有 AI 生成故事时长强制写死在 5-10 分钟内，绝不超过 10 分钟。
+ * 时长越长，云端 TTS 算力费越高；月付 $4.99 扛不住单篇 15-25 分钟。
+ * 这里在「生成之后」物理截断正文到上限（句边界处截断，绝不中途腰斩一段话）。
+ */
+const MAX_STORY_MINUTES = 10;
+const STORY_CHAR_CAP_ZH = 2000; // 中文 ≈10 分钟（200 字/分钟）
+const STORY_WORD_CAP_EN = 1300; // 英文 ≈10 分钟（130 词/分钟）
+
+/** 硬截断：超过上限则在最近的「句末标点」边界处截断，保留最后一个完整句 */
+function capStoryLength(content: string, language: 'zh' | 'en'): string {
+  const cap = language === 'zh' ? STORY_CHAR_CAP_ZH : STORY_WORD_CAP_EN;
+  if (language === 'zh') {
+    if (content.length <= cap) return content;
+    const slice = content.slice(0, cap);
+    const m = slice.match(/[\s\S]*[。！？!?\.]+\s*$/);
+    return (m ? m[0] : slice).trim();
+  }
+  const words = content.split(/\s+/).filter(Boolean);
+  if (words.length <= cap) return content;
+  const sliced = words.slice(0, cap).join(' ');
+  const m = sliced.match(/[\s\S]*[.!?]+\s*$/);
+  return (m ? m[0] : sliced).trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -410,28 +444,25 @@ export async function generateStory(
   }
 
   // 时长分级 → 字数/词数要求 + 输出 token 上限
-  // short 约 3 分钟 / medium 约 15 分钟 / long 约 25 分钟
-  //
-  // v84 反馈修正：原先 short 的下限被写成「绝对不少于 800 字」，等于**强制写长**——
-  // 家长选「短」却拿到一篇念 6 分钟的长故事（英文 500 词起）。短篇现在改成
-  // 「有明确上限」的写法，并把下限压到合理区间，避免模型为了满足下限硬凑景物描写。
+  // ⚠️ v104 成本红线：所有 AI 故事统一 5-10 分钟，绝不超过 10 分钟（长篇小说档也只到 9-10 分钟）
+  //    这既是成本约束，也是体验约束——睡前故事太长孩子听不完、也费 TTS 算力。
   const lenRule = (
     isZh
       ? {
-          short: '正文字数 500-650 个汉字，**最多不超过 700 字**（这是短篇，3 分钟内要念完，长度上限必须严格满足）',
-          medium: '正文字数约 2500-3500 个汉字，绝对不少于 2200 字（这个长度要求必须严格满足）',
-          long: '正文字数约 4500-6000 个汉字，绝对不少于 4000 字（这个长度要求必须严格满足）',
+          short: '正文字数 1000-1300 个汉字（约 5-6 分钟）',
+          medium: '正文字数 1500-1700 个汉字（约 7-8 分钟）',
+          long: '正文字数 1800-2000 个汉字（约 9-10 分钟），**绝对不超过 2000 字**（这是硬上限，必须严格满足）',
         }
       : {
-          short: 'about 300-380 English words, and **NEVER more than 420 words** (a short read-aloud piece of about 3 minutes — the upper limit is strict)',
-          medium: 'about 1600-2200 English words, and NEVER fewer than 1400 words (this is a strict requirement)',
-          long: 'about 3000-4000 English words, and NEVER fewer than 2600 words (this is a strict requirement)',
+          short: 'about 600-800 English words (about 5-6 minutes)',
+          medium: 'about 900-1100 English words (about 7-8 minutes)',
+          long: 'about 1200-1300 English words (about 9-10 minutes), and **NEVER more than 1300 words** (hard upper limit, strict)',
         }
   )[length] as string;
 
-  // 短篇的 token 上限同时收紧：即便模型想写长，也在物理上被挡住（1800 ≈ 1200 汉字，留足安全余量）
+  // 物理上限：即便模型想写长，也在 token 层面被挡住（zh≈1.5 tokens/字，en≈1.3 tokens/词，留安全余量）
   const lenTokens = (
-    { short: 1800, medium: 6144, long: 8192 } as Record<StoryLength, number>
+    { short: 1500, medium: 2200, long: 2800 } as Record<StoryLength, number>
   )[length];
 
   const langName = isZh ? '简体中文' : 'English';
@@ -518,10 +549,14 @@ export async function generateStory(
       lenTokens,
     );
 
+    // ★ 成本硬红线（v104）：生成后物理截断正文到 5-10 分钟上限（句边界处），
+    //   无论模型实际写多长，落库的成稿绝不超过 10 分钟，杜绝 TTS 算力失控。
+    const finalContent = capStoryLength(guarded.content, language);
+
     const result: StoryGenerateResult = {
       title: guarded.title,
-      content: guarded.content,
-      duration: estimateDuration(guarded.content, language),
+      content: finalContent,
+      duration: estimateDuration(finalContent, language),
       origin: 'cloud',
     };
     // 只有 AI 真的写成稿子才进缓存；兜底故事不缓存，下次仍会尝试重新生成。

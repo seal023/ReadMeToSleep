@@ -111,6 +111,33 @@ export const FALLBACK_PRICES: Record<PaidPlan, string> = {
 /** 兜底币种（与 ASC 商品定价币种一致） */
 export const FALLBACK_CURRENCY = 'USD';
 
+/**
+ * 把商店返回的展示价（可能带本地化符号/分隔符）解析成数值。
+ * 例："$4.99" → 4.99；"€47,99" → 47.99；"￥540" → 540。
+ * 仅用于折算/省钱计算，不用于展示。
+ */
+function parsePrice(raw: string | number | undefined): number | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (!raw || typeof raw !== 'string') return undefined;
+  const m = raw.replace(/[^0-9.,]/g, '').match(/[0-9]+[.,][0-9]+|[0-9]+/);
+  if (!m) return undefined;
+  const n = parseFloat(m[0].replace(',', '.'));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * 用「参考展示价」里的币种符号与小数分隔符，把金额格式化成同风格的字符串。
+ * 例：参考 "$4.99"、金额 9.89 → "$9.89"；参考 "€47,99"、金额 9.89 → "€9,89"。
+ * 避免把欧区价格写成美式 "€9.89" 这种别扭格式。
+ */
+export function formatMoney(referenceDisplayPrice: string, amount: number): string {
+  const ref = referenceDisplayPrice || FALLBACK_PRICES.monthly;
+  const symbol = ref.replace(/[0-9.,\s]/g, '').trim() || '$';
+  const usesComma = /,[0-9]/.test(ref);
+  const n = usesComma ? amount.toFixed(2).replace('.', ',') : amount.toFixed(2);
+  return `${symbol}${n}`;
+}
+
 const ENTITLEMENT_KEY = 'rms_entitlement';
 const ALL_SKUS = [PRODUCT_IDS.monthly, PRODUCT_IDS.yearly];
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -149,6 +176,11 @@ export interface PlanOffer {
   currency: string;
   title: string;
   description: string;
+  /**
+   * 价格的数值形式（如 4.99）。仅用于「年付折算月单价 / 年付省多少」这类计算。
+   * 展示价永远用 displayPrice（商店本地化）；这里不做任何本地化格式化。
+   */
+  price?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +245,7 @@ export async function loadOffers(): Promise<PlanOffer[] | null> {
           currency: p.currency || FALLBACK_CURRENCY,
           title: p.title || '',
           description: p.description || '',
+          price: parsePrice(p.price ?? p.displayPrice),
         };
       })
       .filter((o): o is PlanOffer => !!o && ALL_SKUS.includes(o.productId));

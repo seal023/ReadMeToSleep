@@ -17,7 +17,7 @@ import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { ScreenBackButton } from '@/components/ui/ScreenBackButton';
 import { COLORS, FONT } from '@/constants/theme';
 import { useLanguage } from '@/hooks/useLanguage';
-import type { PaidPlan, Plan } from '@/services/iap';
+import { formatMoney, type PaidPlan, type Plan, type PlanOffer } from '@/services/iap';
 
 // ---------------------------------------------------------------------------
 // ⚠️ 上架前必须替换为真实可访问的 URL（Apple 对订阅类 App 的硬性要求 3.1.2）
@@ -26,13 +26,23 @@ import type { PaidPlan, Plan } from '@/services/iap';
 const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 
-// ---------------------------------------------------------------------------
-// 定价文案（与 App Store Connect 锁定定价一致：月度 $4.99 / 年度 $49.99）
-//   年度折算：$49.99 / 12 ≈ $4.17 每月
-//   相比按月订阅：$4.99 × 12 = $59.88 → 省 (59.88-49.99)/59.88 ≈ 17%
-//   ⚠️ 真实扣款永远以商店返回的 displayPrice 为准，这里只是拉不到价时的展示兜底。
-// ---------------------------------------------------------------------------
-const MONTHLY_EQUIVALENT = '$4.17';
+/**
+ * 年付折算 / 省钱计算 —— 全部基于 App Store 返回的本地化价格，绝不写死 "$4.99"。
+ * 这样美区显示 $、欧区显示 €、日区显示 ¥，且「月单价 / 省多少」也跟着当地币种走。
+ * 拉不到价（offers 为空）时返回空，UI 自动回落到中性文案（不显示任何硬编码金额）。
+ */
+function derivePricing(offers: PlanOffer[] | null): { monthlyEquivalent?: string; savings?: string } {
+  if (!offers) return {};
+  const monthly = offers.find((o) => o.plan === 'monthly');
+  const yearly = offers.find((o) => o.plan === 'yearly');
+  if (!monthly?.price || !yearly?.price) return {};
+  const equiv = yearly.price / 12;
+  const save = monthly.price * 12 - yearly.price;
+  const monthlyEquivalent = formatMoney(yearly.displayPrice, equiv);
+  return save > 0
+    ? { monthlyEquivalent, savings: formatMoney(yearly.displayPrice, save) }
+    : { monthlyEquivalent };
+}
 
 type FeatureRow = {
   feature: string;
@@ -47,15 +57,16 @@ type FeatureRow = {
  *    在项目中根本不存在实现，属不实描述，已移除。
  *
  *    额度常量定义在 services/entitlement.ts：
- *      FREE_DAILY_STORY_LIMIT = 1、PREMIUM_DAILY_STORY_LIMIT = 3、FREE_TOTAL_CHECKIN_LIMIT = 3
- *    ⚠️ 会员不是「无限生成」，是每天 3 次；表里的 unlimited 已按真实行为改掉，
+ *      FREE_DAILY_STORY_LIMIT = 1、MONTHLY_DAILY_STORY_LIMIT = 2、YEARLY_DAILY_STORY_LIMIT = 3
+ *    ⚠️ 会员不是「无限生成」：月付每天 2 次、年付每天 3 次；表里的 unlimited 已按真实行为改掉，
  *       否则会踩 Apple Guideline 2.3.1（描述与实际不符）。
  */
 /** 功能对比表：文案全部走 i18n，切换语言时跟着变 */
 function buildFeatures(t: (k: string) => string): FeatureRow[] {
   return [
-    { feature: t('sub.feat.stories'), free: t('sub.val.oneDay'), monthly: t('sub.val.threePerDay'), yearly: t('sub.val.threePerDay') },
-    { feature: t('sub.feat.clone'), free: false, monthly: true, yearly: true },
+    { feature: t('sub.feat.stories'), free: t('sub.val.oneDay'), monthly: t('sub.val.twoPerDay'), yearly: t('sub.val.threePerDay') },
+    { feature: t('sub.feat.offline'), free: t('sub.val.fiveClassics'), monthly: t('sub.val.all'), yearly: t('sub.val.all') },
+    { feature: t('sub.feat.clone'), free: t('sub.val.oneTime'), monthly: true, yearly: true },
     { feature: t('sub.feat.travel'), free: t('sub.val.threeTimes'), monthly: t('sub.val.unlimited'), yearly: t('sub.val.unlimited') },
     { feature: t('sub.feat.parent'), free: true, monthly: true, yearly: true },
   ];
@@ -208,6 +219,8 @@ export default function SubscriptionPage() {
 
   const status = STATUS_MAP[activePlan];
   const usingShopPrice = !!offers;
+  /** 年付折算月单价 / 省钱金额：来自商店本地化价格，无价时为空（UI 回落中性文案） */
+  const pricing = derivePricing(offers);
 
   return (
     <CartoonScreen gradient="candy" decor>
@@ -321,13 +334,19 @@ export default function SubscriptionPage() {
             </View>
           )}
           <View style={styles.bestBadge}>
-            <Text style={styles.bestText}>{t('sub.yearlySaving')}</Text>
+            <Text style={styles.bestText}>
+              {pricing.savings
+                ? t('sub.savings').replace('{amount}', pricing.savings)
+                : t('sub.bestValue')}
+            </Text>
           </View>
           <Text style={styles.planName}>{t('sub.plan.yearly')}</Text>
           <Text style={styles.planPrice}>{priceOf('yearly')}</Text>
           <Text style={styles.planUnit}>{t('sub.perYear')}</Text>
           <Text style={styles.planDesc}>
-            {t('sub.yearlyDesc').replace('{price}', MONTHLY_EQUIVALENT)}
+            {pricing.monthlyEquivalent
+              ? t('sub.yearlyDesc').replace('{price}', pricing.monthlyEquivalent)
+              : t('sub.yearlyDescFallback')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -446,10 +465,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tableHeader: { flexDirection: 'row', backgroundColor: '#9B7EDE', paddingVertical: 10 },
-  th: { color: '#fff', fontWeight: '600', textAlign: 'center', fontSize: 13 },
-  tableRow: { flexDirection: 'row', paddingVertical: 10 },
+  th: { color: '#fff', fontWeight: '600', textAlign: 'center', fontSize: 13, flexWrap: 'wrap' },
+  tableRow: { flexDirection: 'row', paddingVertical: 10, alignItems: 'center' },
   rowEven: { backgroundColor: '#faf8ff' },
-  td: { flex: 1, textAlign: 'center', fontSize: 13, color: '#3D3229' },
+  td: { flex: 1, textAlign: 'center', fontSize: 13, color: '#3D3229', flexWrap: 'wrap' },
   planCards: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   planCard: {
     flex: 1,
@@ -482,17 +501,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     left: '50%',
-    transform: [{ translateX: -36 }],
+    // 用 50% 自身宽度居中：无论文案是 "Save $9.89" 还是 "Best Value" 都不会偏。
+    transform: [{ translateX: '-50%' }],
     backgroundColor: '#F2827F',
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 18,
+    maxWidth: '92%',
   },
-  bestText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  bestText: { color: '#fff', fontSize: 11, fontWeight: '600', textAlign: 'center', flexWrap: 'wrap' },
   planName: { fontSize: 16, fontWeight: '600', color: '#3D3229', marginTop: 6 },
   planPrice: { fontSize: 22, fontWeight: 'bold', color: '#9B7EDE', marginVertical: 2 },
   planUnit: { fontSize: 12, color: '#A8988A' },
-  planDesc: { fontSize: 12, color: '#A8988A', textAlign: 'center', marginTop: 6 },
+  planDesc: { fontSize: 12, color: '#A8988A', textAlign: 'center', marginTop: 6, flexWrap: 'wrap' },
   buyBtn: {
     backgroundColor: '#9B7EDE',
     borderRadius: 22,

@@ -86,7 +86,27 @@ const KEYS = {
   VOICE_DEFAULTS_V82: 'rms_voice_defaults_v82',
   /** v92 一次性迁移标记：提示音声线统一回默认大姐姐，见 migratePromptVoiceOnce */
   PROMPT_VOICE_V92: 'rms_prompt_voice_v92',
+  /** 免费用户是否已用过「1 次克隆体验」（仅免费用户计，会员不受限） */
+  FREE_CLONE_USED: 'rms_free_clone_used',
+  /** 免费用户用克隆声选中的那「唯一 1 篇」短故事 id（克隆声仅对它生效） */
+  FREE_CLONE_STORY_ID: 'rms_free_clone_story_id',
+  /** 免费用户克隆所用的对象（mom/dad/custom:xxx），用于故事页默认克隆声 */
+  FREE_CLONE_TARGET: 'rms_free_clone_target',
 };
+
+/**
+ * 免费离线故事池：5 篇以英文为主的经典，所有用户（含免费）无限次免费收听、
+ * 走系统默认音色、绝不走云端 TTS、绝不扣次数。
+ * 免费用户故事库里「这 5 篇之外」的经典/长篇一律加锁，点击即弹诙谐付费窗。
+ * ⚠️ 这 5 篇的挑选由产品决定，改这里即可（必须都是 data/classic-stories 里存在的 id）。
+ */
+export const FREE_OFFLINE_POOL_IDS: string[] = [
+  'classic-001', // 龟兔赛跑 / The Tortoise and the Hare
+  'classic-002',
+  'classic-003',
+  'classic-004',
+  'classic-007',
+];
 
 /**
  * 故事时长统一折算成「秒」（v98 反馈 #1）
@@ -579,6 +599,60 @@ export async function clearStoryPosition(storyId: string): Promise<void> {
     if (!(storyId in map)) return;
     delete map[storyId];
     await AsyncStorage.setItem(KEYS.STORY_POSITIONS, JSON.stringify(map));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+// ---- 免费用户「1 次克隆体验」状态（会员不走这里，会员克隆不受限） ----
+export async function getFreeCloneUsed(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(KEYS.FREE_CLONE_USED)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function setFreeCloneUsed(used: boolean): Promise<void> {
+  try {
+    if (used) await AsyncStorage.setItem(KEYS.FREE_CLONE_USED, '1');
+    else await AsyncStorage.removeItem(KEYS.FREE_CLONE_USED);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 免费用户克隆声专属的「唯一 1 篇」短故事 id（为空 = 还没选） */
+export async function getFreeCloneStoryId(): Promise<string> {
+  try {
+    return (await AsyncStorage.getItem(KEYS.FREE_CLONE_STORY_ID)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function setFreeCloneStoryId(id: string): Promise<void> {
+  try {
+    if (id) await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, id);
+    else await AsyncStorage.removeItem(KEYS.FREE_CLONE_STORY_ID);
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 免费用户克隆所用的对象（mom/dad/custom:xxx），故事页据此默认克隆声 */
+export async function getFreeCloneTarget(): Promise<string> {
+  try {
+    return (await AsyncStorage.getItem(KEYS.FREE_CLONE_TARGET)) || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function setFreeCloneTarget(target: string): Promise<void> {
+  try {
+    if (target) await AsyncStorage.setItem(KEYS.FREE_CLONE_TARGET, target);
+    else await AsyncStorage.removeItem(KEYS.FREE_CLONE_TARGET);
   } catch {
     /* 忽略 */
   }

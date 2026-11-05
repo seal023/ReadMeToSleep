@@ -20,6 +20,11 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import type { Story, Language, RaccoState, GenerateStoryParams } from '@/types';
 
+// 出海适配：海外用户到新加坡节点延迟偏高。
+// 软提示阈值 15s（显示"AI 还在努力写故事"安抚），硬超时 60s（断网/节点不可达时抛错走友好提示，绝不卡死）。
+const SLOW_HINT_MS = 15000;
+const GEN_HARD_TIMEOUT_MS = 60000;
+
 export default function CreateScreen() {
   const router = useRouter();
   const { t, language: uiLang } = useLanguage();
@@ -58,6 +63,8 @@ export default function CreateScreen() {
   }, [spinAnim, twinkleAnim]);
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
+  // 出海适配：海外用户到新加坡节点延迟更高，超过 15 秒给出安抚提示，避免以为"卡死"
+  const [slowHint, setSlowHint] = useState(false);
   // 生成中循环展示的可爱短句（不识字的孩子也能通过文字气泡 + 语音辅助理解"正在努力生成"）
   const GEN_PHRASE_KEYS = ['create.genPhrase.1', 'create.genPhrase.2', 'create.genPhrase.3', 'create.genPhrase.4', 'create.genPhrase.5', 'create.genPhrase.6'];
   const [phraseIdx, setPhraseIdx] = useState(0);
@@ -122,8 +129,21 @@ export default function CreateScreen() {
 
     setGenerating(true);
     setRaccoState('thinking');
+    setSlowHint(false);
+    // 出海适配：海外用户到新加坡节点延迟更高，超过 15 秒给出安抚提示，
+    // 超过 60 秒视为超时（断网/节点不可达），抛错走 catch 友好提示，绝不卡死。
+    const slowTimer = setTimeout(() => setSlowHint(true), SLOW_HINT_MS);
+    // 把 generateStory 包一层硬超时，避免弱网下无限转圈
+    const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const id = setTimeout(() => reject(new Error('GEN_TIMEOUT')), ms);
+        p.then(
+          (v) => { clearTimeout(id); resolve(v); },
+          (e) => { clearTimeout(id); reject(e); },
+        );
+      });
     try {
-      const result = await generateStory(params);
+      const result = await withTimeout(generateStory(params), GEN_HARD_TIMEOUT_MS);
 
       /** 落库 + 进故事页（不涉及额度：额度只由 ai.ts 在云端成功时记一次） */
       const openStory = async (): Promise<string> => {
@@ -185,7 +205,22 @@ export default function CreateScreen() {
     } catch (e) {
       console.error('Generate story error:', e);
       setRaccoState('idle');
-      Alert.alert(t('common.error'), t('create.genFailed'));
+      // 超时/断网都走这里：给出友好英文提示，且**绝不扣减当日生成次数**
+      // （次数只在 ai.ts 云端真正写稿成功时才记一次，失败/超时本就没扣）。
+      const isTimeout = e instanceof Error && e.message === 'GEN_TIMEOUT';
+      if (isTimeout) {
+        // 带「重试」按钮的对话框：重试不扣次数（重新跑一遍，门禁预检同样不扣）
+        Alert.alert(t('create.retryTitle'), t('create.retryMsg'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('create.retry'), onPress: () => { handleGenerate(); } },
+        ]);
+      } else {
+        Alert.alert(t('create.alert.title'), t('create.genFailed'));
+      }
+    } finally {
+      // 无论成功/失败/超时，都要清掉 15s 安抚计时器并复位提示，避免残留
+      clearTimeout(slowTimer);
+      setSlowHint(false);
     }
     setGenerating(false);
   };
@@ -225,6 +260,11 @@ export default function CreateScreen() {
       </View>
 
       <Text style={styles.title}>{t('create.title')}</Text>
+
+      {/* 出海适配：海外节点延迟高时显示安抚提示，避免家长以为卡死 */}
+      {generating && slowHint && (
+        <Text style={styles.slowHint}>{t('create.slowHint')}</Text>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.icon}>🌟</Text>
@@ -339,6 +379,14 @@ const styles = StyleSheet.create({
   },
   genSpark: { position: 'absolute', fontSize: 16 },
   title: { fontSize: 24, color: '#3D3229', textAlign: 'center', marginBottom: 20, fontWeight: '700' },
+  slowHint: {
+    fontSize: 14,
+    color: '#A8988A',
+    textAlign: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    flexShrink: 1,
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -372,6 +420,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EE8B5E',
     borderRadius: 24,
     paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: 'center',
     marginTop: 8,
   },
@@ -379,9 +428,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#EE8B5E',
     borderRadius: 24,
     paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: 'center',
     marginTop: 8,
     opacity: 0.5,
   },
-  btnText: { fontSize: 18, color: '#3D3229', fontWeight: '700' },
+  btnText: { fontSize: 18, color: '#3D3229', fontWeight: '700', textAlign: 'center', flexShrink: 1, flexWrap: 'wrap' },
 });

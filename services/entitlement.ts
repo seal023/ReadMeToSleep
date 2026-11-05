@@ -4,13 +4,14 @@
  * 只负责「能不能用、还剩几次」，不碰 IAP 的购买流程（那是 services/iap.ts 的事）。
  * 免费额度与 subscription.tsx 的对比表必须保持一致，改这里记得同步改表。
  *
- * 当前规则（v102 / ASC 定价锁定后）：
- *   每日生成故事   免费 1 次 / 会员（月付、年付一视同仁）每天最多 3 次，本地 0 点重置
- *   旅行打卡       免费累计 3 次 / 会员无限
- *   声音克隆       仅会员
+ * 当前规则（口径 v104，最终确认）：
+ *   每日 AI 生成故事   免费 1 次 / 月付会员（$4.99）2 次 / 年付会员（$49.99）3 次，本地 0 点重置
+ *   旅行打卡           免费累计 3 次 / 会员无限
+ *   声音克隆           会员无限；免费用户登录后仅 1 次体验
+ *   离线故事池         5 篇经典系统音，所有用户无限免费听（不扣次数、不走云端）
  *
- * 会员不再是「无限生成」：3 次/天是硬限制，目的是守住百炼 LLM 的成本，
- * 对应 subscription.tsx 对比表与 gate.premiumDailyMsg 的提示文案。
+ * ⚠️ 月付 $4.99 的算力成本覆盖不了「每天 3 次」TTS，故月付与年付严格区分上限，
+ *   绝不允许把月付也设成 3 次，否则重度月付用户会直接亏本。
  *
  * ★ 扣减时机（v103 产品红线，改动前务必看 scripts/verify-quota-scope.mjs）：
  *   只有「真调云端 AI 并拿到成稿」才 +1，且记账只发生在 services/ai.ts 的云端成功分支。
@@ -20,7 +21,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
-import { getProgress } from './storage';
+import { getProgress, getFreeCloneUsed } from './storage';
 import { isPremium, type Plan } from './iap';
 import { logGeneration, type StoryLengthBucket } from './generationLog';
 
@@ -30,15 +31,21 @@ import { logGeneration, type StoryLengthBucket } from './generationLog';
 
 /** 免费用户每天可生成的 AI 故事数（本地日期 0 点自动重置） */
 export const FREE_DAILY_STORY_LIMIT = 1;
-/** 会员（月付 / 年付一样）每天最多生成 3 次，硬限制 */
-export const PREMIUM_DAILY_STORY_LIMIT = 3;
+/** 月付会员（$4.99）每天最多生成 2 次 —— 成本红线，绝不能给 3 次 */
+export const MONTHLY_DAILY_STORY_LIMIT = 2;
+/** 年付会员（$49.99）每天最多生成 3 次，主推档位 */
+export const YEARLY_DAILY_STORY_LIMIT = 3;
 // 旅行打卡改用 AI 现场生成后，故事不再有「只有 15 篇」的上限，只受次数约束。
 // 测试期一并放开（999 ≈ 不限），上架前按商业化口径收紧（如免费 3 次）。
 export const FREE_TOTAL_CHECKIN_LIMIT = 999;
 
-/** 当前身份对应的每日上限 */
-export function dailyStoryLimit(premium: boolean): number {
-  return premium ? PREMIUM_DAILY_STORY_LIMIT : FREE_DAILY_STORY_LIMIT;
+/** 当前方案对应的每日 AI 生成上限（免费 1 / 月付 2 / 年付 3） */
+export function dailyStoryLimit(plan: Plan): number {
+  switch (plan) {
+    case 'yearly': return YEARLY_DAILY_STORY_LIMIT;
+    case 'monthly': return MONTHLY_DAILY_STORY_LIMIT;
+    default: return FREE_DAILY_STORY_LIMIT;
+  }
 }
 
 const USAGE_KEY = 'rms_daily_usage';
@@ -172,7 +179,7 @@ export async function getSnapshot(): Promise<EntitlementSnapshot> {
     premium,
     plan,
     storiesUsedToday: usage.storyCount,
-    storiesRemaining: Math.max(0, dailyStoryLimit(premium) - usage.storyCount),
+    storiesRemaining: Math.max(0, dailyStoryLimit(plan) - usage.storyCount),
     checkInsUsed,
     checkInsRemaining: premium
       ? null
@@ -209,19 +216,44 @@ export async function checkStoryGate(): Promise<GateResult> {
   };
 }
 
-/** 声音克隆门禁（仅会员） */
+/**
+ * 声音克隆门禁。
+ * ---------------------------------------------------------------------------
+ * 规则（v104 最终口径）：
+ *   · 必须先登录（克隆声线绑定账号；未登录既无法保存/恢复，也违背「付费绑定账号」原则）。
+ *   · 会员（月付 / 年付）无限次克隆。
+ *   · 免费用户登录后仅 1 次克隆体验；已用过则拦截。
+ */
 export async function checkVoiceCloneGate(): Promise<GateResult> {
+  // 必须先登录：动态 import 避免与 auth 形成静态依赖环
+  try {
+    const { getSession } = await import('./auth');
+    const session = await getSession();
+    if (!session) {
+      return {
+        allowed: false,
+        title: ts('gate.cloneLoginTitle'),
+        message: ts('gate.cloneLoginMsg'),
+        reason: 'free',
+      };
+    }
+  } catch {
+    // 登录模块不可用时退回会员判断，避免把功能彻底卡死
+  }
+
   const snap = await getSnapshot();
   if (snap.premium) return { allowed: true };
 
-  // 测试期放开：免费用户也可录入声音进行验证（上架前改回会员专属，恢复下方拦截）
+  const used = await getFreeCloneUsed();
+  if (used) {
+    return {
+      allowed: false,
+      title: ts('gate.cloneUsedTitle'),
+      message: ts('gate.cloneUsedMsg'),
+      reason: 'free',
+    };
+  }
   return { allowed: true };
-  // —— 上架前删除上面一行，恢复会员门禁 ——
-  // return {
-  //   allowed: false,
-  //   title: '会员专属功能',
-  //   message: '声音克隆可以录制家人的声音来讲故事，升级会员即可使用。',
-  // };
 }
 
 /** 旅行打卡门禁（累计额度） */

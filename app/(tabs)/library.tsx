@@ -8,6 +8,7 @@ import {
   Modal,
   TouchableOpacity,
   StyleSheet,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -17,7 +18,14 @@ import { useLanguage } from '../../hooks/useLanguage';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 // 长篇原创故事轻量索引（id/标题/标签/时长/来源/长度档），不含正文
 import longIndex from '../../data/classic-stories/long/index.json';
-import { CLASSIC_EN_IDS, getStories, getProgress } from '../../services/storage';
+import {
+  CLASSIC_EN_IDS,
+  getStories,
+  getProgress,
+  FREE_OFFLINE_POOL_IDS,
+  getFreeCloneStoryId,
+} from '../../services/storage';
+import { isPremium } from '../../services/iap';
 import type { Story, Progress } from '../../types';
 
 // 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
@@ -149,6 +157,9 @@ export default function LibraryScreen() {
   // 现从存储真实加载，与「我的故事」(created=ai_generated / checkins) 同源。
   const [aiStories, setAiStories] = useState<Story[]>([]);
   const [travelCheckins, setTravelCheckins] = useState<Progress['checkIns']>([]);
+  // 免费用户故事库门禁：会员全部可听；免费仅 5 篇经典池 + 已完成的免费克隆篇可听
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const [freeCloneStoryId, setFreeCloneStoryId] = useState<string | null>(null);
 
   // 每次回到本页（从创作 / 打卡页返回）都刷新，保证与「我的故事」实时同步
   useFocusEffect(
@@ -156,10 +167,17 @@ export default function LibraryScreen() {
       let alive = true;
       (async () => {
         try {
-          const [all, prog] = await Promise.all([getStories(), getProgress()]);
+          const [all, prog, premium, cloneId] = await Promise.all([
+            getStories(),
+            getProgress(),
+            isPremium(),
+            getFreeCloneStoryId(),
+          ]);
           if (!alive) return;
           setAiStories(all.filter((s) => s.type === 'ai_generated'));
           setTravelCheckins(prog.checkIns ?? []);
+          setIsPremiumUser(!!premium);
+          setFreeCloneStoryId(cloneId);
         } catch {
           /* 读取失败保持空列表，不阻塞浏览 */
         }
@@ -234,33 +252,52 @@ export default function LibraryScreen() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  const renderClassic = ({ item }: { item: StoryItem }) => (
-    <TouchableOpacity
-      style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle]}
-      activeOpacity={0.7}
-      onPress={() => router.push(`/story/${item.id}`)}
-    >
-      <View style={styles.cardLeft}>
-        <Text style={styles.cardEmoji}>{TAG_EMOJI[item.tags[0]] || '📖'}</Text>
-      </View>
-      <View style={styles.cardCenter}>
-        <Text style={styles.cardTitle} numberOfLines={1}>
-          {effLang === 'zh' ? item.title.zh : item.title.en}
-        </Text>
-        <View style={styles.tagRow}>
-          {item.tags.map(tag => (
-            <Text key={tag} style={styles.tag}>
-              {t(TAG_KEY[tag] ?? tag)}
-            </Text>
-          ))}
-          <Text style={styles.duration}>{fmtDuration(item.duration)}</Text>
+  /** 免费用户的故事库门禁：会员全部可听；免费仅 5 篇经典池 + 已完成的免费克隆篇可听 */
+  const isClassicFree = (id: string): boolean => {
+    if (isPremiumUser) return true;
+    if (FREE_OFFLINE_POOL_IDS.includes(id)) return true;
+    if (freeCloneStoryId && id === freeCloneStoryId) return true;
+    return false;
+  };
+
+  /** 点击被锁定的非池内故事 → 诙谐付费窗，引导去订阅解锁全部 */
+  const openPoolPaywall = () => {
+    Alert.alert(t('gate.poolExceedTitle'), t('gate.poolExceedMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription') },
+    ]);
+  };
+
+  const renderClassic = ({ item }: { item: StoryItem }) => {
+    const locked = !isClassicFree(item.id);
+    return (
+      <TouchableOpacity
+        style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle, locked && styles.cardLocked]}
+        activeOpacity={0.7}
+        onPress={() => (locked ? openPoolPaywall() : router.push(`/story/${item.id}`))}
+      >
+        <View style={styles.cardLeft}>
+          <Text style={styles.cardEmoji}>{TAG_EMOJI[item.tags[0]] || '📖'}</Text>
         </View>
-      </View>
-      <View style={styles.cardRight}>
-        <Text style={styles.playBtn}>▶️</Text>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.cardCenter}>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {effLang === 'zh' ? item.title.zh : item.title.en}
+          </Text>
+          <View style={styles.tagRow}>
+            {item.tags.map(tag => (
+              <Text key={tag} style={styles.tag}>
+                {t(TAG_KEY[tag] ?? tag)}
+              </Text>
+            ))}
+            <Text style={styles.duration}>{fmtDuration(item.duration)}</Text>
+          </View>
+        </View>
+        <View style={styles.cardRight}>
+          <Text style={locked ? styles.lockBtn : styles.playBtn}>{locked ? '🔒' : '▶️'}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderAi = ({ item }: { item: Story }) => (
     <TouchableOpacity
@@ -597,6 +634,9 @@ const styles = StyleSheet.create({
   duration: { fontSize: 11, color: '#A8988A' },
   cardRight: { marginLeft: 8 },
   playBtn: { fontSize: 18 },
+  /** 免费用户被锁定的非池内故事：整体压暗 + 挂锁图标，提示需会员解锁 */
+  cardLocked: { opacity: 0.55 },
+  lockBtn: { fontSize: 18, opacity: 0.85 },
   emptyList: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },

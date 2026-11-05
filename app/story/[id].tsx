@@ -33,7 +33,8 @@ import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRe
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { isPremium } from '../../services/iap';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -184,6 +185,9 @@ export default function StoryPlayScreen() {
   const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>(PRESET_VOICE_OPTIONS);
   // v80 #3：正在播的到底是谁的声音？——显示当前生效的音色名（未克隆=云端预置音色）
   const [voiceIsCloned, setVoiceIsCloned] = useState(false);
+  // 免费克隆体验：仅「那一篇专属故事」可用克隆声，其余故事一律退回系统音
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const [freeCloneStoryId, setFreeCloneStoryId] = useState<string | null>(null);
   const [qaIndex, setQaIndex] = useState(0);
   const [qaFeedback, setQaFeedback] = useState('');
   const [childQuestion, setChildQuestion] = useState('');
@@ -204,6 +208,20 @@ export default function StoryPlayScreen() {
   const qaStarting = useRef(false);
   // 进度条拖动跳转
   const [usingClonedVoice, setUsingClonedVoice] = useState(false);
+  // 读取会员状态 + 免费克隆专属故事 id：决定当前故事能否用克隆声
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [premium, cloneId] = await Promise.all([isPremium(), getFreeCloneStoryId()]);
+      if (!alive) return;
+      setIsPremiumUser(!!premium);
+      setFreeCloneStoryId(cloneId);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const clonedPlayingRef = useRef(false);
   // 页面是否仍在前台：失焦（切走/退出）后置 false，用于「AI 回答到达时若已离开则不朗读」
   const aliveRef = useRef(true);
@@ -843,12 +861,13 @@ export default function StoryPlayScreen() {
     if (!storyText) return;
     let cancelled = false;
     (async () => {
-      // 已克隆 → 预热克隆声；未克隆（含「系统默认」）→ 预热云端预置音色，
-      // 这样点播放时多半已经合成好，不用干等（v79：默认声音改成云端大姐姐音色）
-      const target =
-        selectedVoice && (await hasClonedVoice(selectedVoice))
-          ? selectedVoice
-          : presetTargetFor(selectedVoice);
+      // 已克隆且当前故事允许用克隆声 → 预热克隆声；否则（未克隆 / 或免费用户在其余故事上）
+      // 预热云端预置音色，这样点播放时多半已经合成好，不用干等（v79：默认声音改成云端大姐姐音色）
+      const cloneAllowedHere =
+        isPremiumUser || (freeCloneStoryId && story?.id === freeCloneStoryId);
+      const wantClone =
+        !!selectedVoice && (await hasClonedVoice(selectedVoice)) && cloneAllowedHere;
+      const target = wantClone ? selectedVoice : presetTargetFor(selectedVoice);
       if (!target || cancelled) return;
       prewarmClonedAudio(storyText, target, displayLang);
       // 主声线是克隆声时，顺手把「兜底的大姐姐」前 3 片也备好：
@@ -1111,6 +1130,13 @@ export default function StoryPlayScreen() {
     if (!focusedRef.current) return;
     const voice = voiceOverride ?? selectedVoice;
     playingVoiceRef.current = voice; // 记录本轮实际声线，供换声时判「真的没变化」
+    // 免费用户的克隆声只能讲「那一篇专属故事」；其余故事即便全局默认是克隆声也退回系统音，
+    // 不让播放被卡死（pickVoice 已经显式拦截过主动选择，这里兜住「全局默认=克隆声」的情况）
+    const cloneAllowedHere =
+      isPremiumUser || (freeCloneStoryId && story?.id === freeCloneStoryId);
+    const voiceKind = voiceOptions.find((o) => o.id === voice)?.kind;
+    let effectiveVoice: string = voice;
+    if (voiceKind === 'clone' && !cloneAllowedHere) effectiveVoice = 'system';
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
@@ -1267,7 +1293,7 @@ export default function StoryPlayScreen() {
        * 没有（旧记录）才退回按秒估算。
        */
       const resumePlace = resumePlaceRef.current;
-      const used = await playStory(storyText, voice, displayLang, onEnded, {
+      const used = await playStory(storyText, effectiveVoice, displayLang, onEnded, {
         startAt: resumeAtRef.current,
         startChunk: resumePlace ?? undefined,
         /**
@@ -1371,6 +1397,17 @@ export default function StoryPlayScreen() {
    * 现在：记住当前播放位置 → 用新声线从同一位置重新起播，进度无缝衔接。
    */
   const pickVoice = (id: string) => {
+    // 免费用户的克隆声只能讲「那一篇专属故事」；在其余故事上点克隆声 → 诙谐拦截
+    const picked = voiceOptions.find((o) => o.id === id);
+    const cloneAllowedHere =
+      isPremiumUser || (freeCloneStoryId && story?.id === freeCloneStoryId);
+    if (picked?.kind === 'clone' && !cloneAllowedHere) {
+      Alert.alert(t('gate.freeCloneEndedTitle'), t('gate.freeCloneEndedMsg'), [
+        { text: t('common.ok'), style: 'cancel' },
+        { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription') },
+      ]);
+      return;
+    }
     // 只有「设置值」和「实际在播的音色」都一致，才算真的没变化（见 playingVoiceRef 注释）
     if (!id || (id === selectedVoice && id === playingVoiceRef.current)) return;
     const wasPlaying = isPlaying;

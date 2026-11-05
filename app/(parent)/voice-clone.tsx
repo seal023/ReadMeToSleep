@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator, TextInput, Animated } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
+import * as FileSystem from 'expo-file-system';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -11,7 +12,8 @@ import { enrollVoice, isVoiceCloneConfigured, getClonedTargets, type VoiceCloneR
 import { warmClonedPhrases, clearClonedPhraseCache } from '@/services/phraseCache';
 import { playClonedAudio, getLastCloneError } from '@/services/clonedVoicePlayback';
 import { stopStory } from '@/services/playback';
-import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting } from '@/services/storage';
+import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting, setFreeCloneUsed, setFreeCloneTarget } from '@/services/storage';
+import { isPremium } from '@/services/iap';
 import { voiceDisplayName } from '@/services/voiceCatalog';
 
 // 固定对象只保留「妈妈 / 爸爸」——这两个是绝大多数家庭的主力声线，一键可选。
@@ -309,6 +311,21 @@ export default function VoiceClonePage() {
         // 静默预合成一批高频短句（你好/再见/答对/晚安…）到本地缓存，
         // 之后这些提示音都是克隆声且秒出、零 token（失败静默忽略，不阻塞本页）
         warmClonedPhrases(target);
+        // 免费用户：用掉唯一 1 次克隆体验，并记录克隆对象，随后去选一篇专属故事
+        const premium = await isPremium();
+        if (!premium) {
+          await setFreeCloneUsed(true);
+          await setFreeCloneTarget(target);
+          // 稍作停顿让「克隆成功」闪现，再带去选故事页（选完即永久保存、无限畅听）
+          setTimeout(() => router.replace('/(parent)/free-clone-pick'), 700);
+        }
+        // 隐私合规（COPPA / GDPR）：克隆成功后，本地原始录音即用即焚，立即删除，
+        // 不长期留存在设备上；云端只保留「音色模型」，不保留可还原的原始音频。
+        try {
+          if (uri) await FileSystem.deleteAsync(uri, { idempotent: true });
+        } catch {
+          /* 删除失败不影响克隆结果 */
+        }
       }
     } else {
       setCloneResult({ ok: false, message: t('vc.noFile') });
@@ -585,16 +602,16 @@ const styles = StyleSheet.create({
   textCard: { backgroundColor: '#fff', borderRadius: 18, padding: 12, marginBottom: 8 },
   subLabel: { fontSize: 12, color: '#A8988A', marginBottom: 4 },
   readText: { fontSize: 14, lineHeight: 22, color: '#3D3229' },
-  recordBtn: { backgroundColor: '#9B7EDE', borderRadius: 22, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  recordBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  stopBtn: { backgroundColor: '#F2827F', borderRadius: 22, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  recordBtn: { backgroundColor: '#9B7EDE', borderRadius: 22, paddingVertical: 16, paddingHorizontal: 20, alignItems: 'center', marginTop: 8 },
+  recordBtnText: { color: '#fff', fontSize: 17, fontWeight: '600', textAlign: 'center', flexShrink: 1, flexWrap: 'wrap' },
+  stopBtn: { backgroundColor: '#F2827F', borderRadius: 22, paddingVertical: 16, paddingHorizontal: 20, alignItems: 'center', marginTop: 8 },
   timerCard: { backgroundColor: '#fff', borderRadius: 18, padding: 16, alignItems: 'center', marginVertical: 12 },
   timer: { fontSize: 36, fontWeight: 'bold', color: '#3D3229' },
   timerHint: { fontSize: 13, color: '#A8988A', marginTop: 4 },
   waveform: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 50, paddingHorizontal: 4, marginVertical: 8 },
   bar: { width: 6, backgroundColor: '#9B7EDE', borderRadius: 3 },
-  doneBtn: { backgroundColor: '#5FC3A4', borderRadius: 22, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  doneBtn: { backgroundColor: '#5FC3A4', borderRadius: 22, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center', marginTop: 8 },
+  doneBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center', flexShrink: 1, flexWrap: 'wrap' },
   successCard: { backgroundColor: '#fff', borderRadius: 22, padding: 32, alignItems: 'center', marginTop: 20 },
   successText: { fontSize: 22, fontWeight: 'bold', color: '#5FC3A4', marginTop: 8 },
   successSub: { fontSize: 14, color: '#A8988A', marginTop: 4 },

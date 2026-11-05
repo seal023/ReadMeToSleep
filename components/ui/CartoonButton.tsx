@@ -204,6 +204,10 @@ const styles = StyleSheet.create({
     // iOS 上自定义字体叠加 fontWeight 会找不到字体而静默回落系统字体。
     textAlign: 'center',
     letterSpacing: 0.5,
+    // 出海适配：英文按钮文案（如 "Confirm & Submit Clone"）明显更长，
+    // 必须允许换行 + 收缩，否则在窄屏会撑爆按钮或溢出。
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   disabled: {
     opacity: 0.5,

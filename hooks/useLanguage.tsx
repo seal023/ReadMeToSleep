@@ -26,9 +26,11 @@ function detectSystemLanguage(): Language {
       if (code === 'zh') return 'zh'
       if (code === 'en') return 'en'
     }
-    return systemLocales.length > 0 ? 'en' : 'zh'
+    // 出海默认英文：任何异常（拿不到系统语言等）都不要给海外用户回退到中文
+    return systemLocales.length > 0 ? 'en' : 'en'
   } catch {
-    return 'zh'
+    // 出海默认英文：异常兜底也用英文，绝不回退中文
+    return 'en'
   }
 }
 
