@@ -1667,6 +1667,31 @@ export function isClonedAudioPlaying(): boolean {
 }
 
 /**
+ * 是否还有一路「能原地续播」的播放器（v106 build 100）。
+ * ---------------------------------------------------------------------------
+ * iOS 在 App 进入后台一段时间后会把 AVPlayer 彻底回收：此时对象还在，
+ * `play()` 不抛错、`playing` 甚至仍报 true，但**一点声音都没有**。
+ * 上层若盲目走「pause → resume 秒续」，就会卡在「波形在跳、没有声音」的死状态。
+ *
+ * 判定条件（三条同时满足才认为可原地续）：
+ *   ① 播放器对象还在；
+ *   ② 读得到有效时长（被回收的播放器时长会归 0 / NaN）；
+ *   ③ 分片模式下当前片没有「已播完待推进」标记（那种情况 play() 也推不动下一片）。
+ * 不满足时，调用方必须退回「拆掉重建成一路全新播放（从断点起）」。
+ */
+export function hasLivePlayer(): boolean {
+  try {
+    if (!currentPlayer) return false;
+    if (chunkState && chunkState.active && chunkState.pendingAdvance) return false;
+    const p = currentPlayer as unknown as { duration?: number };
+    const dur = toSec(typeof p.duration === 'number' ? p.duration : 0);
+    return dur > 0.5;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 温和淡出后停止：用于睡眠定时到点。
  * - 克隆声 / 本地录音（expo-audio）支持 setVolume，逐级降到 0 再停，避免突兀；
  * - 系统音（expo-speech）无法中途调音量，这里直接停（sleepTimer 在调用本函数前

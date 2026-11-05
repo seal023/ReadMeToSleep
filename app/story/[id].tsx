@@ -30,7 +30,7 @@ import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor,
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, hasLivePlayer } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -374,8 +374,6 @@ export default function StoryPlayScreen() {
   const phaseRef = useRef<Phase>('playing');
   const isPlayingRef = useRef(false);
   const handlePlayRef = useRef<(v?: string) => void>(() => {});
-  /** handleResume 的 ref：回前台要「原地续上」，AppState 监听的闭包拿不到后定义的函数 */
-  const handleResumeRef = useRef<() => void>(() => {});
   /**
    * v98 反馈 #2：切后台再回来「马上跳到结束画面」的保护窗口。
    * ---------------------------------------------------------------------------
@@ -567,33 +565,37 @@ export default function StoryPlayScreen() {
         interruptedRef.current = false;
         setPlaybackInterrupted(false);
         if (resumeAfterInterruptRef.current && phaseRef.current === 'playing') {
-          // 来电 / 切后台期间仍在听 → 自动接着播
+          // 来电 / 切后台期间仍在听 → 回来自动接着讲
           resumeAfterInterruptRef.current = false;
           // 保护窗口：这段时间内的「播完」信号按误报处理（见 endGuardUntilRef）
           endGuardUntilRef.current = Date.now() + 6000;
           guardRetryRef.current = 0;
-          setTimeout(() => {
+          setTimeout(async () => {
             if (!aliveRef.current) return;
             // v97：本页必须还是「当前可见页」才允许自动续播。
             // 旧的故事页实例仍挂在栈里，不校验就会在别的页面上自己出声。
             if (!focusedRef.current) return;
             if (phaseRef.current !== 'playing') return;
-            if (clonedPlayingRef.current && cloudPausedRef.current) {
-              // 原地续上：复用暂停的那一路播放器，零重建、零定位
-              handleResumeRef.current();
-              /**
-               * 复核：iOS 在后台待久了仍可能把播放器彻底停掉（此时 resume 不报错也不出声）。
-               * 1.5 秒后确认真的在响，否则退回「从断点重起」这条路。
-               */
-              setTimeout(() => {
-                if (!aliveRef.current || !focusedRef.current) return;
-                if (phaseRef.current !== 'playing') return;
-                if (isClonedAudioPlaying()) return;
-                cloudPausedRef.current = false;
-                void handlePlayRef.current();
-              }, 1500);
-              return;
-            }
+            /**
+             * v106（build 100 反馈：回来显示在播、波形在跳，却一点声音都没有）
+             * ------------------------------------------------------------------
+             * build 99 这里走的是「原地续播」——复用后台被 pause 的那一路播放器。
+             * 但 iOS 在后台会把 AVPlayer 彻底回收：`resumeClonedAudio()` 不抛错、
+             * `playing` 甚至仍报 true，声音却永远出不来。界面于是停在「在播但无声」，
+             * 孩子等十几秒按暂停再按播放，残余的结束信号立刻把界面推进提问环节。
+             *
+             * 这条原地续播的路现在彻底不用了：
+             *   ① 先把音频会话真的拉到前台（必须 await —— 不等会话激活就 play()，
+             *      同样是「player 在跑、耳朵里没声」）；
+             *   ② 再拆掉重建成一路全新播放，由 handlePlay 从落盘断点
+             *      （片索引 + 片内秒）精确续上。
+             * 分片音频都在本地缓存里，重建一般 1 秒内出声，不产生新的合成费用。
+             */
+            await reassertAudioSession();
+            if (!aliveRef.current || !focusedRef.current) return;
+            if (phaseRef.current !== 'playing') return;
+            cloudPausedRef.current = false; // 不再是「暂停态」，秒续分支失效
+            startingRef.current = false;
             void handlePlayRef.current();
           }, 300);
         } else {
@@ -1113,7 +1115,10 @@ export default function StoryPlayScreen() {
         }
         const rawDur = getClonedDurationRaw();
         const rawPos = getClonedPositionRaw();
-        if (!isClonedAudioPlaying() && rawDur > 1 && rawPos >= rawDur - 1) {
+        // v106：加一道「本轮真的出过声」的前置条件。
+        // 被系统回收的死播放器会一直报「位置=时长、但没在播」，原来会被这条哨兵
+        // 当成「播完了」直接推进提问环节；现在交给 armDeadCheck 去重建。
+        if (didPlayThisSession() && !isClonedAudioPlaying() && rawDur > 1 && rawPos >= rawDur - 1) {
           endStallRef.current += 1;
           if (endStallRef.current >= 8) {
             endStallRef.current = 0;
@@ -1181,6 +1186,7 @@ export default function StoryPlayScreen() {
     sessionStartRef.current = Date.now();
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    if (deadCheckRef.current) clearTimeout(deadCheckRef.current); // v106：新一轮播放，旧的验活定时器作废
     setProgress(0);
     setRemainSec(0);
     // 立即进入播放态：按钮禁用 + 波形起来 + 显示「正在准备声音」，不再是一片静止的等待
@@ -1325,6 +1331,7 @@ export default function StoryPlayScreen() {
         // 断点续播：本地录音也能 seek
         if (ok && resumeAtRef.current > 3) seekClonedAudio(resumeAtRef.current);
         startProgressTicker(true);
+        armDeadCheck(getClonedPosition()); // v106：本地录音同样验活
         // 兜底：万一播完检测没触发，到点也结束（留 45s 余量，避免把故事掐断）
         if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
         const safeDur = (story.duration || 30) * 1000;
@@ -1386,6 +1393,8 @@ export default function StoryPlayScreen() {
       // 克隆声：用真实播放位置驱动进度条（与实际时长一致），并支持拖动 / 快进后退；
       // 系统音（TTS）：无法读取真实位置，仍用文字长度估算（仅视觉），提示不支持拖动。
       startProgressTicker(used);
+      // v106：这一路开始播之后持续验活（位置不动 → 判定死播放器，重建）
+      if (used) armDeadCheck(getClonedPosition());
 
       // 兜底：万一 onDone / 播完检测都没触发，到点也结束
       if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
@@ -1495,10 +1504,12 @@ export default function StoryPlayScreen() {
 
   const handlePause = () => {
     // 记断点：暂停后（含锁屏/退出）再点播放能接着听
-    const pos = getClonedPosition();
+    // v106：后台被系统回收的播放器位置读数是死的（常常停在末片末尾），
+    // 拿它当断点会让下一次播放「一开局就播完 → 直接跳提问」。宁可沿用切后台时存下的断点。
+    const pos = hasLivePlayer() ? getClonedPosition() : 0;
     if (pos > 3 && story) {
       resumeAtRef.current = pos;
-      const place = getChunkPlace();
+      const place = hasLivePlayer() ? getChunkPlace() : null;
       if (place) resumePlaceRef.current = place;
       setResumeSec(Math.floor(pos));
       saveStoryPosition(story.id, pos, place);
@@ -1518,6 +1529,7 @@ export default function StoryPlayScreen() {
     }
     setIsPlaying(false);
     setPreparing(false);
+    if (deadCheckRef.current) clearTimeout(deadCheckRef.current); // v106：暂停后不再验活
     setStoryResumePending(false); // 手动暂停：不再需要「问候让路」
     if (progressInterval.current) clearInterval(progressInterval.current);
     if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
@@ -1528,8 +1540,79 @@ export default function StoryPlayScreen() {
    * 仅当 cloudPausedRef 为 true 且仍是云端音频时走此路径；其余情况（系统音 / 已彻底停止）
    * 由 handlePlay 重新起播。
    */
-  const handleResume = () => {
-    void reassertAudioSession();
+  /**
+   * v106：把「续播失败」的处理收敛到一处。
+   * ---------------------------------------------------------------------------
+   * iOS 把播放器回收后，`resume()` 不抛错也不出声，`playing` 甚至仍报 true，
+   * 唯一可靠的判据是「位置读数有没有推进」。判定为死路后拆掉重建成新的一路，
+   * 由 handlePlay 从落盘断点（片索引 + 片内秒）精确续上（分片有本地缓存，秒级出声）。
+   * 8 秒内最多重建一次，避免「重建→立刻又被判死→再重建」的死循环。
+   */
+  const lastRebuildAtRef = useRef(0);
+  const deadCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rebuildFromBreakpoint = () => {
+    const now = Date.now();
+    if (now - lastRebuildAtRef.current < 8000) {
+      // 反复重建仍推不动：别再跟播放器较劲，把界面老实拉回「未播放」，让孩子重新点播放
+      cloudPausedRef.current = false;
+      setIsPlaying(false);
+      setPreparing(false);
+      if (progressInterval.current) clearInterval(progressInterval.current);
+      return;
+    }
+    lastRebuildAtRef.current = now;
+    cloudPausedRef.current = false;
+    startingRef.current = false;
+    void handlePlayRef.current();
+  };
+  /**
+   * 起播 / 续播后验活：每 1.2 秒读一次真实播放位置，连续 3 拍（约 3.6 秒）纹丝不动
+   * 就判定这一路播放器是死的（被系统回收的 AVPlayer 会「报 playing、却没声」），
+   * 拆掉重建成新的一路。
+   * 用「连续多拍不动」而不是「一拍不动」：分片模式下换片瞬间位置会回落，
+   * 单片一拍判断容易误杀，连续 3.6 秒不动才真正说明它没在出声。
+   */
+  const armDeadCheck = (baseline: number) => {
+    if (deadCheckRef.current) clearTimeout(deadCheckRef.current);
+    let last = baseline;
+    let frozen = 0;
+    const tick = () => {
+      if (!aliveRef.current || !focusedRef.current) return;
+      if (phaseRef.current !== 'playing') return;
+      if (!isPlayingRef.current) return; // 这期间孩子按了暂停：别自己把声音拉起来
+      if (!clonedPlayingRef.current) return; // 系统音读不到位置，不适用这套判定
+      const now = getClonedPosition();
+      if (now - last > 0.2) {
+        frozen = 0;
+        last = now;
+      } else {
+        frozen += 1;
+        if (frozen >= 3) {
+          rebuildFromBreakpoint();
+          return;
+        }
+      }
+      deadCheckRef.current = setTimeout(tick, 1200);
+    };
+    deadCheckRef.current = setTimeout(tick, 1200);
+  };
+
+  const handleResume = async () => {
+    /**
+     * v106（build 100 反馈：回来显示在播、波形在跳，却一点声音都没有）
+     * ---------------------------------------------------------------------------
+     * ① 音频会话必须 **await** 激活完再 play()：后台回来会话还没恢复就起播，
+     *    表现正是「播放器在跑、耳朵里没声」；
+     * ② 播放器若已被系统回收（hasLivePlayer 为假），原地 resume 永远是死的，
+     *    直接拆掉重建成新的一路，从落盘断点续上。
+     */
+    await reassertAudioSession();
+    if (!aliveRef.current || !focusedRef.current) return;
+    if (phaseRef.current !== 'playing') return;
+    if (!clonedPlayingRef.current || !hasLivePlayer()) {
+      rebuildFromBreakpoint();
+      return;
+    }
     /**
      * v93 #1：这里**不再** seek。
      * 暂停只 pause 了当前这一片，player 的播放位置原样保留，resume 即从原处继续；
@@ -1556,37 +1639,15 @@ export default function StoryPlayScreen() {
       ? Math.max(story?.duration ? story.duration * 1000 : 0, estimatedMs)
       : estimatedMs;
     safetyTimerRef.current = setTimeout(() => onEndedRef.current?.(), safeDur * 1.5 + 60000);
-    /**
-     * v105 反馈 #4（最高优先级）：验活再算「续上了」。
-     * ------------------------------------------------------------------
-     * iOS 在后台待久了会把播放器彻底回收：`resumeClonedAudio()` 不抛错、也不出声，
-     * 但位置读数停在最后一次读到的值上。此时进度哨兵会把它当「播完了」，
-     * 界面直接被推进提问环节 —— 正是「回来后点播放就跳提问」的现象。
-     * 800ms 后确认真的在响：没响就把这一路作废，退回「从断点重起」。
-     */
-    setTimeout(() => {
-      if (!aliveRef.current || !focusedRef.current) return;
-      if (phaseRef.current !== 'playing') return;
-      // 这期间孩子又按了暂停 / 停止 → 别再自己把声音拉起来
-      if (!isPlayingRef.current) return;
-      if (isClonedAudioPlaying()) return;
-      cloudPausedRef.current = false;
-      startingRef.current = false;
-      void handlePlayRef.current();
-    }, 800);
+    // v106：验活从「是否报 playing」升级为「位置有没有推进」（报 playing ≠ 有声音）
+    armDeadCheck(getClonedPosition());
   };
-  /**
-   * 把最新一版 handleResume 挂到 ref 上（渲染期同步，不用 effect）。
-   * AppState 监听只订阅一次，闭包里拿不到后来定义的函数；
-   * 而「回前台原地续上」必须调到它，所以每次渲染都刷新一次。
-   */
-  handleResumeRef.current = handleResume;
-
   const handleStop = () => {
     playTokenRef.current++;
     startingRef.current = false;
     stopStory();
     setStoryResumePending(false);
+    if (deadCheckRef.current) clearTimeout(deadCheckRef.current);
     cancelSleepSession();
     setIsPlaying(false);
     setPreparing(false);
@@ -2217,10 +2278,13 @@ export default function StoryPlayScreen() {
                   handlePause();
                   return;
                 }
-                if (cloudPausedRef.current && clonedPlayingRef.current) {
+                if (cloudPausedRef.current && clonedPlayingRef.current && hasLivePlayer()) {
+                  // v106：只有播放器还活着（后台没被系统回收）才走「秒续」；
+                  // 否则退化成重新起播，从落盘断点接着讲，绝不停在「在播却没声」的死状态
                   handleResume();
                   return;
                 }
+                cloudPausedRef.current = false;
                 handlePlay();
               }}
               activeOpacity={0.9}
