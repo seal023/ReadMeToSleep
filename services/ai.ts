@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../types';
 import { Alert } from 'react-native';
 import { endpointOrigin, originSource } from './endpoints';
-import { checkStoryGate } from './entitlement';
+import { checkStoryGate, recordStoryGenerated } from './entitlement';
 import { storyCacheKey, getCachedResult, putCachedResult } from './storyCache';
 
 /**
@@ -372,6 +372,8 @@ export async function generateStory(
     language = 'zh',
     length = 'short',
     sensitiveWords,
+    source = 'create',
+    countQuota = true,
   } = params;
 
   const isZh = language === 'zh';
@@ -385,7 +387,8 @@ export async function generateStory(
   const cached = await getCachedResult(cacheKey);
   if (cached) {
     console.log('[ai] 命中本地故事缓存，跳过云端生成');
-    return cached;
+    // origin='cache'：调用方据此**绝不扣次数**（用户只是复用已编好的故事）
+    return { ...cached, origin: 'cache' };
   }
 
   /**
@@ -396,14 +399,14 @@ export async function generateStory(
   const gate = await checkStoryGate();
   if (!gate.allowed) {
     console.warn('[ai] 每日生成额度已用完，拦截本次云端请求');
-    return pickFallbackStory(theme, protagonist);
+    return { ...pickFallbackStory(theme, protagonist), origin: 'fallback', fallbackReason: 'quota' };
   }
 
   /** 第三道闸：技术层防滥用（见 DAILY_QUOTA 注释） */
   const allowed = await consumeQuota('story');
   if (!allowed) {
     console.warn('[ai] 今日故事生成额度已用完，使用内置故事');
-    return pickFallbackStory(theme, protagonist);
+    return { ...pickFallbackStory(theme, protagonist), origin: 'fallback', fallbackReason: 'quota' };
   }
 
   // 时长分级 → 字数/词数要求 + 输出 token 上限
@@ -519,13 +522,32 @@ export async function generateStory(
       title: guarded.title,
       content: guarded.content,
       duration: estimateDuration(guarded.content, language),
+      origin: 'cloud',
     };
-    // 只有 AI 真的写成稿子才进缓存；兜底故事不缓存，下次仍会尝试重新生成
-    await putCachedResult(cacheKey, result);
+    // 只有 AI 真的写成稿子才进缓存；兜底故事不缓存，下次仍会尝试重新生成。
+    // 缓存里只留正文三件套：origin 是「本次调用」的元信息，不该被持久化成 cloud。
+    await putCachedResult(cacheKey, {
+      title: result.title,
+      content: result.content,
+      duration: result.duration,
+    });
+
+    /**
+     * ★ 扣次数的唯一入口（v103 收紧）：
+     * 只有走到这里 —— 云端真的返回了可用正文、稿子已经落缓存 —— 才算一次「生成」。
+     * 收听、重播、书架、经典库、命中缓存、AI 失败降级，全部不会经过这一行。
+     * 记账放在服务层而不是 UI，任何新入口都无法漏记或错记。
+     */
+    if (countQuota) {
+      await recordStoryGenerated({
+        storyLength: length === 'short' ? 'short' : 'long',
+        source,
+      });
+    }
     return result;
   } catch (err: any) {
     console.warn('[ai] generateStory failed, using fallback:', err?.message ?? err);
-    return pickFallbackStory(theme, protagonist);
+    return { ...pickFallbackStory(theme, protagonist), origin: 'fallback', fallbackReason: 'error' };
   }
 }
 

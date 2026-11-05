@@ -11,7 +11,7 @@ import {
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
 import { getProgress, saveProgress, getVoiceSetting } from '../../services/storage';
-import { checkCheckInGate, FREE_TOTAL_CHECKIN_LIMIT } from '../../services/entitlement';
+import { checkCheckInGate, checkStoryGate, FREE_TOTAL_CHECKIN_LIMIT } from '../../services/entitlement';
 import { getNewBadges, computeRewardExtras, BADGES } from '../../constants/rewards';
 import { playStory, stopStory } from '../../services/playback';
 import { isClonedAudioPlaying } from '../../services/clonedVoicePlayback';
@@ -455,6 +455,14 @@ export default function TravelCheckinScreen() {
     // 打卡额度门禁（会员不限）。放在流程入口，避免用户走完一圈才发现不能打卡
     const gate = await checkCheckInGate();
     if (!showPaywall(gate)) return;
+
+    /**
+     * 每日生成次数门禁（v103）：打卡本身要用 AI 现编一篇故事，属于「生成」，
+     * 因此和「创作故事」共用同一份每日次数（免费 1 / 会员 3）。
+     * 放在进入生成流程之前，避免走到一半才降级成本地模板让人以为是故障。
+     */
+    const storyGate = await checkStoryGate();
+    if (!showPaywall(storyGate)) return;
 
     const loc = selectedLoc;
     // 打卡记录里存「当前界面语言」的完整名：中文存「东京·东京塔」，英文存「Tokyo · Tokyo Tower」

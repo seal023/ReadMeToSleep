@@ -83,6 +83,15 @@ export interface GenerateStoryParams {
   /** 时长分级，默认 short */
   length?: StoryLength;
   sensitiveWords?: string[];
+  /**
+   * 入口标识，仅用于埋点（create / travel …），不参与额度判断。
+   */
+  source?: string;
+  /**
+   * 是否把这次「真实云端生成」计入当日生成额度，默认 true。
+   * ⚠️ 只有自带独立额度体系的功能才允许传 false（目前仅旅行打卡，它走打卡次数）。
+   */
+  countQuota?: boolean;
 }
 
 export interface StoryGenerateResult {
@@ -91,4 +100,13 @@ export interface StoryGenerateResult {
   duration: number;
   /** true = 本次结果来自本地兜底故事库（AI 不可用），UI 可据此提示 */
   fallback?: boolean;
+  /**
+   * 本次结果的真实来源。**扣当日额度的唯一依据是 origin === 'cloud'**：
+   *   cloud    真正调用了云端 AI（消耗 token）→ 唯一应扣次数的情形
+   *   cache    命中本地故事缓存 → 不扣次数、不联网
+   *   fallback 本地兜底故事库（无网 / 额度已满 / Key 未配置）→ 不扣次数
+   */
+  origin?: 'cloud' | 'cache' | 'fallback';
+  /** fallback 的原因：quota=当日额度已满，error=请求失败/无网/未配置 */
+  fallbackReason?: 'quota' | 'error';
 }

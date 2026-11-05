@@ -11,6 +11,11 @@
  *
  * 会员不再是「无限生成」：3 次/天是硬限制，目的是守住百炼 LLM 的成本，
  * 对应 subscription.tsx 对比表与 gate.premiumDailyMsg 的提示文案。
+ *
+ * ★ 扣减时机（v103 产品红线，改动前务必看 scripts/verify-quota-scope.mjs）：
+ *   只有「真调云端 AI 并拿到成稿」才 +1，且记账只发生在 services/ai.ts 的云端成功分支。
+ *   收听/重播/书架/经典库/我的故事/本地录音回放/命中缓存/兜底降级 —— 一律不扣、
+ *   也不允许任何 UI 直接调用 recordStoryGenerated。
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';

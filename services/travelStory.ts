@@ -181,6 +181,9 @@ export async function generateTravelStory(
       language,
       length,
       sensitiveWords,
+      // 旅行打卡也是「真调 AI 生成」，同样计入当日生成次数（source 只影响埋点归因）。
+      // 打卡页在进入生成流程前会先过 checkStoryGate，额度满了不会走到这里。
+      source: 'travel',
     });
     // fallback = AI 没写成（无网/超额度/未配置 Key），此时 ai.ts 给的是通用童话，
     // 不带当地元素，不如本地旅行模板，故交回调用方降级

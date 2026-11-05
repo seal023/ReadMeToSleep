@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'expo-router';
 import { generateStory } from '@/services/ai';
 import { saveStory, getSensitiveWords } from '@/services/storage';
-import { checkStoryGate, recordStoryGenerated } from '@/services/entitlement';
+import { checkStoryGate } from '@/services/entitlement';
 import { storyCacheKey, findPlayableCachedStory, attachStoryId } from '@/services/storyCache';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
@@ -68,9 +68,6 @@ export default function CreateScreen() {
   }, [generating, GEN_PHRASE_KEYS.length]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
-  const storyLengthBucket = (): 'short' | 'long' =>
-    storyLength === 'short' ? 'short' : 'long';
-
   const handleGenerate = async () => {
     if (!theme.trim()) {
       Alert.alert(t('create.alert.title'), t('create.alert.themeRequired'));
@@ -86,6 +83,8 @@ export default function CreateScreen() {
       language: storyLang,
       length: storyLength,
       sensitiveWords: [...sensitive.words, ...sensitive.phrases],
+      // 记账在 services/ai.ts 里做：只有云端真写成稿子才 +1，这里不再自行扣次数
+      source: 'create',
     };
     const cacheKey = storyCacheKey(params);
 
@@ -125,27 +124,64 @@ export default function CreateScreen() {
     setRaccoState('thinking');
     try {
       const result = await generateStory(params);
-      const story: Story = {
-        id: Date.now().toString(),
-        title: result.title,
-        content: result.content,
-        language: storyLang,
-        type: 'ai_generated',
-        tags: [theme],
-        duration: result.duration,
-        createdAt: new Date().toISOString(),
+
+      /** 落库 + 进故事页（不涉及额度：额度只由 ai.ts 在云端成功时记一次） */
+      const openStory = async (): Promise<string> => {
+        const story: Story = {
+          id: Date.now().toString(),
+          title: result.title,
+          content: result.content,
+          language: storyLang,
+          type: 'ai_generated',
+          tags: [theme],
+          duration: result.duration,
+          createdAt: new Date().toISOString(),
+        };
+        await saveStory(story);
+        await attachStoryId(cacheKey, story.id);
+        return story.id;
       };
-      if (result.fallback) {
-        // AI 不可用（如未配置 Key），已用主题化本地兜底，明确告知用户
-        Alert.alert(t('create.alert.title'), t('create.aiUnavailable'));
+
+      /**
+       * ★ 命中缓存（服务层兜住的极端竞态）：直接播，**不扣次数**。
+       */
+      if (result.origin === 'cache') {
+        const id = await openStory();
+        setRaccoState('happy');
+        setGenerating(false);
+        router.push(`/story/${id}`);
+        return;
       }
-      await saveStory(story);
-      // AI 真的写了稿子才会进缓存；绑上 storyId 后下次同参数可直接播放
-      await attachStoryId(cacheKey, story.id);
-      await recordStoryGenerated({ storyLength: storyLengthBucket(), source: 'create' });
+
+      /**
+       * ★ 额度已满：不落库、不扣次数、不跳转，只弹门禁（可能预检之后被别的入口用掉）。
+       */
+      if (result.fallbackReason === 'quota') {
+        setRaccoState('idle');
+        const latest = await checkStoryGate();
+        showPaywall(latest);
+        setGenerating(false);
+        return;
+      }
+
+      /**
+       * ★ AI 失败降级（无网 / Key 未配置）：沿用旧行为，把兜底故事落库让孩子有得听，
+       * 但**绝不扣次数**（没消耗任何云端资源）。
+       */
+      if (result.origin !== 'cloud') {
+        await openStory();
+        await refresh();
+        setRaccoState('idle');
+        Alert.alert(t('create.alert.title'), t('create.aiUnavailable'));
+        setGenerating(false);
+        return;
+      }
+
+      const storyId = await openStory();
+      // 次数已在 ai.ts 云端成功时记账，这里只刷新「今日剩余」显示
       await refresh();
       setRaccoState('happy');
-      router.push(`/story/${story.id}`);
+      router.push(`/story/${storyId}`);
     } catch (e) {
       console.error('Generate story error:', e);
       setRaccoState('idle');
