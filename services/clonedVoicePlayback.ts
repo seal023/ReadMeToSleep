@@ -427,6 +427,51 @@ function armEndWatch(onDone?: () => void, markNaturalEnd = false): void {
 const inflight = new Map<string, Promise<{ ok: boolean; error?: string }>>();
 
 /**
+ * v102 成本核验用：运行期统计「缓存命中 / 真正打了几次云端合成」。
+ * 用法：连续播放同一故事两次，若第二遍 networkCalls 不再增长，
+ * 就证明「再次播放 / 重新收听」100% 走本地缓存、没有二次扣费。
+ */
+export interface SynthCacheStats {
+  cacheHits: number;
+  cacheMisses: number;
+  /** 真正调用 synthesizeWithClonedVoice 的次数（= 可能产生费用的次数） */
+  networkCalls: number;
+  /** 并发请求被 inflight 合并掉的次数 */
+  inflightReuses: number;
+  /** 失败冷却期内被拦下的重复请求 */
+  cooldownSkips: number;
+  /** 成功落盘的音频文件数 */
+  writes: number;
+}
+const synthStats: SynthCacheStats = {
+  cacheHits: 0,
+  cacheMisses: 0,
+  networkCalls: 0,
+  inflightReuses: 0,
+  cooldownSkips: 0,
+  writes: 0,
+};
+export function getSynthCacheStats(): SynthCacheStats {
+  return { ...synthStats };
+}
+export function resetSynthCacheStats(): void {
+  synthStats.cacheHits = 0;
+  synthStats.cacheMisses = 0;
+  synthStats.networkCalls = 0;
+  synthStats.inflightReuses = 0;
+  synthStats.cooldownSkips = 0;
+  synthStats.writes = 0;
+}
+
+/**
+ * 合成失败后的短冷却：网络抖动 / 音色还没训练好时，
+ * 旧逻辑每点一次播放都会重新打一次云端（长故事是几十片），失败也照样计费。
+ * 30 秒内同一片不再重试，成功即解除。
+ */
+const FAILED_COOLDOWN_MS = 30_000;
+const failedCooldown = new Map<string, number>();
+
+/**
  * 音频缓存目录（v62 反馈 #1）
  * ---------------------------------------------------------------------------
  * 原先存在 Paths.cache（iOS 的 Library/Caches），那是「系统可随时回收」的目录：
@@ -454,6 +499,34 @@ function cacheFile(fileName: string): File {
   return new File(audioDir(), fileName);
 }
 
+/**
+ * 缓存文件是否「真的可用」。
+ * 只看 exists 会把「写盘被打断留下的 0 字节文件」当成命中：既不响，
+ * 又让人误以为已经缓存、不用再合成。这里顺手删掉空文件让它重新合成一次。
+ */
+function isUsableCacheFile(file: File): boolean {
+  try {
+    if (!file.exists) return false;
+  } catch {
+    return false;
+  }
+  try {
+    const size = file.size;
+    if (typeof size === 'number' && size < 512) {
+      try {
+        file.delete();
+      } catch {
+        /* 删不掉就交给 write 覆盖 */
+      }
+      return false;
+    }
+  } catch {
+    // size 读不到就只信 exists。绝不能因为「诊断属性不可用」把已有缓存判成未命中：
+    // 那样每一次重播都会重新合成，反而会重复扣费。
+  }
+  return true;
+}
+
 function cacheFileName(text: string, target: CloneTarget): string {
   return `rms_clone_${encodeURIComponent(target)}_${hashText(text)}.mp3`;
 }
@@ -476,7 +549,32 @@ function writeBytesToCache(fileName: string, audio: ArrayBuffer): void {
  */
 export function hasCachedAudio(text: string, target: CloneTarget): boolean {
   try {
-    return cacheFile(cacheFileName(text, target)).exists;
+    return isUsableCacheFile(cacheFile(cacheFileName(text, target)));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 整篇故事（含所有分片）是否都已落盘。
+ * 切分逻辑与播放侧、预热侧完全共用 splitIntoChunks + cacheFileName，
+ * 所以「全命中」= 再次播放时每一片都会走 ensureSynthFile 的命中分支，零云端请求。
+ */
+export function hasAllChunksCached(
+  text: string,
+  target: CloneTarget,
+  language: 'zh' | 'en' = 'zh',
+  maxChunks?: number,
+): boolean {
+  try {
+    const body = dedupeAdjacentSentences(text);
+    if (!body) return false;
+    if (body.length <= CHUNK_THRESHOLD_CHARS) {
+      return isUsableCacheFile(cacheFile(cacheFileName(body, target)));
+    }
+    const chunks = splitIntoChunks(body, language, target);
+    const list = maxChunks ? chunks.slice(0, Math.max(1, maxChunks)) : chunks;
+    return list.length > 0 && list.every((c) => isUsableCacheFile(cacheFile(cacheFileName(c, target))));
   } catch {
     return false;
   }
@@ -533,11 +631,26 @@ async function ensureSynthFile(
   fileName: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const cached = cacheFile(fileName);
-  if (cached.exists) return { ok: true };
+  if (isUsableCacheFile(cached)) {
+    synthStats.cacheHits++;
+    return { ok: true };
+  }
+  // 刚失败过的同一片：冷却期内不再打云端（长故事一次就是几十片，失败也计费）
+  const until = failedCooldown.get(fileName) ?? 0;
+  if (Date.now() < until) {
+    synthStats.cooldownSkips++;
+    return { ok: false, error: '上一次合成失败，稍后再试（已跳过云端请求）' };
+  }
   const running = inflight.get(fileName);
-  if (running) return running;
+  if (running) {
+    synthStats.inflightReuses++;
+    return running;
+  }
+  synthStats.cacheMisses++;
   const task = (async (): Promise<{ ok: boolean; error?: string }> => {
     try {
+      // 唯一会真正产生云端 TTS 费用的地方
+      synthStats.networkCalls++;
       /**
        * 整体兜底超时 30 秒：网络层的各个超时加起来可能更长，而「同一片」的合成 Promise
        * 会被 inflight 复用 —— 一旦它永远不结束，暂停再播放也会重新拿到同一个挂住的 Promise，
@@ -555,6 +668,12 @@ async function ensureSynthFile(
           setTimeout(() => resolve({ ok: false, error: '合成超时（30 秒），已跳过这一段' }), 30000),
         ),
       ]);
+      if (raced.ok) {
+        failedCooldown.delete(fileName);
+        synthStats.writes++;
+      } else {
+        failedCooldown.set(fileName, Date.now() + FAILED_COOLDOWN_MS);
+      }
       return raced;
     } catch (err) {
       /**
@@ -564,6 +683,7 @@ async function ensureSynthFile(
        * 表现就是「读到第二段就一直缓冲，暂停/停止重播都卡在同一处」。
        * 现在任何异常都收敛成 { ok:false }，上层一定会走「跳过/重试/降级」分支。
        */
+      failedCooldown.set(fileName, Date.now() + FAILED_COOLDOWN_MS);
       return { ok: false, error: `音频写盘失败：${(err as any)?.message || String(err)}` };
     } finally {
       // 无论成功/失败/超时都要摘掉 inflight，否则下一次请求会继续复用这个结果
@@ -590,6 +710,9 @@ export async function prewarmClonedAudio(
 ): Promise<void> {
   try {
     if (!text || text.trim().length < 2) return;
+    // v102：整篇（或本次要预热的前 N 片）已全部落盘就立刻返回，
+    // 连一遍文件遍历都不做 —— 再次打开故事页不会再有任何云端请求的机会。
+    if (hasAllChunksCached(text, target, language, opts?.maxChunks)) return;
     // 与播放侧保持一致的去重，否则预热出的缓存文件名和播放算的对不上
     const body = dedupeAdjacentSentences(text);
     // 长文本按分片预热：避免一次性合成整段大文件（v90 #1/#3 同源）。
@@ -615,7 +738,7 @@ export async function prewarmClonedAudio(
       return;
     }
     const fileName = cacheFileName(body, target);
-    if (cacheFile(fileName).exists) return;
+    if (isUsableCacheFile(cacheFile(fileName))) return;
     await ensureSynthFile(body, target, fileName);
   } catch {
     /* 预热失败不影响正常播放 */
@@ -807,14 +930,28 @@ export async function playClonedAudio(
     // cacheOnly：只播已落盘音频，绝不现场合成（锁屏告别等必须立刻出声）。
     // 长文本同样跳过分片，直接走整段已缓存文件。
     if (opts?.cacheOnly) {
-      const fileName = cacheFileName(body, target);
-      if (!cacheFile(fileName).exists) {
-        // 后台补合成（不 await，失败也无害），本次立刻交回调用方去用系统音
-        void prewarmClonedAudio(body, target, language);
-        return false;
+      /**
+       * v102 费用漏洞修复：原实现在「长文本」时去找一个**整段**文件名，
+       * 但长文本从来是按分片落盘的，那个文件永远不存在 → 每次都触发
+       * `prewarmClonedAudio` 在后台把整篇几十片重新合成一遍。
+       * 这既违反 cacheOnly「绝不现场合成」的语义，也会在锁屏等场景偷偷计费。
+       *
+       * 现在：长文本看「分片是否齐全」——齐全就走下面正常的分片播放
+       * （每片 ensureSynthFile 都命中本地文件，零网络）；缺一片就直接交回系统音，
+       * 绝不在 cacheOnly 路径上发任何合成请求。
+       */
+      const chunks = body.length > CHUNK_THRESHOLD_CHARS
+        ? splitIntoChunks(body, language, target)
+        : [];
+      if (chunks.length > 1) {
+        if (!hasAllChunksCached(body, target, language)) return false;
+        // 全部分片已就位：不 return，落到下面的分片播放逻辑
+      } else {
+        const fileName = cacheFileName(body, target);
+        const file = cacheFile(fileName);
+        if (!isUsableCacheFile(file)) return false;
+        return await startPlayback(file.uri, onDone, onStart, opts?.fast, opts?.markNaturalEnd);
       }
-      const file = cacheFile(fileName);
-      return await startPlayback(file.uri, onDone, onStart, opts?.fast, opts?.markNaturalEnd);
     }
     // 长文本（如 15-20 分钟故事）走分片流式：先合成第 1 片就播、边播边合成后续，
     // 解决「整段合成完才出声 / 暂停后整段重缓冲」的问题（v90 #1/#2/#3）。
@@ -1128,7 +1265,7 @@ function seekChunk(sec: number): void {
     seekClonedAudioRaw(offset);
     return;
   }
-  if (cacheFile(fileName).exists) {
+  if (isUsableCacheFile(cacheFile(fileName))) {
     cs.current = idx;
     stopCurrentPlayerOnly();
     void startPlayback(cacheFile(fileName).uri, () => handleChunkEnded(idx), undefined, true);
@@ -1283,7 +1420,7 @@ function tryAdvance(): void {
   let next = cs.current + 1;
   while (next < cs.chunks.length) {
     const fileName = cacheFileName(cs.chunks[next], cs.target);
-    if (cacheFile(fileName).exists) {
+    if (isUsableCacheFile(cacheFile(fileName))) {
       cs.pendingAdvance = false;
       cs.pendingSince = 0;
       void playChunkIndex(next);

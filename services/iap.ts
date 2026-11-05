@@ -11,9 +11,14 @@
  *   - finishTransaction({ purchase })        完成交易（不完成会在每次启动重放）
  *
  * 商品 ID（需与 App Store Connect 中创建的订阅商品完全一致）：
- *   com.seal023.ReadMeToSleep.monthly   （月度，$4.99/月）
- *   com.seal023.ReadMeToSleep.yearly    （年度，$24.99/年，预付模式）
+ *   ASC 参考名 Monthly Subscription → com.seal023.ReadMeToSleep.monthly （$4.99/月）
+ *   ASC 参考名 Yearly  Subscription → com.seal023.ReadMeToSleep.yearly  （$49.99/年）
  * 订阅群组 ID：22351191（仅 ASC 后台使用，代码无需引用）
+ *
+ * ⚠️ 商品 ID 一律由 BUNDLE_ID + 后缀拼出，禁止手抄整串：
+ *    以前文档里出现过 `.mor` / `.yea` 这类截断缩写，手抄极易漏字符，
+ *    而 ASC 的商品 ID 创建后不可修改，一旦对不上就是「拉不到商品 / 找不到商品」。
+ *    这里用单一真源拼接，并额外做启动自检（validateProductIds）。
  */
 
 import { Platform } from 'react-native';
@@ -42,19 +47,65 @@ import {
 export type Plan = 'free' | 'monthly' | 'yearly';
 export type PaidPlan = Exclude<Plan, 'free'>;
 
+/** Bundle ID 与 app.json 的 ios.bundleIdentifier 一致（商品 ID 的前缀） */
+const BUNDLE_ID = 'com.seal023.ReadMeToSleep';
+
+/** ASC 后台的「参考名称」↔ 代码里的 plan，仅供核对/日志，不参与购买 */
+export const ASC_REFERENCE_NAMES: Record<PaidPlan, string> = {
+  monthly: 'Monthly Subscription',
+  yearly: 'Yearly Subscription',
+};
+
+/** 拼接而非手写整串，杜绝 .montly / .year 之类的拼写截断 */
 export const PRODUCT_IDS: Record<PaidPlan, string> = {
-  monthly: 'com.seal023.ReadMeToSleep.monthly',
-  yearly: 'com.seal023.ReadMeToSleep.yearly',
+  monthly: `${BUNDLE_ID}.monthly`,
+  yearly: `${BUNDLE_ID}.yearly`,
 };
 
 /**
+ * 商店返回的商品 ID 兜底归一：StoreKit 偶尔带首尾空白/换行，
+ * 直接 === 比较会判成「未知商品」，进而出现「恢复购买找不到商品」。
+ * 只做 trim，不改大小写（Apple 商品 ID 大小写敏感）。
+ */
+export function normalizeProductId(productId?: string | null): string {
+  return typeof productId === 'string' ? productId.trim() : '';
+}
+
+/** 是否是我们认识的商品（购买事件、恢复购买都靠它过滤） */
+export function isKnownProductId(productId?: string | null): boolean {
+  const id = normalizeProductId(productId);
+  return id === PRODUCT_IDS.monthly || id === PRODUCT_IDS.yearly;
+}
+
+/**
+ * 启动自检：常量一旦被改坏（截断、拼错、重复），立刻在日志里报出来，
+ * 而不是等真机上「拉不到商品」才排查。不抛错、不影响启动。
+ */
+export function validateProductIds(): boolean {
+  const problems: string[] = [];
+  (['monthly', 'yearly'] as PaidPlan[]).forEach((plan) => {
+    const id = PRODUCT_IDS[plan];
+    const expected = `${BUNDLE_ID}.${plan}`;
+    if (id !== expected) problems.push(`${plan}: 期望 ${expected}，实际 ${id}`);
+    if (/\s/.test(id)) problems.push(`${plan}: 商品 ID 含空白字符`);
+    if (id.length !== expected.length) problems.push(`${plan}: 长度异常（疑似截断）`);
+  });
+  if (PRODUCT_IDS.monthly === PRODUCT_IDS.yearly) problems.push('两个商品 ID 相同');
+  if (problems.length) {
+    console.error('[IAP] 商品 ID 自检失败：', problems.join('; '));
+    return false;
+  }
+  return true;
+}
+
+/**
  * 商店拉取失败时的兜底展示价。
- * 与 App Store Connect 中创建的两个商品保持一致（月度 $4.99 / 年度 $24.99 预付）。
+ * 与 App Store Connect 锁定定价一致：月度 $4.99 / 年度 $49.99。
  * 注意：兜底价只用于 UI 展示，实际扣款金额永远以 App Store 返回为准。
  */
 export const FALLBACK_PRICES: Record<PaidPlan, string> = {
   monthly: '$4.99',
-  yearly: '$24.99',
+  yearly: '$49.99',
 };
 
 /** 兜底币种（与 ASC 商品定价币种一致） */
@@ -112,6 +163,8 @@ export async function ensureConnection(): Promise<boolean> {
   try {
     const ok = await initConnection();
     connectionReady = !!ok;
+    // 首次连上商店就做一次商品 ID 自检：拉商品、购买、恢复三条链路都会经过这里
+    if (connectionReady) validateProductIds();
     return connectionReady;
   } catch (err) {
     console.warn('[IAP] initConnection failed:', err);
@@ -137,26 +190,40 @@ export async function closeConnection(): Promise<void> {
 /** 从 App Store 拉取真实价格。失败返回 null（调用方应回落到兜底价） */
 export async function loadOffers(): Promise<PlanOffer[] | null> {
   if (!(await ensureConnection())) return null;
+  validateProductIds();
   try {
+    // 请求里只用 PRODUCT_IDS，绝不在别处再写一遍字面量
     const result = await fetchProducts({ skus: ALL_SKUS, type: 'subs' });
     const list: ProductSubscription[] = Array.isArray(result) ? (result as ProductSubscription[]) : [];
 
     const offers = list
       .filter((p) => p && typeof p.id === 'string')
-      .map<PlanOffer>((p) => {
-        const plan = planFromProductId(p.id);
-        const fallbackPlan = plan ?? 'monthly';
+      .map<PlanOffer | null>((p) => {
+        const id = normalizeProductId(p.id);
+        const plan = planFromProductId(id);
+        // 商店返回了不认识的商品：明确打日志，别静默丢掉后让人以为「价格拉取成功」
+        if (!plan) {
+          console.warn('[IAP] 商店返回未知商品，已忽略：', JSON.stringify(p.id));
+          return null;
+        }
         return {
-          plan: fallbackPlan,
-          productId: p.id,
-          displayPrice: p.displayPrice || FALLBACK_PRICES[fallbackPlan],
+          plan,
+          productId: id,
+          displayPrice: p.displayPrice || FALLBACK_PRICES[plan],
           currency: p.currency || FALLBACK_CURRENCY,
           title: p.title || '',
           description: p.description || '',
         };
       })
-      .filter((o) => o.plan && ALL_SKUS.includes(o.productId));
+      .filter((o): o is PlanOffer => !!o && ALL_SKUS.includes(o.productId));
 
+    if (offers.length < ALL_SKUS.length) {
+      const got = offers.map((o) => o.productId);
+      console.warn(
+        '[IAP] 商品未全部返回（检查 ASC 商品 ID / 元数据状态 / 是否关联到版本）：',
+        JSON.stringify({ expected: ALL_SKUS, got }),
+      );
+    }
     return offers.length > 0 ? offers : null;
   } catch (err) {
     console.warn('[IAP] fetchProducts failed:', err);
@@ -208,8 +275,10 @@ export async function purchasePlan(plan: PaidPlan): Promise<Entitlement> {
     };
 
     purchaseSub = purchaseUpdatedListener(async (purchase: Purchase) => {
-      // 未完成的交易会在每次启动时重放，这里只处理本次要买的商品
-      if (!purchase || purchase.productId !== sku) return;
+      // 未完成的交易会在每次启动时重放，这里只处理本次要买的商品。
+      // 用归一后的 ID 比较：StoreKit 偶发带空白时，严格 === 会漏掉本次购买，
+      // 表现为「扣款成功但会员没生效」。
+      if (!purchase || normalizeProductId(purchase.productId) !== sku) return;
       try {
         const entitlement = await applyPurchase(purchase);
         settle(() => resolve(entitlement));
@@ -343,7 +412,8 @@ function pickBestEntitlement(purchases: Purchase[]): Entitlement | null {
 }
 
 function entitlementFromPurchase(purchase: Purchase): Entitlement | null {
-  const plan = planFromProductId(purchase?.productId);
+  const productId = normalizeProductId(purchase?.productId);
+  const plan = planFromProductId(productId);
   if (!plan) return null;
 
   // iOS 特有字段（v16 的 Purchase 类型在不同小版本上字段名略有差异，
@@ -361,7 +431,7 @@ function entitlementFromPurchase(purchase: Purchase): Entitlement | null {
 
   return {
     plan,
-    productId: purchase.productId,
+    productId,
     expiryMs,
     autoRenewing: !!purchase.isAutoRenewing,
     updatedAt: Date.now(),
@@ -437,10 +507,13 @@ export async function openManageSubscriptions(): Promise<boolean> {
 // 错误与工具
 // ---------------------------------------------------------------------------
 
+/** 商品 ID → plan。反向查表，避免把 ID 再抄一遍导致两处不一致 */
 function planFromProductId(productId?: string | null): PaidPlan | null {
-  if (!productId) return null;
-  if (productId === PRODUCT_IDS.yearly) return 'yearly';
-  if (productId === PRODUCT_IDS.monthly) return 'monthly';
+  const id = normalizeProductId(productId);
+  if (!id) return null;
+  for (const plan of ['monthly', 'yearly'] as PaidPlan[]) {
+    if (PRODUCT_IDS[plan] === id) return plan;
+  }
   return null;
 }
 

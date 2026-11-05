@@ -13,11 +13,12 @@ import { useRouter } from 'expo-router';
 import { generateStory } from '@/services/ai';
 import { saveStory, getSensitiveWords } from '@/services/storage';
 import { checkStoryGate, recordStoryGenerated } from '@/services/entitlement';
+import { storyCacheKey, findPlayableCachedStory, attachStoryId } from '@/services/storyCache';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
-import type { Story, Language, RaccoState } from '@/types';
+import type { Story, Language, RaccoState, GenerateStoryParams } from '@/types';
 
 export default function CreateScreen() {
   const router = useRouter();
@@ -67,29 +68,63 @@ export default function CreateScreen() {
   }, [generating, GEN_PHRASE_KEYS.length]);
   const { snapshot, refresh, showPaywall } = useEntitlement();
 
+  const storyLengthBucket = (): 'short' | 'long' =>
+    storyLength === 'short' ? 'short' : 'long';
+
   const handleGenerate = async () => {
     if (!theme.trim()) {
       Alert.alert(t('create.alert.title'), t('create.alert.themeRequired'));
       return;
     }
 
-    // 每日额度门禁（会员不限）
+    // 读取家长设置的敏感词（同时纳入缓存键：换词表必须重新生成）
+    const sensitive = await getSensitiveWords();
+    const params: GenerateStoryParams = {
+      theme,
+      protagonist,
+      details,
+      language: storyLang,
+      length: storyLength,
+      sensitiveWords: [...sensitive.words, ...sensitive.phrases],
+    };
+    const cacheKey = storyCacheKey(params);
+
+    /**
+     * ★ 缓存优先（v102）：同一套参数已经编过故事，就直接播那一篇。
+     * 不发 LLM 请求、不扣当日次数、不写埋点 —— 这是「优先走缓存」的硬要求。
+     * 原故事被删掉时，用缓存里的正文重新落一份，同样不联网、不扣次数。
+     */
+    const cached = await findPlayableCachedStory(cacheKey);
+    if (cached) {
+      let id = cached.storyId;
+      if (!id) {
+        const restored: Story = {
+          id: Date.now().toString(),
+          title: cached.result.title,
+          content: cached.result.content,
+          language: storyLang,
+          type: 'ai_generated',
+          tags: [theme],
+          duration: cached.result.duration,
+          createdAt: new Date().toISOString(),
+        };
+        await saveStory(restored);
+        await attachStoryId(cacheKey, restored.id);
+        id = restored.id;
+      }
+      setRaccoState('happy');
+      router.push(`/story/${id}?autoplay=1`);
+      return;
+    }
+
+    // 前置校验：免费 1 次/天、会员 3 次/天，满额在**发请求之前**拦截并弹提示
     const gate = await checkStoryGate();
     if (!showPaywall(gate)) return;
 
     setGenerating(true);
     setRaccoState('thinking');
     try {
-      // 读取家长设置的敏感词，交给 AI 主动规避
-      const sensitive = await getSensitiveWords();
-      const result = await generateStory({
-        theme,
-        protagonist,
-        details,
-        language: storyLang,
-        length: storyLength,
-        sensitiveWords: [...sensitive.words, ...sensitive.phrases],
-      });
+      const result = await generateStory(params);
       const story: Story = {
         id: Date.now().toString(),
         title: result.title,
@@ -105,7 +140,9 @@ export default function CreateScreen() {
         Alert.alert(t('create.alert.title'), t('create.aiUnavailable'));
       }
       await saveStory(story);
-      await recordStoryGenerated();
+      // AI 真的写了稿子才会进缓存；绑上 storyId 后下次同参数可直接播放
+      await attachStoryId(cacheKey, story.id);
+      await recordStoryGenerated({ storyLength: storyLengthBucket(), source: 'create' });
       await refresh();
       setRaccoState('happy');
       router.push(`/story/${story.id}`);
@@ -214,7 +251,8 @@ export default function CreateScreen() {
         ))}
       </View>
 
-      {snapshot && !snapshot.premium && snapshot.storiesRemaining !== null && (
+      {/* 会员也有每日 3 次上限，剩余次数对所有身份都显示 */}
+      {snapshot && (
         <Text style={styles.quota}>
           {t('create.quota').replace('{n}', String(snapshot.storiesRemaining))}
         </Text>

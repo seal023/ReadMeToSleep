@@ -4,26 +4,37 @@
  * 只负责「能不能用、还剩几次」，不碰 IAP 的购买流程（那是 services/iap.ts 的事）。
  * 免费额度与 subscription.tsx 的对比表必须保持一致，改这里记得同步改表。
  *
- * 当前规则：
- *   每日生成故事   免费 1 次 / 会员无限
+ * 当前规则（v102 / ASC 定价锁定后）：
+ *   每日生成故事   免费 1 次 / 会员（月付、年付一视同仁）每天最多 3 次，本地 0 点重置
  *   旅行打卡       免费累计 3 次 / 会员无限
  *   声音克隆       仅会员
+ *
+ * 会员不再是「无限生成」：3 次/天是硬限制，目的是守住百炼 LLM 的成本，
+ * 对应 subscription.tsx 对比表与 gate.premiumDailyMsg 的提示文案。
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
 import { getProgress } from './storage';
 import { isPremium, type Plan } from './iap';
+import { logGeneration, type StoryLengthBucket } from './generationLog';
 
 // ---------------------------------------------------------------------------
 // 免费额度（改这里会自动同步到 UI 文案）
 // ---------------------------------------------------------------------------
 
-// 测试期放开每日上限（999），上架前改回 1
-export const FREE_DAILY_STORY_LIMIT = 999;
+/** 免费用户每天可生成的 AI 故事数（本地日期 0 点自动重置） */
+export const FREE_DAILY_STORY_LIMIT = 1;
+/** 会员（月付 / 年付一样）每天最多生成 3 次，硬限制 */
+export const PREMIUM_DAILY_STORY_LIMIT = 3;
 // 旅行打卡改用 AI 现场生成后，故事不再有「只有 15 篇」的上限，只受次数约束。
 // 测试期一并放开（999 ≈ 不限），上架前按商业化口径收紧（如免费 3 次）。
 export const FREE_TOTAL_CHECKIN_LIMIT = 999;
+
+/** 当前身份对应的每日上限 */
+export function dailyStoryLimit(premium: boolean): number {
+  return premium ? PREMIUM_DAILY_STORY_LIMIT : FREE_DAILY_STORY_LIMIT;
+}
 
 const USAGE_KEY = 'rms_daily_usage';
 
@@ -43,18 +54,21 @@ export interface EntitlementSnapshot {
   plan: Plan;
   /** 今天已生成的故事数 */
   storiesUsedToday: number;
-  /** 今天还能生成几个；会员为 null 表示不限 */
-  storiesRemaining: number | null;
+  /** 今天还能生成几个（会员也有上限，不再是 null / 无限） */
+  storiesRemaining: number;
   /** 累计打卡次数 */
   checkInsUsed: number;
   /** 还能打卡几次；会员为 null 表示不限 */
   checkInsRemaining: number | null;
 }
 
-/** 门禁判定结果。allowed=false 时带可直接弹窗的中文文案 */
+/**
+ * 门禁判定结果。allowed=false 时带可直接弹窗的文案。
+ * reason 让 UI 区分「免费额度用完（可引导升级）」与「会员今日 3 次用完（不能再卖会员）」。
+ */
 export type GateResult =
   | { allowed: true }
-  | { allowed: false; title: string; message: string };
+  | { allowed: false; title: string; message: string; reason: 'free' | 'premium' };
 
 // ---------------------------------------------------------------------------
 // 用量记录（按本地日期，跨天自动重置）
@@ -91,11 +105,33 @@ async function writeUsage(usage: DailyUsage): Promise<void> {
   }
 }
 
-/** 成功生成一个故事后调用，计入当日额度 */
-export async function recordStoryGenerated(): Promise<void> {
+export interface RecordStoryOptions {
+  /** short | long（medium/long 归 long） */
+  storyLength?: StoryLengthBucket;
+  /** 入口标识：create / travel ... */
+  source?: string;
+}
+
+/**
+ * 成功「发起一次真实生成」后调用：计入当日额度 + 后台写一条埋点。
+ * ⚠️ 命中本地缓存直接播旧故事的路径绝不能调这里，否则会白扣一次额度。
+ */
+export async function recordStoryGenerated(opts: RecordStoryOptions = {}): Promise<void> {
   const usage = await readUsage();
   usage.storyCount += 1;
   await writeUsage(usage);
+
+  // 纯后台埋点：失败/未建表/未登录都不影响主流程，也不在 UI 显示
+  try {
+    const snap = await getSnapshot();
+    void logGeneration({
+      storyLength: opts.storyLength ?? 'short',
+      source: opts.source ?? 'create',
+      plan: snap.plan,
+    });
+  } catch (err) {
+    console.warn('[Entitlement] generation log skipped:', err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -131,9 +167,7 @@ export async function getSnapshot(): Promise<EntitlementSnapshot> {
     premium,
     plan,
     storiesUsedToday: usage.storyCount,
-    storiesRemaining: premium
-      ? null
-      : Math.max(0, FREE_DAILY_STORY_LIMIT - usage.storyCount),
+    storiesRemaining: Math.max(0, dailyStoryLimit(premium) - usage.storyCount),
     checkInsUsed,
     checkInsRemaining: premium
       ? null
@@ -145,19 +179,29 @@ export async function getSnapshot(): Promise<EntitlementSnapshot> {
 // 门禁
 // ---------------------------------------------------------------------------
 
-/** 生成故事前的门禁（每日额度） */
+/**
+ * 生成故事前的门禁（每日额度）。
+ * 免费 1 次 / 会员 3 次，按本地日期 0 点重置；会员用完也不放行。
+ * 这是「拦截请求」的关键点：调用方必须在发出任何 LLM 请求之前先问它。
+ */
 export async function checkStoryGate(): Promise<GateResult> {
   const snap = await getSnapshot();
-  if (snap.premium) return { allowed: true };
+  if (snap.storiesRemaining > 0) return { allowed: true };
 
-  if (snap.storiesRemaining !== null && snap.storiesRemaining <= 0) {
+  if (snap.premium) {
     return {
       allowed: false,
-      title: ts('gate.dailyTitle'),
-      message: ts('gate.dailyMsg').replace('{n}', String(FREE_DAILY_STORY_LIMIT)),
+      title: ts('gate.premiumDailyTitle'),
+      message: ts('gate.premiumDailyMsg'),
+      reason: 'premium',
     };
   }
-  return { allowed: true };
+  return {
+    allowed: false,
+    title: ts('gate.dailyTitle'),
+    message: ts('gate.dailyMsg').replace('{n}', String(FREE_DAILY_STORY_LIMIT)),
+    reason: 'free',
+  };
 }
 
 /** 声音克隆门禁（仅会员） */
@@ -185,6 +229,7 @@ export async function checkCheckInGate(): Promise<GateResult> {
       allowed: false,
       title: ts('gate.checkinTitle'),
       message: ts('gate.checkinMsg').replace('{n}', String(FREE_TOTAL_CHECKIN_LIMIT)),
+      reason: 'free',
     };
   }
   return { allowed: true };

@@ -17,6 +17,7 @@ import {
   type EntitlementSnapshot,
   type GateResult,
 } from '@/services/entitlement';
+import { ts } from '@/services/i18n';
 
 const EMPTY: EntitlementSnapshot = {
   premium: false,
@@ -59,6 +60,19 @@ export function useEntitlement(): UseEntitlementResult {
   const showPaywall = useCallback(
     (gate: GateResult): boolean => {
       if (gate.allowed) return true;
+
+      // 会员今天 3 次已用完：不能再去卖会员，只提示并给「去经典故事库」的出口，
+      // 与提示文案「或者去经典故事库听听哦」对应（孩子不识字也能照着点）。
+      if (gate.reason === 'premium') {
+        Alert.alert(gate.title, gate.message, [
+          { text: ts('common.ok'), style: 'cancel' },
+          {
+            text: ts('gate.goLibrary'),
+            onPress: () => router.push('/(tabs)/library'),
+          },
+        ]);
+        return false;
+      }
 
       Alert.alert(gate.title, gate.message, [
         { text: '稍后再说', style: 'cancel' },

@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../types';
 import { Alert } from 'react-native';
 import { endpointOrigin, originSource } from './endpoints';
+import { checkStoryGate } from './entitlement';
+import { storyCacheKey, getCachedResult, putCachedResult } from './storyCache';
 
 /**
  * AI 服务层 —— 阿里云百炼（DashScope OpenAI 兼容模式）
@@ -60,9 +62,14 @@ export const AI_CONFIG = {
   maxTokens: 3072,
 };
 
-/** 每日调用额度（防止 Key 被滥用）——测试期放开 story 上限，上架前改回 8 */
+/**
+ * 技术层「防 Key 盗刷」上限（按本地日期 0 点重置）。
+ * ⚠️ 这不是业务额度：业务口径是免费 1 次 / 会员 3 次，由 services/entitlement.ts
+ *    的 checkStoryGate() 在**请求发出之前**拦截。这里只兜住「绕过 UI 直调」的极端情况，
+ *    故意设得比业务值宽（12），避免与打卡等次要入口的正常调用互相误伤。
+ */
 const DAILY_QUOTA = {
-  story: 999,
+  story: 12,
   qa: 999,
 } as const;
 
@@ -369,7 +376,30 @@ export async function generateStory(
 
   const isZh = language === 'zh';
 
-  // 额度保护
+  /**
+   * ★ 第一道闸：本地缓存优先。
+   * 同一组参数已有成稿就直接复用，既不发 LLM 请求、也不消耗技术层 quota，
+   * 更不会让调用方扣当日业务次数（create.tsx 也会先查同一份缓存直接播放）。
+   */
+  const cacheKey = storyCacheKey(params);
+  const cached = await getCachedResult(cacheKey);
+  if (cached) {
+    console.log('[ai] 命中本地故事缓存，跳过云端生成');
+    return cached;
+  }
+
+  /**
+   * ★ 第二道闸：业务前置校验（免费 1 次/天、会员 3 次/天）。
+   * 放在任何网络请求之前，保证「今日已满 3 次」时绝不会扣百炼 token。
+   * 返回本地兜底故事，调用方（旅行打卡等）会据此降级到本地模板。
+   */
+  const gate = await checkStoryGate();
+  if (!gate.allowed) {
+    console.warn('[ai] 每日生成额度已用完，拦截本次云端请求');
+    return pickFallbackStory(theme, protagonist);
+  }
+
+  /** 第三道闸：技术层防滥用（见 DAILY_QUOTA 注释） */
   const allowed = await consumeQuota('story');
   if (!allowed) {
     console.warn('[ai] 今日故事生成额度已用完，使用内置故事');
@@ -485,11 +515,14 @@ export async function generateStory(
       lenTokens,
     );
 
-    return {
+    const result: StoryGenerateResult = {
       title: guarded.title,
       content: guarded.content,
       duration: estimateDuration(guarded.content, language),
     };
+    // 只有 AI 真的写成稿子才进缓存；兜底故事不缓存，下次仍会尝试重新生成
+    await putCachedResult(cacheKey, result);
+    return result;
   } catch (err: any) {
     console.warn('[ai] generateStory failed, using fallback:', err?.message ?? err);
     return pickFallbackStory(theme, protagonist);

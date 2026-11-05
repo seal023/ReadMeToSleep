@@ -3,8 +3,8 @@
 > **当前状态：内购商品已在 ASC 后台创建完成。** 本文档从「创建步骤」转为「核对清单」——请逐项确认与代码一致，避免拉不到价格或审核被卡。
 >
 > 代码里写死的三个关键值（**必须一字不差**）：
-> - 月度商品 ID：`com.seal023.ReadMeToSleep.monthly`
-> - 年度商品 ID：`com.seal023.ReadMeToSleep.yearly`
+> - 月度商品 ID（ASC 参考名 Monthly Subscription）：`com.seal023.ReadMeToSleep.monthly`
+> - 年度商品 ID（ASC 参考名 Yearly Subscription）：`com.seal023.ReadMeToSleep.yearly`
 > - 订阅群组 ID：`22351191`（仅 ASC 后台使用，代码无需引用）
 
 代码位置：`services/iap.ts` 的 `PRODUCT_IDS` 与 `FALLBACK_PRICES`。
@@ -29,14 +29,14 @@
 
 | 商品 | 订阅时长 | 价格 | 计费模式 |
 |---|---|---|---|
-| `.mor` | 1 个月 | $4.99 | 自动续订 |
-| `.yea` | 1 年 | $24.99 | **预付（Prepaid）** |
+| `com.seal023.ReadMeToSleep.monthly` | 1 个月 | $4.99 | 自动续订 |
+| `com.seal023.ReadMeToSleep.yearly` | 1 年 | $49.99 | 自动续订订阅 |
 
 **App 内展示的文案已按此计算**（`app/(parent)/subscription.tsx`）：
 
-- 年度折算：`$24.99 ÷ 12 ≈ $2.08/月`
-- 省钱角标：`(4.99×12 − 24.99) ÷ (4.99×12) ≈ 省 58%`
-- 条款说明已区分两种模式：月度「自动续订」、年度「一次性预付，到期不自动续订」
+- 年度折算：`$49.99 ÷ 12 ≈ $4.17/月`
+- 省钱角标：`(4.99×12 − 49.99) ÷ (4.99×12) ≈ 省 17%`
+- 条款说明只描述计费周期与「可在 Apple ID 设置中管理」，不对续订模式做未经核对的断言
 
 > ⚠️ 若你在 ASC 里改了价格档，请同步改代码里的 `FALLBACK_PRICES` 与 `MONTHLY_EQUIVALENT` / `YEARLY_SAVING` 两个常量，否则兜底展示与实际扣款会不一致。
 
@@ -55,10 +55,10 @@
 
 两个商品都要填全，否则 `fetchProducts` 拉不到（「元数据缺失」状态下商店不返回）：
 
-| 字段 | 月度 `.mor` | 年度 `.yea` |
+| 字段 | 月度 `.monthly` | 年度 `.yearly` |
 |---|---|---|
 | 订阅显示名称 | 月度会员 | 年度会员 |
-| 描述 | 解锁无限故事生成、声音克隆、离线下载 | 解锁全部会员权益，约 $2.08/月 |
+| 描述 | 每天 3 个 AI 故事、声音克隆 | 每天 3 个 AI 故事、约 $4.17/月 |
 | 订阅图标 | 1024×1024（建议上传） | 同左 |
 
 ---
@@ -68,7 +68,7 @@
 **App Store → Read Me To Sleep → 准备提交** 的版本页面，滚到「App 内购买项目和订阅」区块：
 
 1. 点 **+** 添加
-2. 勾选 `.mor` 和 `.yea`
+2. 勾选 Monthly Subscription 与 Yearly Subscription 两个商品
 3. 保存
 
 > 漏了这步，审核员在版本里看不到内购商品，会以「订阅功能不完整」拒审。
@@ -108,7 +108,7 @@ const PRIVACY_URL = 'https://example.com/readmetosleep/privacy.html'; // ← 必
 
 ## 常见问题
 
-**Q：App 里拉不到价格（UI 显示兜底价 $4.99 / $24.99）？**
+**Q：App 里拉不到价格（UI 显示兜底价 $4.99 / $49.99）？**
 按顺序排查：
 1. 产品 ID 与代码**完全一致**（含大小写）——最常见原因
 2. 内购商品状态是否为「已批准」或「准备提交」（「元数据缺失」下拉不到）
@@ -122,8 +122,8 @@ const PRIVACY_URL = 'https://example.com/readmetosleep/privacy.html'; // ← 必
 **Q：`pod install` 报 NitroIap 相关错误？**
 已修复——`react-native-nitro-modules` 曾漏写在 package.json，现为 `^0.36.5`（commit `fed1c19`）。若仍报错，确认 Xcode Cloud 用的是最新 main 分支。
 
-**Q：年度是预付模式，代码要特殊处理吗？**
-不需要。`fetchProducts({ type: 'subs' })` 与 `requestPurchase({ type: 'subs' })` 对预付订阅同样适用，StoreKit 会自行处理。代码里已把「预付不自动续订」写进条款说明，避免审核员认为文案误导。
+**Q：年度商品需要特殊处理吗？**
+不需要。两个商品都在同一个自动续订订阅群组里，`fetchProducts({ type: 'subs' })` 与 `requestPurchase({ type: 'subs' })` 完全一致。条款页只写计费周期与「在 Apple ID 设置中管理」，不对续订模式做额外断言。
 
 ---
 

@@ -27,11 +27,12 @@ const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 
 // ---------------------------------------------------------------------------
-// 定价文案（与 App Store Connect 商品一致：月度 $4.99 / 年度 $24.99 预付）
-//   年度折算：$24.99 / 12 ≈ $2.08 每月
-//   相比按月订阅：$4.99 × 12 = $59.88 → 省 (59.88-24.99)/59.88 ≈ 58%
+// 定价文案（与 App Store Connect 锁定定价一致：月度 $4.99 / 年度 $49.99）
+//   年度折算：$49.99 / 12 ≈ $4.17 每月
+//   相比按月订阅：$4.99 × 12 = $59.88 → 省 (59.88-49.99)/59.88 ≈ 17%
+//   ⚠️ 真实扣款永远以商店返回的 displayPrice 为准，这里只是拉不到价时的展示兜底。
 // ---------------------------------------------------------------------------
-const MONTHLY_EQUIVALENT = '$2.08';
+const MONTHLY_EQUIVALENT = '$4.17';
 
 type FeatureRow = {
   feature: string;
@@ -46,12 +47,14 @@ type FeatureRow = {
  *    在项目中根本不存在实现，属不实描述，已移除。
  *
  *    额度常量定义在 services/entitlement.ts：
- *      FREE_DAILY_STORY_LIMIT = 1、FREE_TOTAL_CHECKIN_LIMIT = 3
+ *      FREE_DAILY_STORY_LIMIT = 1、PREMIUM_DAILY_STORY_LIMIT = 3、FREE_TOTAL_CHECKIN_LIMIT = 3
+ *    ⚠️ 会员不是「无限生成」，是每天 3 次；表里的 unlimited 已按真实行为改掉，
+ *       否则会踩 Apple Guideline 2.3.1（描述与实际不符）。
  */
 /** 功能对比表：文案全部走 i18n，切换语言时跟着变 */
 function buildFeatures(t: (k: string) => string): FeatureRow[] {
   return [
-    { feature: t('sub.feat.stories'), free: t('sub.val.oneDay'), monthly: t('sub.val.unlimited'), yearly: t('sub.val.unlimited') },
+    { feature: t('sub.feat.stories'), free: t('sub.val.oneDay'), monthly: t('sub.val.threePerDay'), yearly: t('sub.val.threePerDay') },
     { feature: t('sub.feat.clone'), free: false, monthly: true, yearly: true },
     { feature: t('sub.feat.travel'), free: t('sub.val.threeTimes'), monthly: t('sub.val.unlimited'), yearly: t('sub.val.unlimited') },
     { feature: t('sub.feat.parent'), free: true, monthly: true, yearly: true },
