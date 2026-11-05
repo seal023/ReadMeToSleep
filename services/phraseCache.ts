@@ -55,6 +55,14 @@ const NAME_KEYS = [
 ];
 
 /**
+ * v101：设置页点小浣熊说的两句话。
+ * 原来那句走的是 iOS 自带 TTS（机器音），改成 speakWithBestVoice 后要用提示音声线；
+ * 这两句是新文案、内置 mp3 里没有，必须一并预热，否则首次点击要现场联网合成，
+ * 离线时还会降级回系统音（又变成机器音）。
+ */
+const RACCO_REPLY_KEYS = ['settings.racco.reply1', 'settings.racco.reply2'];
+
+/**
  * 昵称替换规则：**必须与 _layout.tsx 的告别/问候构建逐字一致**，否则缓存 key 对不上。
  * 所以这里导出，由 _layout 直接复用同一份实现，杜绝两边各写一套再走偏。
  */
@@ -76,6 +84,8 @@ function buildWarmPhrases(lang: Language, name: string): string[] {
   for (const key of NAME_KEYS) out.push(applyName(translate(key, lang), name));
   // 声音设置页的试听样句：点选后要立刻出声，不能现合成
   out.push(VOICE_PREVIEW_SAMPLE[lang]);
+  // 设置页小浣熊的两句回复：点下去必须也是提示音声线
+  for (const key of RACCO_REPLY_KEYS) out.push(translate(key, lang));
   for (const p of allBankPhrases()) {
     if (p.lang === lang) out.push(p.text);
   }
@@ -170,7 +180,8 @@ export async function ensurePhraseWarmup(): Promise<void> {
  * token 成本很低；带宽/耗时靠「先装正在用的 → 再装默认 → 最后装其余」+ 低并发 + 音色间停顿
  * 控制在可接受范围。只跑一次（标记落盘），中途被打断下次启动会接着补（已落盘的自动跳过）。
  */
-const PRESET_INSTALL_FLAG = 'rms_preset_voices_installed_v1';
+/** v101：小浣熊两句是新文案，老用户已装过 v1，升到 v2 补装各内置音色缺失的短句（已缓存的自动跳过） */
+const PRESET_INSTALL_FLAG = 'rms_preset_voices_installed_v2';
 let presetInstallStarted = false;
 
 /** 中英双语全套提示音文本（含名字替换，和运行时播报逐字一致） */
@@ -180,6 +191,8 @@ function buildWarmPhrasesAllLangs(name: string): { text: string; lang: Language 
     // 问候 / 告别排最前：它们必须秒出（锁屏告别尤其不能等）
     for (const key of NAME_KEYS) out.push({ text: applyName(translate(key, lang), name), lang });
     out.push({ text: VOICE_PREVIEW_SAMPLE[lang], lang });
+    // 设置页小浣熊的两句回复：四个内置音色各备一份
+    for (const key of RACCO_REPLY_KEYS) out.push({ text: translate(key, lang), lang });
     for (const p of allBankPhrases()) {
       if (p.lang === lang) out.push(p);
     }

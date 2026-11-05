@@ -8,7 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
-import { textToSpeech } from '../../services/tts';
+import { speakWithBestVoice } from '../../services/playback';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 /** 点小浣熊时轮流说的话：先讲「这里能做什么」，再讲「以后能陪你聊天」 */
@@ -38,7 +38,14 @@ export default function SettingsScreen() {
     const line = t(key);
     setRaccoLine(line);
     setRaccoHappy(true);
-    void textToSpeech(line, undefined, language === 'en' ? 'en' : 'zh');
+    /**
+     * v101 反馈：这里原来直接调 textToSpeech()，它只走 expo-speech（iOS 自带
+     * 「婷婷」），完全没读设置里的「提示音声线」，所以听上去是机器默认音，
+     * 而不是家长选的大姐姐。改走 speakWithBestVoice：与首页问候、问答反馈、
+     * 换主题语音同一条链路，会读 getPromptVoiceSetting()、走内置音色/克隆声缓存，
+     * 家长在声音设置里换什么，这里就跟着换成什么。
+     */
+    void speakWithBestVoice(line, language === 'en' ? 'en' : 'zh', { fast: true });
     if (raccoTimer.current) clearTimeout(raccoTimer.current);
     raccoTimer.current = setTimeout(() => setRaccoHappy(false), 2800);
   };
