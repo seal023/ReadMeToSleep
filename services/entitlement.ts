@@ -25,7 +25,6 @@ import { getProgress, getFreeCloneUsed } from './storage';
 import { isPremium, type Plan } from './iap';
 import { logGeneration, type StoryLengthBucket } from './generationLog';
 import { peekUsage, consumeQuota, readMirror } from './serverQuota';
-import { isAuthConfigured } from './supabase';
 
 // ---------------------------------------------------------------------------
 // 免费额度（改这里会自动同步到 UI 文案）
@@ -256,50 +255,30 @@ export async function getSnapshot(): Promise<EntitlementSnapshot> {
 // ---------------------------------------------------------------------------
 
 /**
- * 生成故事前的门禁（每日额度）。
- * 免费 1 次 / 会员 3 次，按本地日期 0 点重置；会员用完也不放行。
+ * 生成故事前的门禁（会员专属）。
+ * ---------------------------------------------------------------------------
+ * v108 商业化口径收紧：AI 生成故事是会员专属功能，免费版完全不能使用
+ * （免费版的体验由「5 篇机器音经典池 + 1 次克隆体验」构成，详见产品需求）。
+ * 会员按每日上限 2 / 3 次（月付 / 年付）限制，用完当天也不放行。
  * 这是「拦截请求」的关键点：调用方必须在发出任何 LLM 请求之前先问它。
  */
 export async function checkStoryGate(): Promise<GateResult> {
-  /**
-   * v107 防白嫖：AI 生成必须登录。
-   * 额度的真实判定在服务端（daily_usage，日期用服务器时间算），未登录就没有可信身份，
-   * 只能退回本地计数 —— 那等于「卸载重装就重置」。所以这里先要账号。
-   * 若 Supabase 根本没配置（本地开发包），不做这道要求，避免把功能彻底卡死。
-   */
-  if (isAuthConfigured) {
-    try {
-      const { getSession } = await import('./auth');
-      const session = await getSession();
-      if (!session) {
-        return {
-          allowed: false,
-          title: ts('gate.loginTitle'),
-          message: ts('gate.loginMsg'),
-          reason: 'login',
-        };
-      }
-    } catch {
-      /* 登录模块异常时放行，交给后面的额度判断，不把孩子卡死在门口 */
-    }
-  }
-
   const snap = await getSnapshot();
-  if (snap.storiesRemaining > 0) return { allowed: true };
-
-  if (snap.premium) {
+  if (!snap.premium) {
+    // 免费版：AI 生成故事为会员专属功能，直接拦截并引导订阅
     return {
       allowed: false,
-      title: ts('gate.premiumDailyTitle'),
-      message: ts('gate.premiumDailyMsg'),
-      reason: 'premium',
+      title: ts('gate.storyFreeTitle'),
+      message: ts('gate.storyFreeMsg'),
+      reason: 'free',
     };
   }
+  if (snap.storiesRemaining > 0) return { allowed: true };
   return {
     allowed: false,
-    title: ts('gate.dailyTitle'),
-    message: ts('gate.dailyMsg').replace('{n}', String(FREE_DAILY_STORY_LIMIT)),
-    reason: 'free',
+    title: ts('gate.premiumDailyTitle'),
+    message: ts('gate.premiumDailyMsg'),
+    reason: 'premium',
   };
 }
 
@@ -343,18 +322,16 @@ export async function checkVoiceCloneGate(): Promise<GateResult> {
   return { allowed: true };
 }
 
-/** 旅行打卡门禁（累计额度） */
+/** 旅行打卡门禁（会员专属） */
 export async function checkCheckInGate(): Promise<GateResult> {
   const snap = await getSnapshot();
   if (snap.premium) return { allowed: true };
 
-  if (snap.checkInsRemaining !== null && snap.checkInsRemaining <= 0) {
-    return {
-      allowed: false,
-      title: ts('gate.checkinTitle'),
-      message: ts('gate.checkinMsg').replace('{n}', String(FREE_TOTAL_CHECKIN_LIMIT)),
-      reason: 'free',
-    };
-  }
-  return { allowed: true };
+  // 免费版：旅行打卡为会员专属功能，直接拦截并引导订阅
+  return {
+    allowed: false,
+    title: ts('gate.checkinFreeTitle'),
+    message: ts('gate.checkinFreeMsg'),
+    reason: 'free',
+  };
 }

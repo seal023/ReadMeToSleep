@@ -22,6 +22,7 @@ import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayba
 import { stopStory } from '../../services/playback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useEntitlement } from '../../hooks/useEntitlement';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import Racco from '@/components/common/Racco';
@@ -32,6 +33,10 @@ type Step = 'record' | 'process' | 'edit';
 
 export default function RecordScreen() {
   const { t, language } = useLanguage();
+  // 免费版门禁：录音创作故事是会员专属功能（与 AI 生成同属会员权益），免费用户整页拦截。
+  // snapshot 还在加载（null）时先不锁，等权益判定回来再决定，避免会员被闪一下锁定屏。
+  const { snapshot } = useEntitlement();
+  const locked = snapshot ? !snapshot.premium : false;
   const [step, setStep] = useState<Step>('record');
   const [recording, setRecording] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -239,6 +244,24 @@ export default function RecordScreen() {
   };
   const totalSec = recordings.reduce((sum, r) => sum + (r.duration || 0), 0);
 
+  if (locked) {
+    return (
+      <CartoonScreen gradient="day" decor>
+        <View style={styles.lockedWrap}>
+          <ClayIcon name="lock" size={60} />
+          <Text style={styles.lockedTitle}>{t('gate.storyFreeTitle')}</Text>
+          <Text style={styles.lockedMsg}>{t('gate.storyFreeMsg')}</Text>
+          <TouchableOpacity
+            style={styles.lockedBtn}
+            onPress={() => router.push('/(parent)/subscription?plan=yearly')}
+          >
+            <Text style={styles.lockedBtnText}>{t('gate.viewPlans')}</Text>
+          </TouchableOpacity>
+        </View>
+      </CartoonScreen>
+    );
+  }
+
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView contentContainerStyle={styles.content}>
@@ -386,6 +409,31 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     alignSelf: 'center',
   },
+  // 免费版录音创作锁屏：整页拦截，引导去订阅
+  lockedWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    minHeight: 360,
+  },
+  lockedTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.text, marginTop: 16, textAlign: 'center' },
+  lockedMsg: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#7A6A5F',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  lockedBtn: {
+    backgroundColor: COLORS.purple,
+    borderRadius: 26,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+  },
+  lockedBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   title: { fontSize: 22, fontWeight: 'bold', color: COLORS.text, marginTop: 8, marginBottom: 8 },
   intro: {
     fontSize: 13,

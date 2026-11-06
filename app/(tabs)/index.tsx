@@ -22,6 +22,7 @@ import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { getClonedTargets } from '../../services/voiceClone';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { speakWithBestVoice, isStoryPlaying, isStoryResumePending } from '../../services/playback';
+import { checkStoryGate, checkCheckInGate } from '../../services/entitlement';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 import type { RaccoState } from '../../types';
 
@@ -81,7 +82,7 @@ export default function HomeTab() {
    * 只有未订阅 / 订阅过期时才出现，避免付费用户天天被推销。
    * snapshot 为 null 表示还在读（含 IAP 校验），此期间先不显示，避免闪一下又消失。
    */
-  const { snapshot, refresh: refreshEntitlement } = useEntitlement();
+  const { snapshot, refresh: refreshEntitlement, showPaywall } = useEntitlement();
   const showPremiumCard = snapshot ? !snapshot.premium : false;
 
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
@@ -313,6 +314,29 @@ export default function HomeTab() {
     }
   };
 
+  /**
+   * 免费版门禁：AI 生成故事 / 旅行打卡 都是会员专属功能（entitlement.ts 已拦截）。
+   * 这里在首页入口处提前拦截，免费用户点击即弹付费窗引导订阅，会员正常进入。
+   */
+  const openCreate = async () => {
+    const gate = await checkStoryGate();
+    if (showPaywall(gate)) router.push('/(tabs)/create');
+  };
+  const openTravel = async () => {
+    const gate = await checkCheckInGate();
+    if (showPaywall(gate)) router.push('/story/travel-checkin');
+  };
+  const openRecent = async (r: RecentItem) => {
+    if (r.kind === 'ai') {
+      const gate = await checkStoryGate();
+      if (!showPaywall(gate)) return;
+    } else if (r.kind === 'travel') {
+      const gate = await checkCheckInGate();
+      if (!showPaywall(gate)) return;
+    }
+    router.push(r.route);
+  };
+
   return (
     <CartoonScreen gradient="day" decor>
       <ScrollView
@@ -428,7 +452,7 @@ export default function HomeTab() {
         <TouchableOpacity
           style={styles.actionCard2}
           activeOpacity={0.8}
-          onPress={() => router.push('/(tabs)/create')}
+          onPress={openCreate}
         >
           <ClayIcon name="starBig" size={38} style={styles.actionArt} />
           <Text style={styles.actionLabel}>{t('home.quickCreate')}</Text>
@@ -437,7 +461,7 @@ export default function HomeTab() {
         <TouchableOpacity
           style={styles.actionCard3}
           activeOpacity={0.8}
-          onPress={() => router.push('/story/travel-checkin')}
+          onPress={openTravel}
         >
           <ClayIcon name="tent" size={38} style={styles.actionArt} />
           <Text style={styles.actionLabel}>{t('home.quickTravel')}</Text>
@@ -452,7 +476,7 @@ export default function HomeTab() {
           </View>
         ) : (
           recent.map((r) => (
-            <TouchableOpacity key={r.key} style={styles.recentItem} onPress={() => router.push(r.route)}>
+            <TouchableOpacity key={r.key} style={styles.recentItem} onPress={() => openRecent(r)}>
               <ClayIcon name={r.kind === 'ai' ? 'starBig' : 'globe'} size={30} />
               <View style={styles.recentItemInfo}>
                 <Text style={styles.recentItemTitle} numberOfLines={1}>{r.title}</Text>

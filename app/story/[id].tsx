@@ -33,7 +33,7 @@ import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRe
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getFreeCloneTarget, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { isPremium } from '../../services/iap';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
@@ -221,6 +221,35 @@ export default function StoryPlayScreen() {
       alive = false;
     };
   }, []);
+
+  // v108：免费版权限辅助——锁故事预览 / 滑动弹付费窗 / 池内禁换声
+  const storyLockedRef = useRef(false);
+  const paywallShownRef = useRef(false);
+  /** 锁故事 / 换声 引导订阅的统一付费窗（复用既有 i18n 文案） */
+  const openStoryPaywall = useCallback(() => {
+    if (paywallShownRef.current) return;
+    paywallShownRef.current = true;
+    Alert.alert(t('gate.poolExceedTitle'), t('gate.poolExceedMsg'), [
+      { text: t('common.cancel'), style: 'cancel', onPress: () => { paywallShownRef.current = false; } },
+      {
+        text: t('gate.goUnlock'),
+        onPress: () => {
+          paywallShownRef.current = false;
+          router.push('/(parent)/subscription?plan=yearly');
+        },
+      },
+    ]);
+  }, [t, router]);
+  /** 锁故事区域：竖向滑动即弹付费窗（满足「划动故事屏幕就跳付费窗口」） */
+  const lockPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_evt, g) => storyLockedRef.current && Math.abs(g.dy) > 8,
+      onPanResponderMove: () => {
+        if (storyLockedRef.current) openStoryPaywall();
+      },
+    }),
+  ).current;
 
   const clonedPlayingRef = useRef(false);
   // 页面是否仍在前台：失焦（切走/退出）后置 false，用于「AI 回答到达时若已离开则不朗读」
@@ -802,30 +831,51 @@ export default function StoryPlayScreen() {
 
   // 默认声线：只认「故事朗读声线」设置（v81 起与提示音分开，默认内置大姐姐）。
   // 不再自动改选某个已克隆亲人——那会让用户以为自己选的声音被"偷偷换掉"。
+  // 例外：免费克隆体验那一篇专属故事，进页面直接默认克隆声，让孩子立刻听到家人声音。
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const saved = await getVoiceSetting();
       if (cancelled) return;
-      setSelectedVoice(normalizeVoiceId(saved));
+      let target = normalizeVoiceId(saved);
+      // 免费克隆体验：当前故事若是那篇专属故事，且确为免费用户（会员拥有全部声线，
+      // 不应被免费体验逻辑覆盖），则默认选克隆声。
+      try {
+        const [freeId, freeTarget] = await Promise.all([
+          getFreeCloneStoryId(),
+          getFreeCloneTarget(),
+        ]);
+        if (freeId && freeTarget && freeId === story.id && !isPremiumUser) {
+          target = freeTarget;
+        }
+      } catch {
+        /* 读取失败按默认声线 */
+      }
+      if (!cancelled) setSelectedVoice(target);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [story.id, isPremiumUser]);
 
   // 可选声音清单：进入页面刷新一次（克隆成功后回到本页即可看到新音色）
   useEffect(() => {
     let cancelled = false;
     listAvailableVoices()
       .then((list) => {
-        if (!cancelled) setVoiceOptions(list);
+        if (cancelled) return;
+        // v108：免费版只能选系统音 / 自己的克隆声，不能选云端预置 / 会员音色
+        if (!isPremiumUser) {
+          setVoiceOptions(list.filter((o) => o.kind === 'system' || o.kind === 'clone'));
+        } else {
+          setVoiceOptions(list);
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [selectedVoice]);
+  }, [selectedVoice, isPremiumUser]);
 
   // 当前声线是否有「真人克隆」可用（决定音色标签显示"克隆声音"还是"云端预置音色"）
   useEffect(() => {
@@ -1151,6 +1201,15 @@ export default function StoryPlayScreen() {
   const handlePlay = async (voiceOverride?: string) => {
     handlePlayRef.current = handlePlay;
     if (!story) return;
+    // v108：锁故事（免费 + 非池内 5 篇 + 非免费克隆篇）完全禁止播放，触发付费窗
+    if (
+      !isPremiumUser &&
+      !FREE_OFFLINE_POOL_IDS.includes(story.id) &&
+      !(freeCloneStoryId && story.id === freeCloneStoryId)
+    ) {
+      openStoryPaywall();
+      return;
+    }
     /**
      * v97 反馈 #1：已经离开本页就绝不起播。
      * 起播是异步的（读设置 → 合成 → 建播放器，可能好几秒），
@@ -2253,7 +2312,18 @@ export default function StoryPlayScreen() {
       : uiLang === 'en'
       ? `About ${formatClock(totalStorySec)}`
       : `故事约 ${formatClock(totalStorySec)}`;
-    
+
+    // v108：免费版权限判定
+    const isFreePool = !!story && FREE_OFFLINE_POOL_IDS.includes(story.id);
+    const isCloneStory = !!freeCloneStoryId && !!story && story.id === freeCloneStoryId;
+    // 锁故事：免费 + 非池内 5 篇 + 非免费克隆篇 → 只能看开头、不可播放
+    const storyLocked = !isPremiumUser && !isFreePool && !isCloneStory;
+    // 池内禁换声：免费 + 池内 5 篇 + 非克隆篇 → 固定系统音，不能切换其他声线
+    const voiceLocked = !isPremiumUser && isFreePool && !isCloneStory;
+    storyLockedRef.current = storyLocked;
+    // 锁故事只展示开头（约 480 字 / 前两段），看不到其余部分
+    const previewText = storyLocked && storyText ? storyText.slice(0, 480) : storyText;
+
     return (
       <CartoonScreen gradient="day" decor>
         <View style={[styles.container, isLandscape && styles.containerL]}>
@@ -2275,14 +2345,31 @@ export default function StoryPlayScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView
-          style={[styles.storyScroll, isLandscape && styles.storyScrollL]}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
-            {storyText || t('story.contentLoading')}
-          </Text>
-        </ScrollView>
+        {storyLocked ? (
+          <View style={[styles.storyScroll, isLandscape && styles.storyScrollL, styles.lockedWrap]}>
+            {/* 滑动手势接管：竖向划动即弹付费窗；内容本身不可滚动、看不到其余部分 */}
+            <View {...lockPan.panHandlers} style={styles.lockedScrollArea}>
+              <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
+                {previewText || t('story.contentLoading')}
+              </Text>
+              <View style={styles.lockedFade} pointerEvents="none" />
+            </View>
+            <TouchableOpacity style={styles.lockedUnlockBtn} onPress={openStoryPaywall} activeOpacity={0.85}>
+              <Text style={styles.lockedUnlockText}>
+                {uiLang === 'en' ? '🔒 Unlock full story' : '🔒 解锁全文，畅听全部故事'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <ScrollView
+            style={[styles.storyScroll, isLandscape && styles.storyScrollL]}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
+              {storyText || t('story.contentLoading')}
+            </Text>
+          </ScrollView>
+        )}
 
         <View
           style={[styles.progressBar, isLandscape && styles.progressBarL]}
@@ -2312,7 +2399,7 @@ export default function StoryPlayScreen() {
           且快进快退在另一行，操作时要来回找。
         */}
         {/* 控制区容器：竖屏上下两段（大圆钮 + 停止），横屏并成一行，把高度让给正文 */}
-        <View style={[styles.controlZone, isLandscape && styles.controlZoneL]}>
+        {!storyLocked && (<View style={[styles.controlZone, isLandscape && styles.controlZoneL]}>
         <View style={[styles.controls, isLandscape && styles.controlsL]}>
           <TouchableOpacity
             style={[styles.seekControl, isLandscape && styles.seekControlL]}
@@ -2363,7 +2450,7 @@ export default function StoryPlayScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        </View>
+        </View>)}
 
         {resumeSec > 0 && !isPlaying ? (
           <View style={[styles.resumeRow, isLandscape && styles.resumeRowL]}>
@@ -2405,9 +2492,9 @@ export default function StoryPlayScreen() {
           现在压成一行「当前声音」条，点开才弹出底部的选择面板。
           不识字的孩子也能认：左边耳朵图标 + 右边「换声音」＋下拉箭头，点了就有面板。
         */}
-        <TouchableOpacity
+        {!storyLocked && (<TouchableOpacity
           style={[styles.voiceBar, isLandscape && styles.voiceBarL]}
-          onPress={() => setVoiceSheetOpen(true)}
+          onPress={() => (voiceLocked ? openStoryPaywall() : setVoiceSheetOpen(true))}
           activeOpacity={0.85}
         >
           <Text style={styles.voiceBarIcon}>
@@ -2427,9 +2514,9 @@ export default function StoryPlayScreen() {
               : `朗读声音：${voiceDisplayName(selectedVoice, 'zh')}`}
           </Text>
           <Text style={styles.voiceBarAction}>
-            {uiLang === 'en' ? 'Change' : '换声音'} ▾
+            {voiceLocked ? '🔒' : (uiLang === 'en' ? 'Change' : '换声音')} ▾
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity>)}
 
         <View style={styles.raccoCorner}>
           <Racco state="talking" size={60} />
@@ -2855,6 +2942,27 @@ const styles = StyleSheet.create({
     maxWidth: 780,
     alignSelf: 'center',
   },
+  // v108：锁故事预览容器（不可滚动，仅展示开头）
+  lockedWrap: { overflow: 'hidden' },
+  lockedScrollArea: { position: 'relative' },
+  // 底部渐隐遮罩：用同色半透明模拟「下面还有、但被锁住」，引导去解锁
+  lockedFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 90,
+    backgroundColor: 'rgba(255,253,247,0.92)',
+  },
+  lockedUnlockBtn: {
+    marginTop: 14,
+    alignSelf: 'center',
+    backgroundColor: '#FFB347',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  lockedUnlockText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, marginTop: 12, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#F7A072', borderRadius: 4 },
   // 播放页呼吸光晕（背景，盖在内容之下）

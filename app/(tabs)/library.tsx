@@ -8,7 +8,6 @@ import {
   Modal,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -260,13 +259,10 @@ export default function LibraryScreen() {
     return false;
   };
 
-  /** 点击被锁定的非池内故事 → 诙谐付费窗，引导去订阅解锁全部 */
-  const openPoolPaywall = () => {
-    Alert.alert(t('gate.poolExceedTitle'), t('gate.poolExceedMsg'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
-    ]);
-  };
+  /**
+   * v108：非池内免费故事不再「点了直接弹窗」——改为允许进入详情页看开头，
+   * 由详情页负责「不可滚动 / 滑动弹付费窗 / 不播放」。这里只负责导航。
+   */
 
   const renderClassic = ({ item }: { item: StoryItem }) => {
     const locked = !isClassicFree(item.id);
@@ -281,7 +277,7 @@ export default function LibraryScreen() {
           isFreePool && styles.cardFree,
         ]}
         activeOpacity={0.7}
-        onPress={() => (locked ? openPoolPaywall() : router.push(`/story/${item.id}`))}
+        onPress={() => router.push(`/story/${item.id}`)}
       >
         <View style={styles.cardLeft}>
           <Text style={styles.cardEmoji}>{TAG_EMOJI[item.tags[0]] || '📖'}</Text>
@@ -392,7 +388,7 @@ export default function LibraryScreen() {
       </View>
 
       <View style={styles.tabRow}>
-        {TABS.map(tab => (
+        {TABS.filter((tab) => isPremiumUser || tab.key === 'classic').map(tab => (
           <TouchableOpacity
             key={tab.key}
             style={activeTab === tab.key ? styles.tabBtnActive : styles.tabBtn}
