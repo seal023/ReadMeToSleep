@@ -33,6 +33,7 @@ import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRe
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
+import { openUpsell } from '../../store/upsellStore';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getFreeCloneTarget, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { isPremium } from '../../services/iap';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
@@ -229,17 +230,18 @@ export default function StoryPlayScreen() {
   const openStoryPaywall = useCallback(() => {
     if (paywallShownRef.current) return;
     paywallShownRef.current = true;
-    Alert.alert(t('gate.poolExceedTitle'), t('gate.poolExceedMsg'), [
-      { text: t('common.cancel'), style: 'cancel', onPress: () => { paywallShownRef.current = false; } },
-      {
-        text: t('gate.goUnlock'),
-        onPress: () => {
-          paywallShownRef.current = false;
-          router.push('/(parent)/subscription?plan=yearly');
-        },
-      },
-    ]);
-  }, [t, router]);
+    openUpsell({
+      title: t('gate.poolExceedTitle'),
+      message: t('gate.poolExceedMsg'),
+      confirmLabel: t('gate.goUnlock'),
+      cancelLabel: t('common.cancel'),
+      action: 'sub',
+    });
+    // 防抖：滑动手势会连续触发，1 秒后允许再次唤起（弹窗是同一实例，不会叠加）
+    setTimeout(() => {
+      paywallShownRef.current = false;
+    }, 1000);
+  }, [t]);
   /** 锁故事区域：竖向滑动即弹付费窗（满足「划动故事屏幕就跳付费窗口」） */
   const lockPan = useRef(
     PanResponder.create({
@@ -1543,10 +1545,13 @@ export default function StoryPlayScreen() {
     const cloneAllowedHere =
       isPremiumUser || (freeCloneStoryId && story?.id === freeCloneStoryId);
     if (picked?.kind === 'clone' && !cloneAllowedHere) {
-      Alert.alert(t('gate.freeCloneEndedTitle'), t('gate.freeCloneEndedMsg'), [
-        { text: t('common.ok'), style: 'cancel' },
-        { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
-      ]);
+      openUpsell({
+        title: t('gate.freeCloneEndedTitle'),
+        message: t('gate.freeCloneEndedMsg'),
+        confirmLabel: t('gate.goUnlock'),
+        cancelLabel: t('common.ok'),
+        action: 'sub',
+      });
       return;
     }
     // 只有「设置值」和「实际在播的音色」都一致，才算真的没变化（见 playingVoiceRef 注释）

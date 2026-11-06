@@ -10,14 +10,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-import { useRouter } from 'expo-router';
 import {
   getSnapshot,
   type EntitlementSnapshot,
   type GateResult,
 } from '@/services/entitlement';
 import { ts } from '@/services/i18n';
+import { openUpsell } from '@/store/upsellStore';
 
 const EMPTY: EntitlementSnapshot = {
   premium: false,
@@ -41,7 +40,6 @@ export interface UseEntitlementResult {
 }
 
 export function useEntitlement(): UseEntitlementResult {
-  const router = useRouter();
   const [snapshot, setSnapshot] = useState<EntitlementSnapshot | null>(null);
 
   const refresh = useCallback(async () => {
@@ -63,37 +61,40 @@ export function useEntitlement(): UseEntitlementResult {
 
       // v107 防白嫖：AI 生成要求先登录（额度必须落在账号上，否则卸载重装就重置）
       if (gate.reason === 'login') {
-        Alert.alert(gate.title, gate.message, [
-          { text: ts('gate.later'), style: 'cancel' },
-          { text: ts('gate.goLogin'), onPress: () => router.push('/auth/login') },
-        ]);
+        openUpsell({
+          title: gate.title,
+          message: gate.message,
+          confirmLabel: ts('gate.goLogin'),
+          cancelLabel: ts('gate.later'),
+          action: 'login',
+        });
         return false;
       }
 
       // 会员今天 3 次已用完：不能再去卖会员，只提示并给「去经典故事库」的出口，
       // 与提示文案「或者去经典故事库听听哦」对应（孩子不识字也能照着点）。
       if (gate.reason === 'premium') {
-        Alert.alert(gate.title, gate.message, [
-          { text: ts('common.ok'), style: 'cancel' },
-          {
-            text: ts('gate.goLibrary'),
-            onPress: () => router.push('/(tabs)/library'),
-          },
-        ]);
+        openUpsell({
+          title: gate.title,
+          message: gate.message,
+          confirmLabel: ts('gate.goLibrary'),
+          cancelLabel: ts('common.ok'),
+          action: 'library',
+        });
         return false;
       }
 
       // 免费额度用完：引导到付费墙，并默认落在年付档（主推 $49.99）
-      Alert.alert(gate.title, gate.message, [
-        { text: ts('gate.later'), style: 'cancel' },
-        {
-          text: ts('gate.viewPlans'),
-          onPress: () => router.push('/(parent)/subscription?plan=yearly'),
-        },
-      ]);
+      openUpsell({
+        title: gate.title,
+        message: gate.message,
+        confirmLabel: ts('gate.viewPlans'),
+        cancelLabel: ts('gate.later'),
+        action: 'sub',
+      });
       return false;
     },
-    [router]
+    []
   );
 
   return { snapshot, refresh, showPaywall };

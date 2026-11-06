@@ -15,6 +15,7 @@ import { stopStory } from '@/services/playback';
 import { saveVoiceSetting, savePromptVoiceSetting, getPromptVoiceSetting, setFreeCloneUsed, setFreeCloneTarget } from '@/services/storage';
 import { isPremium } from '@/services/iap';
 import { voiceDisplayName } from '@/services/voiceCatalog';
+import { openUpsell } from '@/store/upsellStore';
 
 // 固定对象只保留「妈妈 / 爸爸」——这两个是绝大多数家庭的主力声线，一键可选。
 // v84：其余家人（外婆、爷爷、奶奶、外公、小姨…）不再写死，统一走「自定义」，
@@ -206,10 +207,15 @@ export default function VoiceClonePage() {
           return;
         }
         setGatePassed(false);
-        Alert.alert(gate.title, gate.message, [
-          { text: t('common.back'), style: 'cancel', onPress: () => router.back() },
-          { text: t('vc.viewPlans'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
-        ]);
+        openUpsell({
+          title: gate.title,
+          message: gate.message,
+          confirmLabel: t('vc.viewPlans'),
+          cancelLabel: t('common.back'),
+          action: 'sub',
+          // 门禁页本身没有返回按钮，取消即退回上一页
+          onCancel: () => router.back(),
+        });
       })();
       return () => {
         alive = false;

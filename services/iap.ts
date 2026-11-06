@@ -431,6 +431,8 @@ export async function refreshEntitlement(): Promise<Entitlement | null> {
  * 整个调用不弹任何系统框（getAvailablePurchases 是静默查询），可以放心在登录后自动跑。
  */
 export async function trySilentRestore(): Promise<Entitlement | null> {
+  // 测试开关：强制免费态时不做静默找回，否则一登录又变回会员
+  if (await getForceFreeOverride()) return null;
   if (!(await ensureConnection())) return null;
 
   const current = await loadEntitlement();
@@ -547,8 +549,38 @@ export async function clearEntitlement(): Promise<void> {
   }
 }
 
+/**
+ * 测试用：强制免费态。
+ * ---------------------------------------------------------------------------
+ * 场景：测试账号在沙盒里有订阅，登录后会被 trySilentRestore 找回成会员，
+ * 导致无法验收「新人登录后的免费体验」。打开此开关后：
+ *   · isPremium() 恒为 false（所有免费门禁生效）
+ *   · trySilentRestore() 直接跳过（不会一登录又被找回会员）
+ * 家长中心有开关可随时切回。上架前记得关闭并移除入口。
+ */
+const FORCE_FREE_KEY = 'rms_force_free_override';
+
+export async function getForceFreeOverride(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(FORCE_FREE_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export async function setForceFreeOverride(on: boolean): Promise<void> {
+  try {
+    if (on) await AsyncStorage.setItem(FORCE_FREE_KEY, 'true');
+    else await AsyncStorage.removeItem(FORCE_FREE_KEY);
+  } catch (err) {
+    console.warn('[IAP] setForceFreeOverride failed:', err);
+  }
+}
+
 /** 当前是否享有会员权益（本地缓存判定，秒开不阻塞 UI） */
 export async function isPremium(): Promise<boolean> {
+  // 测试开关优先级最高：强制免费态下一切按免费处理
+  if (await getForceFreeOverride()) return false;
   const entitlement = await loadEntitlement();
   return !!entitlement && entitlement.expiryMs > Date.now();
 }

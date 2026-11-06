@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { ZCOOLKuaiLe_400Regular } from '@expo-google-fonts/zcool-kuaile';
 import { CartoonButton } from '@/components/ui/CartoonButton';
+import { UpsellModal } from '@/components/ui/UpsellModal';
 import { COLORS, RADIUS, SPACING, FONT, FONT_SIZE, SHADOW } from '@/constants/theme';
 import {
   getChildName, getPromptVoiceSetting, getVoiceSetting,
@@ -328,6 +329,9 @@ export default function RootLayout() {
           {/* 界面配色：放在根级（不属于家长模式），孩子端设置页一级可达 */}
           <Stack.Screen name="theme" />
         </Stack>
+
+        {/* 全局「升级会员」可爱弹窗（小浣熊说话）：任意位置 openUpsell 唤起 */}
+        <UpsellModal />
 
         {/* 需求 五：隐私声明弹窗（置于 LanguageProvider 内，跟随系统语言） */}
         <PrivacyModal
