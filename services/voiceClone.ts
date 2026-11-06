@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
+import { cloudFetch } from './cloudFetch';
 import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl } from './endpoints';
 import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
@@ -300,7 +301,7 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
       },
     };
 
-    const createRes = await fetch(endpoint, {
+    const createRes = await cloudFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -358,7 +359,7 @@ export async function enrollVoice(audioUri: string, target: CloneTarget): Promis
     let status = '';
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 2000));
-      const queryRes = await fetch(endpoint, {
+      const queryRes = await cloudFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` },
         body: JSON.stringify({
@@ -444,11 +445,25 @@ async function fetchWithTimeout(
     }
   }, timeoutMs);
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    /**
+     * v107：百炼 API 请求在有代理时改走 Edge Function（Key 不进包）；
+     * 阿里云 OSS 的音频下载地址不在白名单里，保持直连（那只是下载，不含密钥）。
+     */
+    const res = await (needsAiProxy(url) ? cloudFetch(url, { ...init, signal: ctrl.signal }) : fetch(url, { ...init, signal: ctrl.signal }));
     return { res, ctrl, done: () => clearTimeout(timer) };
   } catch (err) {
     clearTimeout(timer);
     throw err;
+  }
+}
+
+const AI_PROXY_HOSTS = /(^|\.)(dashscope\.aliyuncs\.com|maas\.aliyuncs\.com)$/i;
+/** 这个地址是不是「需要走代理的百炼 API」（OSS 下载地址返回 false，保持直连） */
+function needsAiProxy(url: string): boolean {
+  try {
+    return AI_PROXY_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return false;
   }
 }
 
@@ -573,7 +588,7 @@ export async function transcribeAudio(audioUri: string): Promise<string | null> 
     const b64 = uint8ToBase64(bytes);
     const mime = mimeFromUri(audioUri);
     const dataUri = `data:${mime};base64,${b64}`;
-    const res = await fetch(chatCompletionsUrl(TTS_ORIGIN), {
+    const res = await cloudFetch(chatCompletionsUrl(TTS_ORIGIN), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` },
       body: JSON.stringify({

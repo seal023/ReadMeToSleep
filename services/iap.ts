@@ -24,6 +24,7 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
+import { logReceipt } from './receiptLog';
 import {
   ErrorCode,
   endConnection,
@@ -348,6 +349,17 @@ async function applyPurchase(purchase: Purchase): Promise<Entitlement> {
     throw new Error(ts('iap.err.unknownPlan'));
   }
   await saveEntitlement(entitlement);
+  // 服务端留痕（fire-and-forget）：供后续接 Apple 服务端校验与客诉排查
+  void logReceipt({
+    plan: entitlement.plan,
+    productId: entitlement.productId,
+    transactionId: entitlement.transactionId,
+    originalTransactionId: entitlement.originalTransactionId,
+    purchasedAtMs: entitlement.purchasedAtMs,
+    expiryMs: entitlement.expiryMs,
+    autoRenewing: entitlement.autoRenewing,
+    source: 'purchase',
+  });
   return entitlement;
 }
 
@@ -372,6 +384,16 @@ export async function restorePurchasesAsync(): Promise<Entitlement | null> {
     return null;
   }
   await saveEntitlement(best);
+  void logReceipt({
+    plan: best.plan,
+    productId: best.productId,
+    transactionId: best.transactionId,
+    originalTransactionId: best.originalTransactionId,
+    purchasedAtMs: best.purchasedAtMs,
+    expiryMs: best.expiryMs,
+    autoRenewing: best.autoRenewing,
+    source: 'restore',
+  });
   return best;
 }
 
@@ -422,6 +444,16 @@ export async function trySilentRestore(): Promise<Entitlement | null> {
     const best = pickBestEntitlement(purchases ?? []);
     if (!best) return null;
     await saveEntitlement(best);
+    void logReceipt({
+      plan: best.plan,
+      productId: best.productId,
+      transactionId: best.transactionId,
+      originalTransactionId: best.originalTransactionId,
+      purchasedAtMs: best.purchasedAtMs,
+      expiryMs: best.expiryMs,
+      autoRenewing: best.autoRenewing,
+      source: 'silent',
+    });
     return best;
   } catch (err) {
     console.warn('[IAP] trySilentRestore failed:', err);

@@ -4,6 +4,7 @@ import type { GenerateStoryParams, StoryGenerateResult, StoryLength } from '../t
 import { Alert } from 'react-native';
 import { endpointOrigin, originSource } from './endpoints';
 import { checkStoryGate, recordStoryGenerated } from './entitlement';
+import { USE_AI_PROXY, proxyUrl, proxyAuthHeaders } from './cloudFetch';
 import { storyCacheKey, getCachedResult, putCachedResult } from './storyCache';
 
 /**
@@ -148,7 +149,8 @@ async function chat(
   temperature: number,
   maxTokens?: number
 ): Promise<string> {
-  if (!AI_CONFIG.apiKey) {
+  // v107：切到代理模式后，Key 只存在服务端，客户端不再需要它
+  if (!AI_CONFIG.apiKey && !USE_AI_PROXY) {
     // 未配置 Key：不发起网络请求，让上层降级到内置故事库
     if (__DEV__) {
       Alert.alert('AI 未配置', 'EXPO_PUBLIC_AI_API_KEY 为空，AI 将降级到本地故事');
@@ -168,8 +170,17 @@ async function chat(
   }
   let res;
   try {
+    // v107：配置了 EXPO_PUBLIC_AI_PROXY_URL 就走 Edge Function 代理（带用户 JWT），
+    // Key 只在服务端；否则维持原来的直连（本版默认）。
+    const chatUrl = `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`;
+    const authHeaders = USE_AI_PROXY
+      ? { 'Content-Type': 'application/json', ...(await proxyAuthHeaders()) }
+      : {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${AI_CONFIG.apiKey}`,
+        };
     res = await axios.post(
-    `${AI_CONFIG.baseUrl}${AI_CONFIG.chatPath}`,
+    proxyUrl(chatUrl),
     {
       model: AI_CONFIG.model,
       messages: [
@@ -181,10 +192,7 @@ async function chat(
     },
     {
       timeout: AI_CONFIG.timeoutMs,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${AI_CONFIG.apiKey}`,
-      },
+      headers: authHeaders,
     }
   );
   } catch (err: any) {

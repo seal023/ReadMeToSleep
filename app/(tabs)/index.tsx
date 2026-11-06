@@ -336,7 +336,7 @@ export default function HomeTab() {
       {showPremiumCard && (
         <ElasticPressable
           style={styles.premiumCard}
-          onPress={() => router.push('/(parent)/subscription')}
+          onPress={() => router.push('/(parent)/subscription?plan=yearly')}
           pressScale={0.94}
           bounciness={14}
         >

@@ -61,6 +61,15 @@ export function useEntitlement(): UseEntitlementResult {
     (gate: GateResult): boolean => {
       if (gate.allowed) return true;
 
+      // v107 防白嫖：AI 生成要求先登录（额度必须落在账号上，否则卸载重装就重置）
+      if (gate.reason === 'login') {
+        Alert.alert(gate.title, gate.message, [
+          { text: ts('gate.later'), style: 'cancel' },
+          { text: ts('gate.goLogin'), onPress: () => router.push('/auth/login') },
+        ]);
+        return false;
+      }
+
       // 会员今天 3 次已用完：不能再去卖会员，只提示并给「去经典故事库」的出口，
       // 与提示文案「或者去经典故事库听听哦」对应（孩子不识字也能照着点）。
       if (gate.reason === 'premium') {
@@ -74,11 +83,12 @@ export function useEntitlement(): UseEntitlementResult {
         return false;
       }
 
+      // 免费额度用完：引导到付费墙，并默认落在年付档（主推 $49.99）
       Alert.alert(gate.title, gate.message, [
-        { text: '稍后再说', style: 'cancel' },
+        { text: ts('gate.later'), style: 'cancel' },
         {
-          text: '查看方案',
-          onPress: () => router.push('/(parent)/subscription'),
+          text: ts('gate.viewPlans'),
+          onPress: () => router.push('/(parent)/subscription?plan=yearly'),
         },
       ]);
       return false;

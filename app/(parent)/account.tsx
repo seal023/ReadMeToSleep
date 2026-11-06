@@ -156,7 +156,7 @@ export default function AccountScreen() {
                 title={t('account.viewSub')}
                 emoji="🧾"
                 full
-                onPress={() => router.push('/(parent)/subscription')}
+                onPress={() => router.push('/(parent)/subscription?plan=yearly')}
               />
               <View style={{ height: SPACING.sm }} />
               <CartoonButton

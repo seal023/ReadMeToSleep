@@ -264,7 +264,7 @@ export default function LibraryScreen() {
   const openPoolPaywall = () => {
     Alert.alert(t('gate.poolExceedTitle'), t('gate.poolExceedMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription') },
+      { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
     ]);
   };
 

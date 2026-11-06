@@ -1,4 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getServerRights,
+  claimFreeCloneOnServer,
+  setFreeCloneStoryOnServer,
+} from './serverQuota';
 import { Story, Progress, SensitiveWords, Language } from '../types';
 // 经典故事正文：100 篇公共版权故事，按 25 篇一册分卷存放
 import classic1 from '../data/classic-stories/zh/1-25.json';
@@ -605,18 +610,72 @@ export async function clearStoryPosition(storyId: string): Promise<void> {
 }
 
 // ---- 免费用户「1 次克隆体验」状态（会员不走这里，会员克隆不受限） ----
+/**
+ * v107 防白嫖：这组状态改为「服务端为准、本地做缓存」。
+ * 原先只写 AsyncStorage —— 卸载重装 / 换机就把「1 次免费克隆」重置了。
+ * 现在优先读 Supabase 的 user_rights（按 user_id 存），读不到（离线 / 未登录）才用本地。
+ * ⚠️ 服务端说「已用过」优先于本地「没用过」：两个方向取「更严格」的那个。
+ */
 export async function getFreeCloneUsed(): Promise<boolean> {
+  const local = await (async () => {
+    try {
+      return (await AsyncStorage.getItem(KEYS.FREE_CLONE_USED)) === '1';
+    } catch {
+      return false;
+    }
+  })();
   try {
-    return (await AsyncStorage.getItem(KEYS.FREE_CLONE_USED)) === '1';
+    const rights = await getServerRights();
+    if (rights) {
+      // 服务端是权威：如果服务端说用过，把本地也补上（换机后本地是空的）
+      if (rights.freeCloneUsed && !local) {
+        try {
+          await AsyncStorage.setItem(KEYS.FREE_CLONE_USED, '1');
+        } catch {
+          /* 忽略 */
+        }
+      }
+      if (rights.freeCloneTarget) {
+        try {
+          const t = await AsyncStorage.getItem(KEYS.FREE_CLONE_TARGET);
+          if (!t) await AsyncStorage.setItem(KEYS.FREE_CLONE_TARGET, rights.freeCloneTarget);
+        } catch {
+          /* 忽略 */
+        }
+      }
+      if (rights.freeCloneStoryId) {
+        try {
+          const id = await AsyncStorage.getItem(KEYS.FREE_CLONE_STORY_ID);
+          if (!id) await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, rights.freeCloneStoryId);
+        } catch {
+          /* 忽略 */
+        }
+      }
+      return rights.freeCloneUsed || local;
+    }
   } catch {
-    return false;
+    /* 服务端不可用：退回本地 */
   }
+  return local;
 }
 
-export async function setFreeCloneUsed(used: boolean): Promise<void> {
+/**
+ * 标记「免费克隆已用掉」。
+ * 优先在服务端原子占用那一次机会（并发 / 多设备都不会超发），失败才只写本地。
+ */
+export async function setFreeCloneUsed(used: boolean, target?: string): Promise<void> {
   try {
-    if (used) await AsyncStorage.setItem(KEYS.FREE_CLONE_USED, '1');
-    else await AsyncStorage.removeItem(KEYS.FREE_CLONE_USED);
+    if (used) {
+      const claimed = await claimFreeCloneOnServer(target ?? '');
+      if (claimed === false) {
+        // 服务端说这次机会已经被用掉了（别的设备先用了）——本地也标记，别让界面误以为还能用
+        await AsyncStorage.setItem(KEYS.FREE_CLONE_USED, '1');
+        return;
+      }
+      await AsyncStorage.setItem(KEYS.FREE_CLONE_USED, '1');
+    } else {
+      await AsyncStorage.removeItem(KEYS.FREE_CLONE_USED);
+    }
   } catch {
     /* 忽略 */
   }
@@ -624,6 +683,19 @@ export async function setFreeCloneUsed(used: boolean): Promise<void> {
 
 /** 免费用户克隆声专属的「唯一 1 篇」短故事 id（为空 = 还没选） */
 export async function getFreeCloneStoryId(): Promise<string> {
+  try {
+    const rights = await getServerRights();
+    if (rights?.freeCloneStoryId) {
+      try {
+        await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, rights.freeCloneStoryId);
+      } catch {
+        /* 忽略 */
+      }
+      return rights.freeCloneStoryId;
+    }
+  } catch {
+    /* 服务端不可用：退回本地 */
+  }
   try {
     return (await AsyncStorage.getItem(KEYS.FREE_CLONE_STORY_ID)) || '';
   } catch {
@@ -633,8 +705,12 @@ export async function getFreeCloneStoryId(): Promise<string> {
 
 export async function setFreeCloneStoryId(id: string): Promise<void> {
   try {
-    if (id) await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, id);
-    else await AsyncStorage.removeItem(KEYS.FREE_CLONE_STORY_ID);
+    if (id) {
+      await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, id);
+      await setFreeCloneStoryOnServer(id);
+    } else {
+      await AsyncStorage.removeItem(KEYS.FREE_CLONE_STORY_ID);
+    }
   } catch {
     /* 忽略 */
   }
@@ -642,6 +718,19 @@ export async function setFreeCloneStoryId(id: string): Promise<void> {
 
 /** 免费用户克隆所用的对象（mom/dad/custom:xxx），故事页据此默认克隆声 */
 export async function getFreeCloneTarget(): Promise<string> {
+  try {
+    const rights = await getServerRights();
+    if (rights?.freeCloneTarget) {
+      try {
+        await AsyncStorage.setItem(KEYS.FREE_CLONE_TARGET, rights.freeCloneTarget);
+      } catch {
+        /* 忽略 */
+      }
+      return rights.freeCloneTarget;
+    }
+  } catch {
+    /* 服务端不可用：退回本地 */
+  }
   try {
     return (await AsyncStorage.getItem(KEYS.FREE_CLONE_TARGET)) || '';
   } catch {

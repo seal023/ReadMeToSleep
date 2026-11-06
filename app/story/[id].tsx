@@ -26,14 +26,14 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 // 避免「刚录完能听、过一会儿/重进页面就播不出来」。
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
-import { playStory, stopStory, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
+import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, hasLivePlayer } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
-import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { isPremium } from '../../services/iap';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
@@ -1167,6 +1167,13 @@ export default function StoryPlayScreen() {
     const voiceKind = voiceOptions.find((o) => o.id === voice)?.kind;
     let effectiveVoice: string = voice;
     if (voiceKind === 'clone' && !cloneAllowedHere) effectiveVoice = 'system';
+    /**
+     * v107 成本红线（模块二）：免费用户听「5 篇免费池」时强制用手机自带语音。
+     * 那 5 篇的正文本来就打包在 App 里，再配上 expo-speech（本地合成），
+     * 就真的做到「打开即播、断网能听、零网络请求、零 TTS 费用」；
+     * 会员不受影响，仍用云端音色（大姐姐 / 克隆声）。
+     */
+    if (!isPremiumUser && FREE_OFFLINE_POOL_IDS.includes(story.id)) effectiveVoice = 'system';
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
@@ -1459,7 +1466,7 @@ export default function StoryPlayScreen() {
     if (picked?.kind === 'clone' && !cloneAllowedHere) {
       Alert.alert(t('gate.freeCloneEndedTitle'), t('gate.freeCloneEndedMsg'), [
         { text: t('common.ok'), style: 'cancel' },
-        { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription') },
+        { text: t('gate.goUnlock'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
       ]);
       return;
     }
@@ -1980,6 +1987,11 @@ export default function StoryPlayScreen() {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题，
       // 第三个是界面语言——强制 AI 用同一语言作答（v81：英文提问曾被答成中文）
       const answer = await askQuestion(storyText, childQuestion, displayLang);
+      /**
+       * v107：等答案的这几秒里，孩子可能已经点了 Finish / 离开了本页。
+       * 这时绝不能再出声（也不该把答案塞回界面）——否则「点了完成，声音几秒后才响」。
+       */
+      if (!aliveRef.current || phaseRef.current !== 'qa_round2') return;
       const finalAnswer = answer && answer.trim() ? answer : t('story.qa.unknown');
       // 记录第2轮自由提问，供「完成」页回显
       setChildQaLog((prev) => [...prev, { q: childQuestion.trim(), a: finalAnswer }]);
@@ -1997,6 +2009,7 @@ export default function StoryPlayScreen() {
       // 否则会出现「文字很快出现、声音几秒后才来」的时差。
       await revealAnswerWithVoice(finalAnswer);
     } catch {
+      if (!aliveRef.current || phaseRef.current !== 'qa_round2') return;
       setAiAskError(true);
       const fallback = t('story.qa.unknown');
       setAiAnswer(fallback);
@@ -2648,7 +2661,7 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <TouchableOpacity style={styles.primaryBtn2} onPress={() => { Keyboard.dismiss(); stopStory(); setPhase('finished'); }}>
+        <TouchableOpacity style={styles.primaryBtn2} onPress={() => { Keyboard.dismiss(); cancelSpeaking(); setPhase('finished'); }}>
           <Text style={styles.primaryBtnText}>✅ {t('story.qa.finish')}</Text>
         </TouchableOpacity>
       </ScrollView>

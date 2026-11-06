@@ -62,7 +62,14 @@ export default function ParentHub() {
     { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },
     { icon: '💌', title: t('parentHub.card.comments.title'), desc: t('parentHub.card.comments.desc'), href: '/(parent)/parent-comments' },
     { icon: '🔍', title: t('parentHub.card.aiCheck.title'), desc: t('parentHub.card.aiCheck.desc'), href: '/(parent)/ai-check' },
-    { icon: '🧪', title: t('parentHub.card.testing.title'), desc: t('parentHub.card.testing.desc'), href: '/(parent)/reward-test' },
+    /**
+     * 奖励页是开发自测用的临时入口。
+     * 审核视角：「🧪 测试」这类字样会被认定成未完成功能 / Beta 特性（2.3.1），
+     * 而且它里面还有硬编码中文按钮，英文界面下很突兀 —— 生产包里直接不出现。
+     */
+    ...(__DEV__
+      ? [{ icon: '🧪', title: t('parentHub.card.testing.title'), desc: t('parentHub.card.testing.desc'), href: '/(parent)/reward-test' }]
+      : []),
     { icon: '🚪', title: t('parentHub.card.exit.title'), desc: t('parentHub.card.exit.desc'), action: () => {
       Alert.alert(t('parentHub.exitTitle'), t('parentHub.exitMsg'), [
         { text: t('common.cancel') },

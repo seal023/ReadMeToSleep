@@ -208,7 +208,7 @@ export default function VoiceClonePage() {
         setGatePassed(false);
         Alert.alert(gate.title, gate.message, [
           { text: t('common.back'), style: 'cancel', onPress: () => router.back() },
-          { text: t('vc.viewPlans'), onPress: () => router.push('/(parent)/subscription') },
+          { text: t('vc.viewPlans'), onPress: () => router.push('/(parent)/subscription?plan=yearly') },
         ]);
       })();
       return () => {
@@ -314,7 +314,9 @@ export default function VoiceClonePage() {
         // 免费用户：用掉唯一 1 次克隆体验，并记录克隆对象，随后去选一篇专属故事
         const premium = await isPremium();
         if (!premium) {
-          await setFreeCloneUsed(true);
+          // v107：同时把「那一次机会」原子占用到服务端（user_rights），
+          // 卸载重装 / 换机 / 退登都不会重置；同时记下克隆对象，供故事页默认用它。
+          await setFreeCloneUsed(true, target);
           await setFreeCloneTarget(target);
           // 稍作停顿让「克隆成功」闪现，再带去选故事页（选完即永久保存、无限畅听）
           setTimeout(() => router.replace('/(parent)/free-clone-pick'), 700);

@@ -24,6 +24,8 @@ import { ts } from './i18n';
 import { getProgress, getFreeCloneUsed } from './storage';
 import { isPremium, type Plan } from './iap';
 import { logGeneration, type StoryLengthBucket } from './generationLog';
+import { peekUsage, consumeQuota, readMirror } from './serverQuota';
+import { isAuthConfigured } from './supabase';
 
 // ---------------------------------------------------------------------------
 // 免费额度（改这里会自动同步到 UI 文案）
@@ -80,33 +82,38 @@ export interface EntitlementSnapshot {
  */
 export type GateResult =
   | { allowed: true }
-  | { allowed: false; title: string; message: string; reason: 'free' | 'premium' };
+  | {
+      allowed: false;
+      title: string;
+      message: string;
+      reason: 'free' | 'premium' | 'login';
+    };
 
 // ---------------------------------------------------------------------------
-// 用量记录（按本地日期，跨天自动重置）
+// 用量记录
+//   v107：改为「服务端优先」，本地只做离线镜像与显示缓存。
+//   服务端不可用（未登录 / 离线）时不再无条件按本地日期清零 ——
+//   见 readUsage() 里的「防调时间」规则。
 // ---------------------------------------------------------------------------
 
-/** 本地日期键，避免 toISOString 的 UTC 偏移导致跨天判断提前/滞后 */
+/** 本地日期键，仅用于离线兜底与显示（真实判定走服务端日期） */
 function todayKey(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-async function readUsage(): Promise<DailyUsage> {
-  const today = todayKey();
+async function readLocalUsage(): Promise<DailyUsage | null> {
   try {
     const raw = await AsyncStorage.getItem(USAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as DailyUsage;
-      // 跨天则清零，不保留昨天的计数
-      if (parsed && parsed.date === today && typeof parsed.storyCount === 'number') {
-        return parsed;
-      }
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DailyUsage;
+    if (parsed && typeof parsed.date === 'string' && typeof parsed.storyCount === 'number') {
+      return parsed;
     }
   } catch (err) {
-    console.warn('[Entitlement] readUsage failed:', err);
+    console.warn('[Entitlement] readLocalUsage failed:', err);
   }
-  return { date: today, storyCount: 0 };
+  return null;
 }
 
 async function writeUsage(usage: DailyUsage): Promise<void> {
@@ -115,6 +122,42 @@ async function writeUsage(usage: DailyUsage): Promise<void> {
   } catch (err) {
     console.warn('[Entitlement] writeUsage failed:', err);
   }
+}
+
+/**
+ * 今天的已用量。
+ * ---------------------------------------------------------------------------
+ * 优先级：
+ *   ① 登录且联网 → 直接问服务端（日期用服务器时间算，客户端改系统时间完全无效）；
+ *   ② 服务端不可用 → 用本地记录，但**不允许**凭「手机日期变了」就白拿新额度：
+ *      · 手机日期 > 服务端最后确认日 → 沿镜像里那一天的用量（不重置）
+ *      · 手机日期 < 服务端最后确认日（往回拨） → 同样按镜像走
+ *      · 同一天 → 取本地与服务端镜像的较大值（离线期间用掉的也得算）
+ *   只要用户曾经联网登录过，调时间这条路就彻底堵死。
+ */
+async function readUsage(): Promise<DailyUsage> {
+  const server = await peekUsage('story');
+  if (server) return { date: server.day, storyCount: server.used };
+
+  const today = todayKey();
+  const local = await readLocalUsage();
+  const mirror = await readMirror();
+
+  if (mirror && mirror.day) {
+    const mirrorUsed = mirror.used.story ?? 0;
+    if (today !== mirror.day) {
+      // 无论是往前调还是往后拨，没有服务端确认就不发新额度
+      return { date: mirror.day, storyCount: mirrorUsed };
+    }
+    if (local && local.date === today) {
+      return { date: today, storyCount: Math.max(mirrorUsed, local.storyCount) };
+    }
+    return { date: today, storyCount: mirrorUsed };
+  }
+
+  // 从未连过服务端（未登录 / 本地模式）：沿用旧的本地日历逻辑
+  if (local && local.date === today) return local;
+  return { date: today, storyCount: 0 };
 }
 
 export interface RecordStoryOptions {
@@ -127,19 +170,40 @@ export interface RecordStoryOptions {
 /**
  * 成功「发起一次真实生成」后调用：计入当日额度 + 后台写一条埋点。
  * ⚠️ 命中本地缓存直接播旧故事的路径绝不能调这里，否则会白扣一次额度。
+ *
+ * v107：优先在服务端原子 +1（跨设备一致、不可篡改）；服务端不可用时才落本地。
  */
 export async function recordStoryGenerated(opts: RecordStoryOptions = {}): Promise<void> {
-  const usage = await readUsage();
-  usage.storyCount += 1;
-  await writeUsage(usage);
+  let plan: Plan = 'free';
+  try {
+    const snap = await getSnapshot();
+    plan = snap.plan;
+    const limit = dailyStoryLimit(plan);
+
+    // 先问服务端：原子消耗一次（并发点击也不会超发）
+    const server = await consumeQuota('story', limit);
+    if (server) {
+      if (!server.allowed) {
+        // 极窄竞态：预检通过后，另一台设备先把额度用掉了。故事已经生成，不回滚，只记一笔。
+        console.warn('[Entitlement] server quota exhausted on record (race)');
+      }
+      await writeUsage({ date: server.day, storyCount: server.used });
+    } else {
+      // 服务端不可用：本地记账（readUsage 已含防调时间规则）
+      const usage = await readUsage();
+      usage.storyCount += 1;
+      await writeUsage(usage);
+    }
+  } catch (err) {
+    console.warn('[Entitlement] recordStoryGenerated failed:', err);
+  }
 
   // 纯后台埋点：失败/未建表/未登录都不影响主流程，也不在 UI 显示
   try {
-    const snap = await getSnapshot();
     void logGeneration({
       storyLength: opts.storyLength ?? 'short',
       source: opts.source ?? 'create',
-      plan: snap.plan,
+      plan,
     });
   } catch (err) {
     console.warn('[Entitlement] generation log skipped:', err);
@@ -197,6 +261,29 @@ export async function getSnapshot(): Promise<EntitlementSnapshot> {
  * 这是「拦截请求」的关键点：调用方必须在发出任何 LLM 请求之前先问它。
  */
 export async function checkStoryGate(): Promise<GateResult> {
+  /**
+   * v107 防白嫖：AI 生成必须登录。
+   * 额度的真实判定在服务端（daily_usage，日期用服务器时间算），未登录就没有可信身份，
+   * 只能退回本地计数 —— 那等于「卸载重装就重置」。所以这里先要账号。
+   * 若 Supabase 根本没配置（本地开发包），不做这道要求，避免把功能彻底卡死。
+   */
+  if (isAuthConfigured) {
+    try {
+      const { getSession } = await import('./auth');
+      const session = await getSession();
+      if (!session) {
+        return {
+          allowed: false,
+          title: ts('gate.loginTitle'),
+          message: ts('gate.loginMsg'),
+          reason: 'login',
+        };
+      }
+    } catch {
+      /* 登录模块异常时放行，交给后面的额度判断，不把孩子卡死在门口 */
+    }
+  }
+
   const snap = await getSnapshot();
   if (snap.storiesRemaining > 0) return { allowed: true };
 

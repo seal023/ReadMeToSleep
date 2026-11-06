@@ -148,6 +148,22 @@ export function stopStory(): void {
 }
 
 /**
+ * 彻底取消「说话」——包括**还没出声的那一句**（v107）。
+ * ---------------------------------------------------------------------------
+ * `stopStory()` 只能停掉「已经在响」的音频：而 AI 回答这类长句往往是
+ * 先云端合成几秒、再落盘播放——用户点了 Finish 界面切走了，几秒后声音才响起来。
+ * 这里把 speakSeq 推进一格，让所有还在合成中的 speakWithBestVoice 请求作废，
+ * 合成完也不会出声。
+ *
+ * ⚠️ 不要把它塞进 stopStory()：speakWithBestVoice 自己是「先取号再 stopStory()」，
+ * 若 stopStory 也推进序号，新请求会把自己作废掉。
+ */
+export function cancelSpeaking(): void {
+  speakSeq += 1;
+  stopStory();
+}
+
+/**
  * 用「当前最好的声音」说一句话（克隆声优先，失败/未克隆降级系统音）。
  * 用于把克隆声贯穿全 App（每日问候、问答提示/反馈、AI 回答等）。
  *

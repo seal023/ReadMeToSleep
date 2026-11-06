@@ -839,9 +839,9 @@ export default function TravelCheckinScreen() {
             {snapshot && !snapshot.premium && snapshot.checkInsRemaining !== null
               && FREE_TOTAL_CHECKIN_LIMIT < 100 && (
               <Text style={styles.quota}>
-                {language === 'en'
-                  ? `${snapshot.checkInsRemaining} check-ins left · Unlimited with membership`
-                  : `还可打卡 ${snapshot.checkInsRemaining} 次 · 会员不限`}
+                {/* v107：改走词条，避免英文界面残留 "Unlimited" 这类会被审核挑的绝对化措辞 */}
+                {t('gate.checkinLeft')
+                  .replace('{n}', String(snapshot.checkInsRemaining))}
               </Text>
             )}
 
