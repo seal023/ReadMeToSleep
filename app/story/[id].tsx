@@ -845,7 +845,9 @@ export default function StoryPlayScreen() {
           getFreeCloneStoryId(),
           getFreeCloneTarget(),
         ]);
-        if (freeId && freeTarget && freeId === story.id && !isPremiumUser) {
+        // ⚠️ 必须用 story?.id：本 effect 在所有 early return 之前执行，
+        // 首帧 story 仍为 null，直接写 story.id 会在依赖数组求值时抛 TypeError → 闪退。
+        if (freeId && freeTarget && freeId === story?.id && !isPremiumUser) {
           target = freeTarget;
         }
       } catch {
@@ -856,7 +858,7 @@ export default function StoryPlayScreen() {
     return () => {
       cancelled = true;
     };
-  }, [story.id, isPremiumUser]);
+  }, [story?.id, isPremiumUser]);
 
   // 可选声音清单：进入页面刷新一次（克隆成功后回到本页即可看到新音色）
   useEffect(() => {

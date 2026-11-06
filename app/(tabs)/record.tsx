@@ -248,7 +248,8 @@ export default function RecordScreen() {
     return (
       <CartoonScreen gradient="day" decor>
         <View style={styles.lockedWrap}>
-          <ClayIcon name="lock" size={60} />
+          {/* 免费版锁屏：用 starBig（会员权益）替代不存在的 lock 图标，避免 source=undefined */}
+          <ClayIcon name="starBig" size={60} />
           <Text style={styles.lockedTitle}>{t('gate.storyFreeTitle')}</Text>
           <Text style={styles.lockedMsg}>{t('gate.storyFreeMsg')}</Text>
           <TouchableOpacity
