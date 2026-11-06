@@ -9,11 +9,11 @@
     "scheme": "readmetosleep",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-      "splash": {
-        "image": "./assets/splash-icon.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#FBEDE4"
-      },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FBEDE4"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.seal023.ReadMeToSleep",
@@ -30,7 +30,8 @@
           }
         },
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "101"
     },
     "android": {
       "adaptiveIcon": {
@@ -41,7 +42,14 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "RECORD_AUDIO",
-        "INTERNET"
+        "INTERNET",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -53,11 +61,20 @@
       "expo-audio",
       "expo-localization",
       "expo-apple-authentication",
-      ["expo-build-properties", {
-        "ios": {
-          "enableSceneSupport": true
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
         }
-      }]
-    ]
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "83135596-9191-45de-9cda-ce6facaba0f0"
+      }
+    },
+    "owner": "xing_yufei"
   }
 }
