@@ -270,9 +270,16 @@ export default function LibraryScreen() {
 
   const renderClassic = ({ item }: { item: StoryItem }) => {
     const locked = !isClassicFree(item.id);
+    // 严格限定：只有那 5 篇免费池经典故事才高亮「免费畅听」（会员解锁的全部经典故事不高亮）
+    const isFreePool = FREE_OFFLINE_POOL_IDS.includes(item.id);
     return (
       <TouchableOpacity
-        style={[styles.card, twoCols ? styles.cardHalf : styles.cardSingle, locked && styles.cardLocked]}
+        style={[
+          styles.card,
+          twoCols ? styles.cardHalf : styles.cardSingle,
+          locked && styles.cardLocked,
+          isFreePool && styles.cardFree,
+        ]}
         activeOpacity={0.7}
         onPress={() => (locked ? openPoolPaywall() : router.push(`/story/${item.id}`))}
       >
@@ -284,6 +291,7 @@ export default function LibraryScreen() {
             {effLang === 'zh' ? item.title.zh : item.title.en}
           </Text>
           <View style={styles.tagRow}>
+            {isFreePool && <Text style={styles.freeTag}>{t('library.freeListen')}</Text>}
             {item.tags.map(tag => (
               <Text key={tag} style={styles.tag}>
                 {t(TAG_KEY[tag] ?? tag)}
@@ -637,6 +645,16 @@ const styles = StyleSheet.create({
   /** 免费用户被锁定的非池内故事：整体压暗 + 挂锁图标，提示需会员解锁 */
   cardLocked: { opacity: 0.55 },
   lockBtn: { fontSize: 18, opacity: 0.85 },
+  /** 免费畅听的 5 篇经典池：金色高亮边框 + 浅橙底，让孩子/家长一眼认出「这 5 篇免费、点开就能听」 */
+  cardFree: {
+    borderWidth: 2, borderColor: '#FF8C00', backgroundColor: '#FFF7EC',
+    shadowColor: '#FFB347', shadowOpacity: 0.28, shadowRadius: 6, elevation: 3,
+  },
+  /** 「免费畅听」金色标签 */
+  freeTag: {
+    fontSize: 11, color: '#fff', backgroundColor: '#FF8C00', fontWeight: '700',
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginRight: 6,
+  },
   emptyList: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },

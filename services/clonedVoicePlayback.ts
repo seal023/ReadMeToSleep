@@ -1119,12 +1119,56 @@ export function stopClonedAudio(): void {
  * 会让一次假 ended 立刻通过校验，界面直接被推进提问环节 —— 正是本次反馈的现象。
  * 所以每次真正起播前，把这一整套会话状态清零，从「没播过、没暂停、没结束」开始。
  */
+/**
+ * 开启一次「全新的」播放会话（v105 反馈 #4 / v102 修复）
+ * ---------------------------------------------------------------------------
+ * 上划退出 / 锁屏 / 切故事后，上一次会话在原生层留下了几样**挂在模块上**的状态：
+ *   · `naturalEnded`（上一轮真的播完过 → 新会话的第一次结束信号会被一票放行）
+ *   · `userPaused` / `interrupted`（暂停 / 打断屏蔽位没清 → 检测器行为错乱）
+ *   · `sawPlaying` / `maxPos` / `startPos`（「出过声 / 推进过」判据的读数被上一轮污染）
+ *   · `endWatch` 的定时器与 `endFired` 去重位
+ * 这些都不会随 React 状态复位。孩子回到界面点播放时，残留的「已播完」标记
+ * 会让一次假 ended 立刻通过校验，界面直接被推进提问环节 —— 正是本次反馈的现象。
+ *
+ * 所以每次真正起播前，把这一整套会话状态清零，从「没播过、没暂停、没结束、没收过声」开始。
+ * 同时**彻底销毁**上一路播放器（currentPlayer / chunkState），绝不允许多个播放器并存。
+ */
 export function beginPlaybackSession(): void {
   interrupted = false;
   userPaused = false;
   naturalEnded = false;
+  sawPlaying = false;
+  maxPos = 0;
+  startPos = 0;
+  lastPos = 0;
+  stallTicks = 0;
+  hardEndArmAt = 0;
+  // 先彻底停掉并销毁上一路播放器（currentPlayer / chunkState / 全部 endWatch 状态），
+  // 避免「旧 player 没被回收 → 继续出声」或「分片状态残留 → 新故事从旧断点错乱起播」。
+  stopClonedAudio();
   resetEndWatch();
   if (chunkState) chunkState.paused = false;
+}
+
+/**
+ * 强制把播放引擎整个炸回「空状态」：销毁播放器、清空分片、清零所有会话标志与定时器。
+ * 供上层在「进入故事详情 / 切换故事 / 离开页面」时调用，作为「绝不留孤儿播放器」的兜底。
+ * 与 beginPlaybackSession 的区别：它还会把关心的 flags 一次性显式归零，
+ * 不依赖 resetEndWatch 的内部实现，更直观、更不易被后续重构遗漏。
+ */
+export function forceResetPlayback(): void {
+  stopClonedAudio();
+  endFired = false;
+  interrupted = false;
+  userPaused = false;
+  naturalEnded = false;
+  sawPlaying = false;
+  maxPos = 0;
+  startPos = 0;
+  lastPos = 0;
+  stallTicks = 0;
+  hardEndArmAt = 0;
+  maxDur = 0;
 }
 
 /**

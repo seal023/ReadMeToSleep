@@ -30,7 +30,7 @@ import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, 
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, hasLivePlayer } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
@@ -540,14 +540,14 @@ export default function StoryPlayScreen() {
            * 不存在重新定位，也就不可能「一回来就播完」。
            * 只有系统音（TTS 无法暂停）仍走停止 + 回来重讲。
            */
-          if (clonedPlayingRef.current) {
-            pauseClonedAudio();
-            cloudPausedRef.current = true; // 暂停态：点播放走「秒续」
-          } else {
-            playTokenRef.current++; // 系统音：作废这一轮回调，回来重讲
-            stopStory();
-            cloudPausedRef.current = false;
-          }
+          /**
+           * v102 修复：进后台一律「彻底停止」而非「原地 pause」，避免系统留下孤儿播放器。
+           * iOS 收回音频会话后，pause 的那一路 resume 永远无声、还可能与回前台重建叠加成「多播放器并存」。
+           * 回前台由 handlePlayRef 销毁重建（分片音频已在本地缓存，秒级出声、无新费用）。
+           */
+          playTokenRef.current++; // 作废这一轮回调，旧 ended 信号不再推进界面
+          stopStory();
+          cloudPausedRef.current = false;
           startingRef.current = false;
           if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
           if (progressInterval.current) clearInterval(progressInterval.current);
@@ -1174,6 +1174,17 @@ export default function StoryPlayScreen() {
      * 会员不受影响，仍用云端音色（大姐姐 / 克隆声）。
      */
     if (!isPremiumUser && FREE_OFFLINE_POOL_IDS.includes(story.id)) effectiveVoice = 'system';
+    // v102 诊断：音色路由结果——用于真机验收「克隆声绝不串到普通故事 / 免费池死绑系统音」。
+    // 若 effective 出现 'mom'/'dad' 等克隆目标却 story 不是专属故事，即为串台 bug。
+    console.log('[voice-route]', JSON.stringify({
+      story: story.id,
+      pool: FREE_OFFLINE_POOL_IDS.includes(story.id),
+      premium: isPremiumUser,
+      cloneStory: freeCloneStoryId ?? null,
+      selected: voice,
+      kind: voiceKind ?? '?',
+      effective: effectiveVoice,
+    }));
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
@@ -1222,6 +1233,14 @@ export default function StoryPlayScreen() {
         // 打断期间（来电 / 切后台）任何 ended 信号都不可信，直接忽略，
         // 避免 iOS 孤儿播放器的暂停被误判成「故事讲完 → 跳提问」（v86 反馈 #1）
         if (!appActiveRef.current || interruptedRef.current) return;
+        // v102 修复 · 最强守卫①：界面已不在播放态收到的 ended，除非引擎明确「自然播完」，
+        //   否则一律当假信号丢弃。直接干掉「一播放就跳提问」——暂停 / 退出 / 重播 /
+        //   回前台重建前的残留 ended 此刻 isPlaying 已为 false，绝不推进提问环节。
+        if (!isPlayingRef.current && !didFinishNaturally()) return;
+        // v102 修复 · 最强守卫②：本轮从来没真正出过声，绝不跳提问。iOS 孤儿播放器 /
+        //   系统回收的死播放器会报「位置=时长、但未在播」的假结束，放行它孩子看到的就是
+        //   「点播放没响、界面却跳到结束页」。
+        if (!didFinishNaturally() && !didPlayThisSession()) return;
         /**
          * v98 反馈 #2：刚从后台回到前台的保护窗口内，任何「播完」都按误报处理。
          * 系统在收回 / 重建音频会话时常常给出假 ended，位置读数也会瞬时错乱；
@@ -1296,27 +1315,26 @@ export default function StoryPlayScreen() {
           return;
         }
         const chunkNow = getChunkPlace();
-        if (chunkNow && chunkNow.index < chunkNow.total - 1) return;
+        if (chunkNow && chunkNow.index < chunkNow.total - 1) return; // 分片中间片假结束，忽略
         const reallyAtEnd = endDur > 1 && endPos >= endDur - 3;
         const everHeard = didPlayThisSession();
         const advanced = getMaxPlayedPosition() > 1;
-
-        if (preparingRef.current && !reallyAtEnd) {
-          return; // 声音还没就绪，此刻的 ended 一定不可信
-        }
-        if (clonedPlayingRef.current && !reallyAtEnd && !(everHeard && advanced)) {
-          startingRef.current = false;
-          setPreparing(false);
-          setIsPlaying(false);
-          return;
-        }
         const playedMs = Date.now() - playingSinceRef.current;
-        if (!clonedPlayingRef.current && playedMs < 2500 && !reallyAtEnd) {
-          startingRef.current = false;
-          setPreparing(false);
-          setIsPlaying(false);
+
+        // v102 修复：以下只认「可信结束信号」，任何不确定的一律忽略（不跳、不暂停），
+        // 让音频继续播——宁可少跳一次，也绝不误把孩子推进提问环节。
+        if (clonedPlayingRef.current) {
+          // 克隆声 / 本地录音：必须「真的到末尾 + 真的出过声 + 真的推进过位置」三重确认，
+          // 缺一不可（中间片的假 ended / 系统回收的死播放器都被挡在门外）。
+          if (reallyAtEnd && everHeard && advanced) {
+            endFiredRef.current = true;
+            handleStoryEnded();
+          }
           return;
         }
+        // 系统音（TTS）：拿不到真实播放位置，只靠引擎 onDone + 最小时长保护。
+        // TTS 的 onDone 在讲完后才回调，本就可靠；加 playedMs < 2500 防启动期假信号。
+        if (playedMs < 2500) return;
         endFiredRef.current = true;
         handleStoryEnded();
       };
@@ -1683,9 +1701,14 @@ export default function StoryPlayScreen() {
 
   // 离开故事页（切到首页 / 再听一遍 / 返回 / 或 AI 回答还在响时切走）彻底停掉所有声音与会话，
   // 避免「界面走了、AI 还在朗读」（v86 反馈 #2）。同时释放常亮，交回系统熄屏。
+  // v102 修复：额外调用 forceResetPlayback()，把播放引擎的模块级会话状态（naturalEnded /
+  //   sawPlaying / maxPos / 残余 endWatch 定时器等）彻底炸回空状态，绝不留下孤儿播放器或
+  //   残留「已播完」标记 —— 这是「绝不留孤儿播放器」的兜底，防止下一次进入故事页时
+  //   一次假 ended 直接把孩子推进提问环节。
   useEffect(() => {
     return () => {
       stopStory();
+      forceResetPlayback();
       cancelSleepSession();
       setStoryResumePending(false);
       cloudPausedRef.current = false;
@@ -1694,6 +1717,23 @@ export default function StoryPlayScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * v102 修复：切换故事时彻底重置引擎会话状态。
+   * ---------------------------------------------------------------------------
+   * expo-router 在「故事 A → 故事 B」之间不一定卸载组件（仅更新搜索参数），
+   * 于是上一条故事留在引擎里的模块级状态（currentPlayer / chunkState / endFired /
+   *   naturalEnded / sawPlaying 等）会跨故事污染 —— 正是 Bug 1「音色/播完状态串台」的根因之一。
+   * 这里用「依赖 story?.id 的 effect + 清理函数」：每次 id 变化，先对旧故事跑一次
+   * forceResetPlayback() 把引擎炸空，再进入新故事（新故事点播放时 handlePlay 还会再
+   * beginPlaybackSession() 一次，双重保险）。绝不允许多播放器并存、绝不串台。
+   */
+  useEffect(() => {
+    return () => {
+      forceResetPlayback();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story?.id]);
 
   // 快进 / 后退（±delta 秒）：克隆声 / 本地录音用真实播放位置跳转；系统音不支持，给提示
   const handleSeekBy = (delta: number) => {
