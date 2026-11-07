@@ -40,6 +40,7 @@ import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
+import { StoryFinaleCelebration } from '../../components/ui/StoryFinaleCelebration';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { getLevel, getNewBadges, computeRewardExtras, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
@@ -168,6 +169,16 @@ export default function StoryPlayScreen() {
   const isLandscape = winW > winH;
 
   const [phase, setPhase] = useState<Phase>('loading');
+  /**
+   * v109：每听完一个故事，结尾都来一场「礼花绽放 + 满天星星 + 鲜花雨」的全屏庆典。
+   * 用 phase 驱动而不是塞进 handleStoryEnded —— 后者有 3 条触发路径
+   * （ended 事件 / 进度哨兵 / 安全定时器），phase 只在真正讲完时切一次，绝不重复播；
+   * 重播时 phase 先回 playing 再进 completed，动画会重新挂载，符合「每一个都要有」。
+   */
+  const [showFinale, setShowFinale] = useState(false);
+  useEffect(() => {
+    setShowFinale(phase === 'completed');
+  }, [phase]);
   const [story, setStory] = useState<Story | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -2599,6 +2610,14 @@ export default function StoryPlayScreen() {
           </TouchableOpacity>
         </View>
       </>
+      {/* 每次听完必播的结尾庆典：礼花 + 满天星星 + 鲜花，约 3.6s 后自动露出上面的「讲完啦」页 */}
+      <StoryFinaleCelebration
+        visible={showFinale}
+        title={t('story.finale.title')}
+        subtitle={t('story.finale.subtitle')}
+        tapHint={t('story.finale.tap')}
+        onDone={() => setShowFinale(false)}
+      />
       </CartoonScreen>
     );
   }
