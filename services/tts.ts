@@ -37,6 +37,19 @@ const VOICE_PARAMS: Record<string, { rate: number; pitch: number }> = {
  */
 let lastModeAt = 0;
 
+/**
+ * v109 音频仲裁 · expo-speech 这一路的「在途请求代号」。
+ * ---------------------------------------------------------------------------
+ * build 107 反馈 #2「开局机器音 + 大姐姐音同时响」的一半根因：
+ * `Speech.stop()` 只能停掉**已经在念**的那句；而 textToSpeech 是 async，
+ * `await ensureAudioMode()` / `await Speech.stop()` 期间若别处调了 stopSpeech()，
+ * 这条旧请求醒来后仍会照常 `Speech.speak()` —— 于是被"停掉"的声音又冒出来，
+ * 与新发起的一路叠在一起。
+ * 每次新请求取一个代号，stopSpeech() 让代号失效；所有 await 边界都复核，
+ * 失效就静默放弃，绝不再出声。
+ */
+let speechGen = 0;
+
 export async function ensureAudioMode(): Promise<void> {
   // 1.5 秒内重复说话不重复设置（避免一句话里多次调用），但绝不"一辈子只设一次"
   if (Date.now() - lastModeAt < 1500) return;
@@ -76,8 +89,11 @@ export async function textToSpeech(
 ): Promise<string> {
   const params = VOICE_PARAMS[voiceId || 'system'] || VOICE_PARAMS.system;
   const lang = language === 'en' ? 'en-US' : 'zh-CN';
+  // 取号：此后任何更新的请求 / stopSpeech() 都会让本次作废
+  const gen = ++speechGen;
 
   await ensureAudioMode();
+  if (gen !== speechGen) return '';
 
   if (isWebSpeech()) {
     try {
@@ -102,6 +118,8 @@ export async function textToSpeech(
   } else {
     try {
       await Speech.stop();
+      // stop 期间可能已被更新的请求取代：此刻必须再复核一次，否则旧句会重新冒出来
+      if (gen !== speechGen) return '';
       await Speech.speak(text, {
         language: lang,
         rate: params.rate,
@@ -117,6 +135,8 @@ export async function textToSpeech(
 }
 
 export async function stopSpeech(): Promise<void> {
+  // 同步作废所有还在 await 中的 speak 请求（必须放在最前面，不能等原生 stop 返回）
+  speechGen += 1;
   if (isWebSpeech()) {
     try {
       window.speechSynthesis.cancel();

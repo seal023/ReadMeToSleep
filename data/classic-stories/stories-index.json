@@ -2,55 +2,58 @@
   {
     "id": "classic-001",
     "title": {
-      "zh": "龟兔赛跑",
-      "en": "The Tortoise and the Hare"
+      "zh": "小独角兽和走丢的彩虹",
+      "en": "The Little Unicorn and the Lost Rainbow"
     },
     "tags": [
-      "寓言",
-      "动物",
-      "成长"
+      "睡前",
+      "童话",
+      "自然"
     ],
-    "duration": 200,
-    "source": "伊索寓言"
+    "duration": 225,
+    "source": "原创·出海免费版"
   },
   {
     "id": "classic-002",
     "title": {
-      "zh": "狼来了",
-      "en": "The Boy Who Cried Wolf"
+      "zh": "月亮上的兔子",
+      "en": "The Rabbit Who Lived on the Moon"
     },
     "tags": [
-      "寓言",
-      "成长"
+      "睡前",
+      "童话",
+      "月亮"
     ],
-    "duration": 210,
-    "source": "伊索寓言"
+    "duration": 204,
+    "source": "原创·出海免费版"
   },
   {
     "id": "classic-003",
     "title": {
-      "zh": "狐狸与葡萄",
-      "en": "The Fox and the Grapes"
+      "zh": "小恐龙的第一颗星星",
+      "en": "The Little Dinosaur's First Star"
     },
     "tags": [
-      "寓言",
-      "动物"
+      "睡前",
+      "童话",
+      "成长"
     ],
-    "duration": 200,
-    "source": "伊索寓言"
+    "duration": 225,
+    "source": "原创·出海免费版"
   },
   {
     "id": "classic-004",
     "title": {
-      "zh": "乌鸦喝水",
-      "en": "The Crow and the Pitcher"
+      "zh": "忘记发光的星星",
+      "en": "The Star That Forgot How to Shine"
     },
     "tags": [
-      "寓言",
-      "动物"
+      "睡前",
+      "童话",
+      "成长"
     ],
-    "duration": 200,
-    "source": "伊索寓言"
+    "duration": 244,
+    "source": "原创·出海免费版"
   },
   {
     "id": "classic-005",
@@ -82,15 +85,16 @@
   {
     "id": "classic-007",
     "title": {
-      "zh": "狮子与老鼠",
-      "en": "The Lion and the Mouse"
+      "zh": "收集晚安云朵的小熊",
+      "en": "The Bear Who Collected Goodnight Clouds"
     },
     "tags": [
-      "寓言",
+      "睡前",
+      "童话",
       "动物"
     ],
-    "duration": 210,
-    "source": "伊索寓言"
+    "duration": 271,
+    "source": "原创·出海免费版"
   },
   {
     "id": "classic-008",

@@ -807,6 +807,11 @@ async function startPlayback(
   fast = false,
   /** 整段自然播完时是否打「自然结束」标记（只有故事正文需要，提示音不需要） */
   markNaturalEnd = false,
+  /**
+   * v109：随包预装 MP3 的 assetId（来自 require()）。
+   * 给了就走 { assetId } 本地资源，完全不碰文件 URI / 网络；不给则按 uri 播放落盘文件。
+   */
+  bundledAssetId?: number,
 ): Promise<boolean> {
   try {
     // 播放前必须配置音频会话，否则 iOS（尤其静音模式）下克隆声/本地录音会静音。
@@ -842,7 +847,9 @@ async function startPlayback(
       hardStopPlayer(stale);
     }
 
-    const player = createAudioPlayer({ uri }) as unknown as AudioPlayerLike;
+    const source =
+      bundledAssetId !== undefined ? { assetId: bundledAssetId } : { uri };
+    const player = createAudioPlayer(source) as unknown as AudioPlayerLike;
     currentPlayer = player;
     armEndWatch(onDone, markNaturalEnd);
     player.play();
@@ -1818,4 +1825,20 @@ export async function playLocalFile(uri: string, onDone?: () => void): Promise<b
   }
   stopClonedAudio();
   return startPlayback(resolved, onDone);
+}
+
+/**
+ * 播放「随 App 打包」的离线 MP3（5 篇出海免费故事专用）。
+ * ---------------------------------------------------------------------------
+ * 与 playLocalFile 的区别：来源是 Metro 打进包的 assetId，不是沙盒文件路径，
+ * 因此不依赖文件系统、不需要任何网络请求、断网也能播。
+ * markNaturalEnd=true：整段播完时引擎打「自然结束」标记，上层据以进入
+ * 「讲完啦」页并触发礼花（free 版过去走 expo-speech，结束信号曾被守卫误杀）。
+ */
+export async function playBundledAudio(
+  assetId: number,
+  onDone?: () => void,
+): Promise<boolean> {
+  stopClonedAudio();
+  return startPlayback('', onDone, undefined, false, true, assetId);
 }

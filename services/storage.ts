@@ -100,17 +100,21 @@ const KEYS = {
 };
 
 /**
- * 免费离线故事池：5 篇以英文为主的经典，所有用户（含免费）无限次免费收听、
- * 走系统默认音色、绝不走云端 TTS、绝不扣次数。
+ * 免费离线故事池：5 篇出海原创幻想故事（中英双语，各 3–5 分钟）。
+ * ---------------------------------------------------------------------------
+ * 所有用户（含免费）无限次免费收听。免费用户播的是**随包预装的 Cherry 大姐姐 MP3**
+ * （见 services/bundledAudio.ts）：零网络请求、不扣次数、断网可听、音色强制锁定，
+ * 彻底不再用 expo-speech 机器音。会员与「免费克隆专属篇」仍走各自原有声线链路。
  * 免费用户故事库里「这 5 篇之外」的经典/长篇一律加锁，点击即弹诙谐付费窗。
- * ⚠️ 这 5 篇的挑选由产品决定，改这里即可（必须都是 data/classic-stories 里存在的 id）。
+ * ⚠️ 这 5 篇的挑选由产品决定，改这里即可（id 必须同时存在于 data/classic-stories
+ *    与 assets/audio/free/*.mp3）。
  */
 export const FREE_OFFLINE_POOL_IDS: string[] = [
-  'classic-001', // 龟兔赛跑 / The Tortoise and the Hare
-  'classic-002',
-  'classic-003',
-  'classic-004',
-  'classic-007',
+  'classic-001', // 小独角兽和走丢的彩虹 / The Little Unicorn and the Lost Rainbow
+  'classic-002', // 月亮上的兔子 / The Rabbit Who Lived on the Moon
+  'classic-003', // 小恐龙的第一颗星星 / The Little Dinosaur's First Star
+  'classic-004', // 忘记发光的星星 / The Star That Forgot How to Shine
+  'classic-007', // 收集晚安云朵的小熊 / The Bear Who Collected Goodnight Clouds
 ];
 
 /**

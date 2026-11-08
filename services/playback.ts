@@ -51,6 +51,28 @@ export function getLastPlayedVoice(): string {
 }
 
 /**
+ * v109 音频仲裁 · 全局「同一时间只允许一个音频实例」的代号
+ * ---------------------------------------------------------------------------
+ * build 107 反馈 #2「开局机器音 + 大姐姐音同时响」的根因：
+ *   · speakWithBestVoice 的并发保护只看 speakSeq，而 stopStory() 不动 speakSeq；
+ *   · 于是一个**正在云端合成**（几秒后才出声）的提示音请求，在故事起播调
+ *     stopStory() 之后依然会按原计划播出来，与故事的 expo-speech 叠成双声。
+ *   · playStory 与 speakWithBestVoice 分属两条链路，彼此也不知道对方在播。
+ *
+ * 这里引入跨链路的 epoch：stopStory()（任何停止 / 新起播前都会调）让代号 +1，
+ * 所有在途请求在每个 await 边界复核「自己还是不是最新的一代」，不是就静默放弃，
+ * 绝不允许旧实例在触发播放后才被"补停"。
+ */
+let audioEpoch = 0;
+/** 让所有在途播放/合成请求作废（一般不要直接调，用 stopStory()） */
+export function bumpAudioEpoch(): void {
+  audioEpoch += 1;
+}
+export function getAudioEpoch(): number {
+  return audioEpoch;
+}
+
+/**
  * 「故事正在播」标志（2026-11-04，v93 #1）
  * ---------------------------------------------------------------------------
  * 回前台时 `GreetingOnOpen` 会播每日问候，而 `speakWithBestVoice` 默认先 `stopStory()`。
@@ -99,6 +121,15 @@ export async function playStory(
   const startChunk = opts?.startChunk;
   const stillWanted = opts?.isStillWanted;
 
+  // v109：本轮播放所属代号。任何 stopStory() / 新的 speak 请求都会让在途边界复核失败。
+  const myEpoch = audioEpoch;
+  const wanted = () => myEpoch === audioEpoch && (stillWanted ? stillWanted() : true);
+
+  // 起播前把旧的播放器 / 系统语音彻底销毁（stop & release）。
+  // 只停「已经在响」的不够：旧 player 若没被 remove，新 player 建起来就是两个实例并存。
+  stopClonedAudio();
+  void stopSpeech();
+
   /**
    * v102 成本核验：整篇（含每一片）都已落盘时，本次播放的每一片都会命中本地文件，
    * 绝不会调用云端 TTS。打一条日志方便在 TestFlight 里确认「再次播放零扣费」。
@@ -112,13 +143,13 @@ export async function playStory(
   }
 
   for (const target of voiceCandidates(voiceId)) {
-    if (stillWanted && !stillWanted()) return false;
+    if (!wanted()) return false;
     const ok = await playClonedAudio(
       text,
       target as CloneTarget,
       onDone,
       // abortCheck：引擎在每个合成/起播边界都会调它，false 即彻底放弃（不再出声）
-      stillWanted,
+      wanted,
       undefined,
       startAt || startChunk
         ? { startAt, startChunk, markNaturalEnd: true }
@@ -132,17 +163,22 @@ export async function playStory(
     }
   }
   // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
-  // 但「已经离开页面」时不兜底 —— 否则一离开，离线系统音就会自己念起来
-  if (stillWanted && !stillWanted()) return false;
+  // 但「已经离开页面 / 已被更新的播放取代」时不兜底 —— 否则旧请求会用系统音补一句，
+  // 与正在响的新声音叠成双声（v109 反馈 #2）
+  if (!wanted()) return false;
   lastPlayedVoice = 'system';
   storyPlaying = true;
   textToSpeech(text, 'system', language, onDone);
   return false;
 }
 
-/** 停止一切播放（云端音频 + 系统音） */
+/** 停止一切播放（云端音频 + 系统音），并作废所有还在合成/起播中的在途请求 */
 export function stopStory(): void {
+  // 必须先推进代号：stopSpeech()/stopClonedAudio() 内部若是 async，
+  // 在途请求可能在它们返回前就醒来，晚了就拦不住了。
+  audioEpoch += 1;
   storyPlaying = false;
+  // 彻底销毁旧播放器实例（hardStopPlayer 内部 pause + remove 各自 try）
   stopClonedAudio();
   stopSpeech();
 }
@@ -216,7 +252,11 @@ export async function speakWithBestVoice(
   if (!content) return false;
 
   const mySeq = ++speakSeq;
-  if (opts.interrupt !== false) stopStory(); // 立即打断旧的（克隆 + 系统）
+  if (opts.interrupt !== false) stopStory(); // 立即打断旧的（克隆 + 系统），并推进 audioEpoch
+  // 必须在 stopStory() **之后**取号：否则自己刚推进的 epoch 会把自己作废。
+  const myEpoch = audioEpoch;
+  // 跨链路仲裁：故事起播 / 任何 stopStory() 都会让本句的合成在途请求失效
+  const stillCurrent = () => mySeq === speakSeq && myEpoch === audioEpoch;
 
   let voice = opts.voiceId;
   if (!voice) {
@@ -240,7 +280,7 @@ export async function speakWithBestVoice(
           content,
           target as CloneTarget,
           () => opts.onDone?.(),
-          () => mySeq === speakSeq,
+          stillCurrent,
           () => opts.onStart?.(),
           { cacheOnly: true, fast: opts.fast !== false },
           language,
@@ -251,7 +291,7 @@ export async function speakWithBestVoice(
       }
     }
     // 同样要校验：这期间可能已经有更新的请求（比如锁屏告别）抢走了播报权
-    if (mySeq !== speakSeq) return false;
+    if (!stillCurrent()) return false;
     textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
     return false;
   }
@@ -268,7 +308,7 @@ export async function speakWithBestVoice(
           content,
           cand as CloneTarget,
           () => opts.onDone?.(),
-          () => mySeq === speakSeq,
+          stillCurrent,
           () => opts.onStart?.(),
           { fast: opts.fast },
           language,
@@ -278,7 +318,7 @@ export async function speakWithBestVoice(
         // 则本句必须「静默放弃」——由取代它的新请求负责出声。
         // 否则旧的这请求会落到下面的 textToSpeech 用系统女声补一句，
         // 与正在响的克隆声叠加成「双声 / 几个声音同时出来」（首题长延迟、好几个语音挨个或同时出）。
-        if (mySeq !== speakSeq) return false;
+        if (!stillCurrent()) return false;
       }
     } catch {
       /* 该候选不可用，继续下一个 */
@@ -292,7 +332,7 @@ export async function speakWithBestVoice(
   //   并把「再见了」播了出来；等 hello 那条 async 链路继续跑到这里，
   //   它并不知道自己已经被取代，于是又用系统音补喊了一句「晚上好」——两句话叠在一起。
   // 加这道守卫后，被取代的请求到此为止，静默退出。
-  if (mySeq !== speakSeq) return false;
+  if (!stillCurrent()) return false;
   textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
   return false;
 }

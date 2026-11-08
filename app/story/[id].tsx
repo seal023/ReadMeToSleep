@@ -30,11 +30,12 @@ import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, 
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
-import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer } from '../../services/clonedVoicePlayback';
+import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer, playBundledAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
 import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
 import { openUpsell } from '../../store/upsellStore';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getFreeCloneTarget, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
+import { getBundledAudioAssetId, isBundledFreeStory } from '../../services/bundledAudio';
 import { isPremium } from '../../services/iap';
 import { askQuestion, generateStoryQuestions } from '../../services/ai';
 import Racco from '../../components/common/Racco';
@@ -1247,7 +1248,7 @@ export default function StoryPlayScreen() {
      * 就真的做到「打开即播、断网能听、零网络请求、零 TTS 费用」；
      * 会员不受影响，仍用云端音色（大姐姐 / 克隆声）。
      */
-    if (!isPremiumUser && FREE_OFFLINE_POOL_IDS.includes(story.id)) effectiveVoice = 'system';
+    if (!isPremiumUser && FREE_OFFLINE_POOL_IDS.includes(story.id) && story.id !== freeCloneStoryId) effectiveVoice = 'system';
     // v102 诊断：音色路由结果——用于真机验收「克隆声绝不串到普通故事 / 免费池死绑系统音」。
     // 若 effective 出现 'mom'/'dad' 等克隆目标却 story 不是专属故事，即为串台 bug。
     console.log('[voice-route]', JSON.stringify({
@@ -1307,6 +1308,24 @@ export default function StoryPlayScreen() {
         // 打断期间（来电 / 切后台）任何 ended 信号都不可信，直接忽略，
         // 避免 iOS 孤儿播放器的暂停被误判成「故事讲完 → 跳提问」（v86 反馈 #1）
         if (!appActiveRef.current || interruptedRef.current) return;
+        /**
+         * v109 修复（build 107 反馈 #1：故事播完 UI 停在播放页、礼花不出现）
+         * ------------------------------------------------------------------
+         * 下面两道 v102「最强守卫」依赖 didFinishNaturally() / didPlayThisSession()，
+         * 而这两个标志**只由 clonedVoicePlayback（expo-audio 播放器）维护**。
+         * 免费池 5 篇（以及任何降级到系统音的故事）走的是 expo-speech，
+         * 完全不经过那个引擎 —— 于是 Speech.onDone 这个「真的讲完了」的可信信号
+         * 到这里被守卫②无条件吞掉，phase 永远是 playing，礼花自然永远不触发。
+         *
+         * expo-speech 的 onDone 本身就是讲完才回调，只需保留「最小时长」防启动期
+         * 假回调，不该套用云端播放器那套位置/出声判据。这里单独分流。
+         */
+        if (!clonedPlayingRef.current) {
+          if (Date.now() - playingSinceRef.current < 2500) return;
+          endFiredRef.current = true;
+          handleStoryEnded();
+          return;
+        }
         // v102 修复 · 最强守卫①：界面已不在播放态收到的 ended，除非引擎明确「自然播完」，
         //   否则一律当假信号丢弃。直接干掉「一播放就跳提问」——暂停 / 退出 / 重播 /
         //   回前台重建前的残留 ended 此刻 isPlaying 已为 false，绝不推进提问环节。
@@ -1414,6 +1433,39 @@ export default function StoryPlayScreen() {
       };
       // 句柄存到 ref，供「恢复播放」路径复用同一 onEnded（含 token 校验），避免重复实现
       onEndedRef.current = onEnded;
+
+      /**
+       * v109 出海免费版：5 篇高亮故事改播「随包预装 MP3」（Cherry 大姐姐音色）。
+       * ------------------------------------------------------------------
+       * 彻底不走 expo-speech / 云端 TTS：零网络请求、不扣 AI 次数、断网能听、
+       * 音色固定为预装的大姐姐，免费用户点换声只会被 voiceLocked 挡住。
+       *
+       * 两个例外保留原有链路：
+       *   · 会员：仍可自由选大姐姐 / 克隆声（付费权益不受影响）；
+       *   · 免费克隆专属篇：保留「克隆一次声音讲一篇」这个已上线的核心权益。
+       */
+      const bundledAssetId = getBundledAudioAssetId(story.id, displayLang);
+      const isFreeClonePick = !isPremiumUser && freeCloneStoryId === story.id;
+      if (bundledAssetId && !story.audioUri && !isPremiumUser && !isFreeClonePick) {
+        const ok = await playBundledAudio(bundledAssetId, onEnded);
+        if (token !== playTokenRef.current) return;
+        if (!ok) {
+          setIsPlaying(false);
+          setPreparing(false);
+          Alert.alert(t('story.clipFailTitle'), t('story.clipFailMsg'));
+          return;
+        }
+        // 与克隆声共用全局 player：真实进度条、拖动快进、播完检测都能用
+        setUsingClonedVoice(true);
+        clonedPlayingRef.current = true;
+        startProgressTicker(true);
+        // 兜底：正常结束由 playBundledAudio 的 markNaturalEnd 触发；这里只防极端卡死
+        if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+        const safeDur = Math.max(story.duration || 0, 180) * 1000;
+        safetyTimerRef.current = setTimeout(onEnded, safeDur + 45000);
+        startSleepSession({ minutes: sleepMin, lockEnabled: sleepLock, onExpire: onSleepExpire });
+        return;
+      }
 
       // 保留的本地录音：直接播放原文件（不走 TTS / 克隆合成），与克隆声共用全局 player
       if (story.audioUri) {
@@ -2336,8 +2388,10 @@ export default function StoryPlayScreen() {
     const isCloneStory = !!freeCloneStoryId && !!story && story.id === freeCloneStoryId;
     // 锁故事：免费 + 非池内 5 篇 + 非免费克隆篇 → 只能看开头、不可播放
     const storyLocked = !isPremiumUser && !isFreePool && !isCloneStory;
-    // 池内禁换声：免费 + 池内 5 篇 + 非克隆篇 → 固定系统音，不能切换其他声线
+    // 池内禁换声：免费 + 池内 5 篇 + 非克隆篇 → 固定预装大姐姐 MP3，不能切换其他声线
     const voiceLocked = !isPremiumUser && isFreePool && !isCloneStory;
+    // 该篇确实有随包 MP3 时，声线栏改成「大姐姐（离线）」而不是「手机自带语音」
+    const bundledLocked = voiceLocked && !!story && isBundledFreeStory(story.id);
     storyLockedRef.current = storyLocked;
     // 锁故事只展示开头（约 480 字 / 前两段），看不到其余部分
     const previewText = storyLocked && storyText ? storyText.slice(0, 480) : storyText;
@@ -2516,10 +2570,14 @@ export default function StoryPlayScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.voiceBarIcon}>
-            {selectedVoice === 'system' ? '📱' : voiceIsCloned ? '🎙' : '🔊'}
+            {bundledLocked ? '🎧' : selectedVoice === 'system' ? '📱' : voiceIsCloned ? '🎙' : '🔊'}
           </Text>
           <Text style={styles.voiceBarText} numberOfLines={1}>
-            {selectedVoice === 'system'
+            {bundledLocked
+              ? uiLang === 'en'
+                ? "Big sister's voice (offline)"
+                : '大姐姐的声音（离线）'
+              : selectedVoice === 'system'
               ? uiLang === 'en'
                 ? 'Phone voice (offline)'
                 : '手机自带语音（离线）'

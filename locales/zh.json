@@ -668,7 +668,7 @@
   "gate.viewPlans": "查看方案",
   "gate.goLogin": "去登录",
   "freeClone.title": "挑一篇专属故事",
-  "freeClone.subtitle": "选一篇 3 分钟以内的小故事，用{name}的声音讲给你听，收藏进手机随时听～",
+  "freeClone.subtitle": "选一篇最喜欢的小故事，用{name}的声音讲给你听，收藏进手机随时听～",
   "freeClone.hint": "只能选 1 篇哦，选好就不能换啦",
   "freeClone.pick": "就用这篇 💛",
   "freeClone.synthesizing": "正在用专属声音录制这篇故事…",
