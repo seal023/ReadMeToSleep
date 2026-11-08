@@ -674,6 +674,8 @@
   "freeClone.synthesizing": "Recording this story in your exclusive voice…",
   "freeClone.synthFailTitle": "Your special voice isn't saved yet",
   "freeClone.synthFailMsg": "We couldn't save it on this device (the first save needs one network connection). Please connect and try again — this won't use up your free trial.",
+  "freeClone.tooLongTitle": "This story is a little too long",
+  "freeClone.tooLongMsg": "Your special voice can record just one short story of about 3 minutes. Please pick another one.",
   "freeClone.pickedTitle": "Saved!",
   "freeClone.pickedMsg": "Saved to this phone in {name}'s voice. You can replay it anytime~",
   "freeClone.empty": "No short stories available right now. Please come back later.",

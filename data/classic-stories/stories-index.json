@@ -2,58 +2,58 @@
   {
     "id": "classic-001",
     "title": {
-      "zh": "小独角兽和走丢的彩虹",
-      "en": "The Little Unicorn and the Lost Rainbow"
+      "zh": "猫头鹰与小猫",
+      "en": "The Owl and the Pussycat"
     },
     "tags": [
       "睡前",
       "童话",
       "自然"
     ],
-    "duration": 225,
-    "source": "原创·出海免费版"
+    "duration": 180,
+    "source": "公版改编·Edward Lear（英，1871）·出海免费版"
   },
   {
     "id": "classic-002",
     "title": {
-      "zh": "月亮上的兔子",
-      "en": "The Rabbit Who Lived on the Moon"
+      "zh": "巨人的花园",
+      "en": "The Selfish Giant"
     },
     "tags": [
       "睡前",
       "童话",
-      "月亮"
+      "成长"
     ],
-    "duration": 204,
-    "source": "原创·出海免费版"
+    "duration": 180,
+    "source": "公版改编·Oscar Wilde（英，1888）·出海免费版"
   },
   {
     "id": "classic-003",
     "title": {
-      "zh": "小恐龙的第一颗星星",
-      "en": "The Little Dinosaur's First Star"
+      "zh": "绒布小兔子",
+      "en": "The Velveteen Rabbit"
     },
     "tags": [
       "睡前",
       "童话",
       "成长"
     ],
-    "duration": 225,
-    "source": "原创·出海免费版"
+    "duration": 180,
+    "source": "公版改编·Margery Williams（1922）·出海免费版"
   },
   {
     "id": "classic-004",
     "title": {
-      "zh": "忘记发光的星星",
-      "en": "The Star That Forgot How to Shine"
+      "zh": "小红母鸡",
+      "en": "The Little Red Hen"
     },
     "tags": [
       "睡前",
       "童话",
-      "成长"
+      "动物"
     ],
-    "duration": 244,
-    "source": "原创·出海免费版"
+    "duration": 181,
+    "source": "公版改编·英国民间故事·出海免费版"
   },
   {
     "id": "classic-005",
@@ -85,16 +85,16 @@
   {
     "id": "classic-007",
     "title": {
-      "zh": "收集晚安云朵的小熊",
-      "en": "The Bear Who Collected Goodnight Clouds"
+      "zh": "星河里的小木鞋",
+      "en": "Wynken, Blynken and Nod"
     },
     "tags": [
       "睡前",
       "童话",
-      "动物"
+      "自然"
     ],
-    "duration": 271,
-    "source": "原创·出海免费版"
+    "duration": 180,
+    "source": "公版改编·Eugene Field（美，1889）·出海免费版"
   },
   {
     "id": "classic-008",

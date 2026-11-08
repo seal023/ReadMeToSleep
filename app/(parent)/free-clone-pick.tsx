@@ -17,6 +17,9 @@ import { COLORS, FONT } from '@/constants/theme';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 import {
   FREE_OFFLINE_POOL_IDS,
+  FREE_CLONE_TEXT_LIMIT,
+  FREE_CLONE_MAX_ESTIMATED_SECONDS,
+  estimateCloneAudioSeconds,
   getFreeCloneTarget,
   getFreeCloneStoryId,
   setFreeCloneStoryId,
@@ -107,8 +110,19 @@ export default function FreeClonePickPage() {
         Alert.alert(t('freeClone.synthFailTitle'), t('freeClone.synthFailMsg'));
         return;
       }
+      // ★ 成本红线（2026-11-08）：合成前先卡字数 + 预估时长，超限绝不发出任何 TTS 请求。
+      //   只允许 1 篇池内故事 + 1 种界面语言 + 1 份约 3 分钟的短音频。
+      const estimated = estimateCloneAudioSeconds(primaryText, uiLang);
+      if (
+        primaryText.length > FREE_CLONE_TEXT_LIMIT[uiLang] ||
+        estimated > FREE_CLONE_MAX_ESTIMATED_SECONDS
+      ) {
+        Alert.alert(t('freeClone.tooLongTitle'), t('freeClone.tooLongMsg'));
+        return;
+      }
       // 必须先确认音频真的存进手机，才算「选过」：没落盘就绝不写 id、绝不进故事页，
       // 否则第一次收听会临时联网合成，违背「以后无限次听不扣费、不走网络」。
+      // 只合成当前界面语言这一份；失败重试只补缺失的片，不会重复整篇。
       const ok = await synthesizeAndVerify(primaryText, uiLang);
       if (!ok) {
         Alert.alert(t('freeClone.synthFailTitle'), t('freeClone.synthFailMsg'));
@@ -116,14 +130,6 @@ export default function FreeClonePickPage() {
       }
       // 落盘确认后才写入（本地 + 服务端），一次选定永久锁死、不可更换
       await setFreeCloneStoryId(id);
-      // 另一界面语言尽力也存一份（不阻塞主流程）：孩子/家长切换语言后通常也能离线听
-      const otherLang: 'zh' | 'en' = uiLang === 'en' ? 'zh' : 'en';
-      const otherText = s
-        ? otherLang === 'en'
-          ? s.contentEn || s.content
-          : s.content
-        : '';
-      if (otherText && otherText !== primaryText) void synthesizeAndVerify(otherText, otherLang);
       // 带去故事页：该篇为免费克隆专属故事，会自动用克隆声朗读（命中本地缓存，零网络）
       router.replace(`/story/${id}`);
     } finally {

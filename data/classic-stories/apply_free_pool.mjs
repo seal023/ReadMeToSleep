@@ -24,11 +24,22 @@ const durations = process.argv[2]
   ? JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
   : {};
 
-/** 中文朗读约 250 字/分钟，英文约 155 词/分钟；两者取较长的一路作为展示时长（秒） */
+/** 无实测数据时的估算：ffprobe 实测 Cherry 语速 中文 4.404 字/秒、英文 2.804 词/秒 */
 function estimateSeconds(entry) {
-  const zhMin = entry.content.zh.replace(/\s/g, '').length / 250;
-  const enMin = entry.content.en.trim().split(/\s+/).length / 155;
-  return Math.round(Math.max(zhMin, enMin) * 60);
+  const zhSec = entry.content.zh.replace(/\s/g, '').length / 4.404;
+  const enSec = entry.content.en.trim().split(/\s+/).filter(Boolean).length / 2.804;
+  return Math.round(Math.max(zhSec, enSec));
+}
+
+/**
+ * durations.json 的新结构是 { id: { zh, en } }（两种语言分别记录真实秒数），
+ * 兼容旧版 { id: number }。中文正文用中文时长；索引中英共用一条，取较长一路。
+ */
+function durationOf(id, lang, entry) {
+  const d = durations[id];
+  if (typeof d === 'number') return d;
+  if (d && typeof d[lang] === 'number') return d[lang];
+  return estimateSeconds(entry);
 }
 
 const byId = new Map(pool.map((s) => [s.id, s]));
@@ -42,7 +53,7 @@ for (const s of zh) {
   s.title = e.title.zh;
   s.content = e.content.zh;
   s.tags = e.tags;
-  s.duration = durations[s.id] ?? estimateSeconds(e);
+  s.duration = durationOf(s.id, 'zh', e);
   s.source = e.source;
   zhCount++;
 }
@@ -66,7 +77,7 @@ for (const s of idx) {
   if (!e) continue;
   s.title = { zh: e.title.zh, en: e.title.en };
   s.tags = e.tags;
-  s.duration = durations[s.id] ?? estimateSeconds(e);
+  s.duration = Math.max(durationOf(s.id, 'zh', e), durationOf(s.id, 'en', e));
   s.source = e.source;
   idxCount++;
 }
@@ -85,8 +96,9 @@ console.log('已同步 5 篇出海免费故事：');
 for (const e of pool) {
   const zhChars = e.content.zh.replace(/\s/g, '').length;
   const enWords = e.content.en.trim().split(/\s+/).length;
-  const sec = durations[e.id] ?? estimateSeconds(e);
+  const zsec = durationOf(e.id, 'zh', e);
+  const esec = durationOf(e.id, 'en', e);
   console.log(
-    `  ${e.id}  ${e.title.zh} / ${e.title.en}  中 ${zhChars} 字 / 英 ${enWords} 词  ${sec}s`,
+    `  ${e.id}  ${e.title.zh} / ${e.title.en}  中 ${zhChars} 字 / 英 ${enWords} 词  zh ${zsec}s / en ${esec}s`,
   );
 }

@@ -110,12 +110,35 @@ const KEYS = {
  *    与 assets/audio/free/*.mp3）。
  */
 export const FREE_OFFLINE_POOL_IDS: string[] = [
-  'classic-001', // 小独角兽和走丢的彩虹 / The Little Unicorn and the Lost Rainbow
-  'classic-002', // 月亮上的兔子 / The Rabbit Who Lived on the Moon
-  'classic-003', // 小恐龙的第一颗星星 / The Little Dinosaur's First Star
-  'classic-004', // 忘记发光的星星 / The Star That Forgot How to Shine
-  'classic-007', // 收集晚安云朵的小熊 / The Bear Who Collected Goodnight Clouds
+  'classic-001', // 猫头鹰与小猫 / The Owl and the Pussycat
+  'classic-002', // 巨人的花园 / The Selfish Giant
+  'classic-003', // 绒布小兔子 / The Velveteen Rabbit
+  'classic-004', // 小红母鸡 / The Little Red Hen
+  'classic-007', // 星河里的小木鞋 / Wynken, Blynken and Nod
 ];
+
+/**
+ * 免费「1 次克隆体验」的成本红线（2026-11-08）
+ * ---------------------------------------------------------------------------
+ * 只允许：1 篇池内故事 + 1 种界面语言 + 1 份约 3 分钟的短音频，永久落盘后无限回听。
+ * 任何超出字数或预期时长的文本，一律在合成**之前**拒绝，不让 TTS 计费被长文本打穿。
+ *
+ * 语速基准来自 ffprobe 实测的新文本样本（2026-11-08）：
+ *   中文 ≈ 4.404 字/秒、英文 ≈ 2.804 词/秒
+ *   → 3 分钟 ≈ 793 中文字 / 505 英文词；免费池实际 786–803 字 / 504–513 词。
+ *   文本上限给到约 3 分半，估算时长上限 210s，双闸门卡死成本。
+ */
+export const FREE_CLONE_TEXT_LIMIT = { zh: 860, en: 3300 } as const;
+export const FREE_CLONE_MAX_ESTIMATED_SECONDS = 210;
+
+/** 按 Cherry 实测语速估算一段文本的合成时长（秒），用于合成前的成本闸门 */
+export function estimateCloneAudioSeconds(text: string, lang: 'zh' | 'en'): number {
+  const units =
+    lang === 'zh'
+      ? text.replace(/\s/g, '').length
+      : text.trim().split(/\s+/).filter(Boolean).length;
+  return units / (lang === 'zh' ? 4.404 : 2.804);
+}
 
 /**
  * 故事时长统一折算成「秒」（v98 反馈 #1）

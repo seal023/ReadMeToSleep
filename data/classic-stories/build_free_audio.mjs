@@ -48,6 +48,8 @@ if (!env.EXPO_PUBLIC_AI_API_KEY) throw new Error('.env 缺少 EXPO_PUBLIC_AI_API
 const MODEL = 'qwen3-tts-flash';
 const VOICE = 'Cherry'; // 大姐姐
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** 加 --force 表示文本已改，全部重新合成并覆盖旧 MP3（不复用断点续跑缓存） */
+const FORCE = process.argv.includes('--force');
 
 /** 按句子边界把长文本切成片，宁可多一片也不把句子砍断 */
 function splitText(text, lang) {
@@ -70,7 +72,7 @@ function splitText(text, lang) {
 
 async function postSynth(text, attempt = 1) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 60000);
+  const timer = setTimeout(() => ctrl.abort(), 120000);
   try {
     const res = await fetch(SYNTH_URL, {
       method: 'POST',
@@ -104,9 +106,13 @@ async function postSynth(text, attempt = 1) {
 async function downloadWav(url, dest, attempt = 1) {
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60000);
-    const res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(timer);
+    const timer = setTimeout(() => ctrl.abort(), 120000);
+    let res;
+    try {
+      res = await fetch(url, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) throw new Error(`下载 HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 1000) throw new Error(`音频过小 ${buf.length}B`);
@@ -154,7 +160,7 @@ function probeSeconds(file) {
 /** 合成一路（zh / en）：先整篇，失败自动分片 */
 async function synthOne(id, lang, text) {
   const outFile = path.join(OUT_DIR, `${id}-${lang}.mp3`);
-  if (fs.existsSync(outFile) && fs.statSync(outFile).size > 20_000) {
+  if (!FORCE && fs.existsSync(outFile) && fs.statSync(outFile).size > 20_000) {
     const sec = probeSeconds(outFile);
     console.log(`  ✓ ${id}-${lang} 已存在 ${sec}s，跳过`);
     return { file: outFile, sec };
@@ -203,22 +209,64 @@ async function synthOne(id, lang, text) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const durations = {};
   const existing = path.join(HERE, 'durations.json');
-  if (fs.existsSync(existing)) Object.assign(durations, JSON.parse(fs.readFileSync(existing, 'utf8')));
-
-  console.log(`TTS: ${MODEL} / voice=${VOICE} / ${ORIGIN}`);
-  console.log(`输出: ${OUT_DIR}\n`);
-
-  for (const entry of POOL) {
-    console.log(`[${entry.id}] ${entry.title.zh}`);
-    for (const lang of ['zh', 'en']) {
-      const { sec } = await synthOne(entry.id, lang, entry.content[lang]);
-      // 展示时长取中英较长的一路
-      durations[entry.id] = Math.max(durations[entry.id] || 0, sec);
-    }
-    fs.writeFileSync(existing, JSON.stringify(durations, null, 2) + '\n', 'utf8');
+  // --force 时从零重建，避免旧版「中英共用一个数字」的长时长残留
+  if (!FORCE && fs.existsSync(existing)) {
+    Object.assign(durations, JSON.parse(fs.readFileSync(existing, 'utf8')));
   }
 
-  console.log('\n真实时长(秒):', JSON.stringify(durations));
+  console.log(`TTS: ${MODEL} / voice=${VOICE} / ${ORIGIN}`);
+  console.log(`输出: ${OUT_DIR}${FORCE ? '  [强制重建]' : ''}\n`);
+
+  // 10 路并发（百炼 RPM 180，远未触限）。每路完成立刻落盘；中途失败时
+  // 不带 --force 重跑即可跳过已生成的成品，天然断点续跑。
+  const tasks = POOL.flatMap((entry) =>
+    ['zh', 'en'].map((lang) => ({ id: entry.id, title: entry.title.zh, lang, text: entry.content[lang] })),
+  );
+  await Promise.all(
+    tasks.map(async ({ id, lang, text }) => {
+      const { sec } = await synthOne(id, lang, text);
+      if (!durations[id] || typeof durations[id] !== 'object') durations[id] = {};
+      durations[id][lang] = sec;
+      fs.writeFileSync(existing, JSON.stringify(durations, null, 2) + '\n', 'utf8');
+    }),
+  );
+
+  // ── 精准 3 分钟校准 ──────────────────────────────────────────────
+  // 实测发现：qwen3-tts-flash 对同一文本、同一音色的合成时长有 ±8% 随机波动，
+  // 单靠控制字数无法保证 170–190s。用 ffmpeg atempo（只变速、不变调）把偏离
+  // 的成品拉到 180s；已在 178–182s 的一律不动，避免无谓重编码。
+  const TARGET_SEC = 180;
+  for (const entry of POOL) {
+    for (const lang of ['zh', 'en']) {
+      const file = path.join(OUT_DIR, `${entry.id}-${lang}.mp3`);
+      const sec = probeSeconds(file);
+      if (sec >= 178 && sec <= 182) {
+        durations[entry.id][lang] = sec;
+        continue;
+      }
+      const rate = (sec / TARGET_SEC).toFixed(4); // atempo>1 加速变短，<1 放慢变长
+      const tmp = path.join(TMP, `${entry.id}-${lang}-cal.mp3`);
+      execFileSync(
+        'ffmpeg',
+        ['-y', '-loglevel', 'error', '-i', file, '-filter:a', `atempo=${rate}`,
+         '-ar', '24000', '-ac', '1', '-b:a', '64k', tmp],
+        { stdio: 'pipe' },
+      );
+      fs.copyFileSync(tmp, file);
+      const after = probeSeconds(file);
+      durations[entry.id][lang] = after;
+      console.log(`  ↻ 校准 ${entry.id}-${lang}: ${sec}s → ${after}s (atempo=${rate})`);
+    }
+  }
+  fs.writeFileSync(existing, JSON.stringify(durations, null, 2) + '\n', 'utf8');
+
+  const summary = POOL.map((e) => {
+    const d = durations[e.id] || {};
+    const ok = ['zh', 'en'].every((l) => d[l] >= 170 && d[l] <= 190);
+    return `${e.id}  zh=${d.zh}s  en=${d.en}s  ${ok ? 'OK' : '⚠ 超出 3:00±10s'}`;
+  });
+  console.log('\n校准后实测时长：\n  ' + summary.join('\n  '));
+  console.log('实际时长(秒):', JSON.stringify(durations));
   console.log('TMP:', TMP);
 })().catch((err) => {
   console.error('\n合成失败：', err.message);

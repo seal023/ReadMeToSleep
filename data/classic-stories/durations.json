@@ -1,7 +1,22 @@
 {
-  "classic-001": 225,
-  "classic-002": 204,
-  "classic-003": 225,
-  "classic-004": 244,
-  "classic-007": 271
+  "classic-004": {
+    "en": 180,
+    "zh": 181
+  },
+  "classic-001": {
+    "en": 180,
+    "zh": 180
+  },
+  "classic-002": {
+    "en": 180,
+    "zh": 178
+  },
+  "classic-003": {
+    "en": 179,
+    "zh": 180
+  },
+  "classic-007": {
+    "en": 180,
+    "zh": 180
+  }
 }
