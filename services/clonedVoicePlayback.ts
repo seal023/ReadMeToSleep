@@ -16,7 +16,8 @@ import {
  * 接到真实播放上：合成 → 落盘 mp3 → expo-audio 播放。
  *
  * 设计原则：永远不崩。任何一步（合成失败 / 写文件失败 / expo-audio 不可用）都返回
- * false，由上层 playStory() 降级到系统音（expo-speech pitch/rate 微调）。
+ * false，由上层 playStory() 在样本音色之间降级；全部失败则明确报错。
+ * v110：绝不回退系统机器音（expo-speech 已从 App 整体移除）。
  *
  * ⚠️ expo-audio 的播放 API 在本地因 node_modules 未完整安装无法类型校验，
  *    故此处对 createAudioPlayer / player.play 的全部调用都包在 try/catch 中；
@@ -1744,9 +1745,8 @@ export function hasLivePlayer(): boolean {
 
 /**
  * 温和淡出后停止：用于睡眠定时到点。
- * - 克隆声 / 本地录音（expo-audio）支持 setVolume，逐级降到 0 再停，避免突兀；
- * - 系统音（expo-speech）无法中途调音量，这里直接停（sleepTimer 在调用本函数前
- *   已对系统音无淡出需求，停即停）。
+ * 克隆声 / 本地录音 / 预装 MP3 都走 expo-audio，支持 setVolume，逐级降到 0 再停。
+ * v110：系统机器音已整体删除，这里不再需要停 expo-speech。
  */
 export async function fadeOutAndStop(fadeSeconds = 8): Promise<void> {
   if (currentPlayer && typeof currentPlayer.setVolume === 'function') {
@@ -1761,14 +1761,8 @@ export async function fadeOutAndStop(fadeSeconds = 8): Promise<void> {
       /* 忽略淡出异常 */
     }
   }
-  // 无论克隆/本地/系统音，最后统一确保全部停止
+  // 最后统一确保播放器彻底停止（v110：已无系统音这一路）
   stopClonedAudio();
-  try {
-    const { stopSpeech } = await import('./tts');
-    await stopSpeech();
-  } catch {
-    /* 忽略 */
-  }
 }
 
 /**

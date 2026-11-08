@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Racco from '@/components/common/Racco';
@@ -21,7 +22,7 @@ import {
   setFreeCloneStoryId,
   getStory,
 } from '@/services/storage';
-import { prewarmClonedAudio } from '@/services/clonedVoicePlayback';
+import { prewarmClonedAudio, hasAllChunksCached } from '@/services/clonedVoicePlayback';
 import { voiceDisplayName } from '@/services/voiceCatalog';
 
 type PoolItem = { id: string; title: { zh: string; en: string }; duration: number };
@@ -71,21 +72,63 @@ export default function FreeClonePickPage() {
     };
   }, []);
 
+  /**
+   * 「永久本地化」硬校验：把整篇用克隆声合成、落盘到 Library/Documents
+   * （clonedVoicePlayback 的 rms_audio，只有卸载 App 才会消失），再用与播放侧
+   * 完全相同的分片算法确认**每一片都已在本地**。
+   * true = 之后 playClonedAudio 每片命中磁盘缓存，0 次云端合成、0 次扣费、断网可听。
+   * 失败自动重试一次（成功的片会跳过，只补失败片）。
+   */
+  const synthesizeAndVerify = async (text: string, lang: 'zh' | 'en'): Promise<boolean> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await prewarmClonedAudio(text, target, lang);
+        if (hasAllChunksCached(text, target, lang)) return true;
+      } catch {
+        /* 进入下一轮重试 */
+      }
+    }
+    return false;
+  };
+
   const pick = async (id: string) => {
-    if (saving) return;
+    if (saving || !target) return;
+    // v110 范围死锁：只接受 5 篇免费池内的 id（防深链 / 数据篡改 / 旧入口绕过）
+    if (!FREE_OFFLINE_POOL_IDS.includes(id)) return;
     setSaving(true);
-    await setFreeCloneStoryId(id);
-    // 立刻把这篇用克隆声合成并落盘到本地缓存（秒出、零 token），
-    // 满足「声音保存在当地手机、可无限次试听」；失败静默忽略，故事页首次播放仍会合成。
     try {
       const s = await getStory(id);
-      const text = s ? (uiLang === 'en' && s.contentEn ? s.contentEn : s.content) : '';
-      if (text) await prewarmClonedAudio(text, target, uiLang);
-    } catch {
-      /* 预热失败不影响主流程 */
+      const primaryText = s
+        ? uiLang === 'en' && s.contentEn
+          ? s.contentEn
+          : s.content
+        : '';
+      if (!primaryText) {
+        Alert.alert(t('freeClone.synthFailTitle'), t('freeClone.synthFailMsg'));
+        return;
+      }
+      // 必须先确认音频真的存进手机，才算「选过」：没落盘就绝不写 id、绝不进故事页，
+      // 否则第一次收听会临时联网合成，违背「以后无限次听不扣费、不走网络」。
+      const ok = await synthesizeAndVerify(primaryText, uiLang);
+      if (!ok) {
+        Alert.alert(t('freeClone.synthFailTitle'), t('freeClone.synthFailMsg'));
+        return;
+      }
+      // 落盘确认后才写入（本地 + 服务端），一次选定永久锁死、不可更换
+      await setFreeCloneStoryId(id);
+      // 另一界面语言尽力也存一份（不阻塞主流程）：孩子/家长切换语言后通常也能离线听
+      const otherLang: 'zh' | 'en' = uiLang === 'en' ? 'zh' : 'en';
+      const otherText = s
+        ? otherLang === 'en'
+          ? s.contentEn || s.content
+          : s.content
+        : '';
+      if (otherText && otherText !== primaryText) void synthesizeAndVerify(otherText, otherLang);
+      // 带去故事页：该篇为免费克隆专属故事，会自动用克隆声朗读（命中本地缓存，零网络）
+      router.replace(`/story/${id}`);
+    } finally {
+      setSaving(false);
     }
-    // 带去故事页：该篇为免费克隆专属故事，会自动用克隆声朗读
-    router.replace(`/story/${id}`);
   };
 
   const fmtDuration = (sec: number) =>

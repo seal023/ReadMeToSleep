@@ -32,7 +32,7 @@ import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer, playBundledAudio } from '../../services/clonedVoicePlayback';
 import { transcribeAudio } from '../../services/voiceClone';
-import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, type VoiceOption } from '../../services/voiceCatalog';
+import { listAvailableVoices, voiceDisplayName, normalizeVoiceId, PRESET_VOICE_OPTIONS, DEFAULT_VOICE, type VoiceOption } from '../../services/voiceCatalog';
 import { openUpsell } from '../../store/upsellStore';
 import { getStory, saveProgress, getProgress, getParentComment, getVoiceSetting, saveVoiceSetting, getFreeCloneStoryId, getFreeCloneTarget, getChildQAs, saveChildQA, saveChildQuiz, getSleepTimerMinutes, getSleepLockEnabled, getStoryPosition, saveStoryPosition, getStoryPlace, clearStoryPosition, FREE_OFFLINE_POOL_IDS, type StoryPlace, type ParentComment, type ChildQA, type ChildQuiz } from '../../services/storage';
 import { getBundledAudioAssetId, isBundledFreeStory } from '../../services/bundledAudio';
@@ -880,9 +880,10 @@ export default function StoryPlayScreen() {
     listAvailableVoices()
       .then((list) => {
         if (cancelled) return;
-        // v108：免费版只能选系统音 / 自己的克隆声，不能选云端预置 / 会员音色
+        // v110：免费版只能选自己的克隆声（且仅在那 1 篇专属故事上生效），
+        // 不能选云端预置 / 会员音色。「手机系统语音」已整体移除，清单里不再有 system。
         if (!isPremiumUser) {
-          setVoiceOptions(list.filter((o) => o.kind === 'system' || o.kind === 'clone'));
+          setVoiceOptions(list.filter((o) => o.kind === 'clone'));
         } else {
           setVoiceOptions(list);
         }
@@ -933,6 +934,17 @@ export default function StoryPlayScreen() {
   useEffect(() => {
     if (!story || story.audioUri) return;
     if (!storyText) return;
+    /**
+     * v110「零网络」硬闸：免费用户听 5 篇预装 MP3 时，绝不能发任何云端 TTS 请求。
+     * 它们点播放会直接读随包资源（见 handlePlay 的 bundled 分支），预热纯属浪费 token，
+     * 而且合成中的音频正是「开局双声叠加」的旧根因。
+     * 唯一例外是「免费克隆专属篇」—— 它要用克隆声，必须提前合成落盘。
+     */
+    const mustUseBundledOffline =
+      !isPremiumUser &&
+      FREE_OFFLINE_POOL_IDS.includes(story.id) &&
+      freeCloneStoryId !== story.id;
+    if (mustUseBundledOffline) return;
     let cancelled = false;
     (async () => {
       // 已克隆且当前故事允许用克隆声 → 预热克隆声；否则（未克隆 / 或免费用户在其余故事上）
@@ -953,7 +965,9 @@ export default function StoryPlayScreen() {
     return () => {
       cancelled = true;
     };
-  }, [story?.id, selectedVoice, displayLang]);
+  // isPremiumUser / freeCloneStoryId 首帧是异步读回的，必须列入依赖：
+  // 否则会员首帧会被误判成免费而永久跳过预热（点播放要干等合成）。
+  }, [story?.id, selectedVoice, displayLang, isPremiumUser, freeCloneStoryId]);
 
   /**
    * 听完一个故事：记入已听列表 + 刷新连续天数（需求 5）。
@@ -1235,21 +1249,24 @@ export default function StoryPlayScreen() {
     if (!focusedRef.current) return;
     const voice = voiceOverride ?? selectedVoice;
     playingVoiceRef.current = voice; // 记录本轮实际声线，供换声时判「真的没变化」
-    // 免费用户的克隆声只能讲「那一篇专属故事」；其余故事即便全局默认是克隆声也退回系统音，
-    // 不让播放被卡死（pickVoice 已经显式拦截过主动选择，这里兜住「全局默认=克隆声」的情况）
+    /**
+     * v110「免费克隆声范围死锁」：克隆声只允许出现在那 1 篇专属故事上。
+     * 其余故事一律不把 clone target 交给播放层 —— 免费池由下面的随包 MP3 分支接管，
+     * 池外则在函数顶部已经弹付费墙并 return。绝不再退回 'system'（机器音已整体删除）。
+     */
     const cloneAllowedHere =
       isPremiumUser || (freeCloneStoryId && story?.id === freeCloneStoryId);
     const voiceKind = voiceOptions.find((o) => o.id === voice)?.kind;
+    const mustUseBundledOffline =
+      !isPremiumUser &&
+      FREE_OFFLINE_POOL_IDS.includes(story.id) &&
+      story.id !== freeCloneStoryId;
     let effectiveVoice: string = voice;
-    if (voiceKind === 'clone' && !cloneAllowedHere) effectiveVoice = 'system';
-    /**
-     * v107 成本红线（模块二）：免费用户听「5 篇免费池」时强制用手机自带语音。
-     * 那 5 篇的正文本来就打包在 App 里，再配上 expo-speech（本地合成），
-     * 就真的做到「打开即播、断网能听、零网络请求、零 TTS 费用」；
-     * 会员不受影响，仍用云端音色（大姐姐 / 克隆声）。
-     */
-    if (!isPremiumUser && FREE_OFFLINE_POOL_IDS.includes(story.id) && story.id !== freeCloneStoryId) effectiveVoice = 'system';
-    // v102 诊断：音色路由结果——用于真机验收「克隆声绝不串到普通故事 / 免费池死绑系统音」。
+    if (voiceKind === 'clone' && !cloneAllowedHere) effectiveVoice = DEFAULT_VOICE;
+    // 免费池普通篇：无论全局默认是什么声线，都强制交给随包 MP3 分支（零网络）。
+    // 这里给确定值只是防御「bundled 分支因数据异常没接住」时不会把克隆声传下去。
+    if (mustUseBundledOffline) effectiveVoice = DEFAULT_VOICE;
+    // v102 诊断：音色路由结果——用于真机验收「克隆声绝不串到池外 / 免费池死绑预装 MP3」。
     // 若 effective 出现 'mom'/'dad' 等克隆目标却 story 不是专属故事，即为串台 bug。
     console.log('[voice-route]', JSON.stringify({
       story: story.id,
@@ -1313,12 +1330,12 @@ export default function StoryPlayScreen() {
          * ------------------------------------------------------------------
          * 下面两道 v102「最强守卫」依赖 didFinishNaturally() / didPlayThisSession()，
          * 而这两个标志**只由 clonedVoicePlayback（expo-audio 播放器）维护**。
-         * 免费池 5 篇（以及任何降级到系统音的故事）走的是 expo-speech，
-         * 完全不经过那个引擎 —— 于是 Speech.onDone 这个「真的讲完了」的可信信号
-         * 到这里被守卫②无条件吞掉，phase 永远是 playing，礼花自然永远不触发。
+         * 当时免费池 5 篇走 expo-speech，完全不经过那个引擎 —— 于是 onDone 这个
+         * 「真的讲完了」的可信信号被守卫②无条件吞掉，phase 永远是 playing，礼花永不触发。
          *
-         * expo-speech 的 onDone 本身就是讲完才回调，只需保留「最小时长」防启动期
-         * 假回调，不该套用云端播放器那套位置/出声判据。这里单独分流。
+         * v110：机器音已整体移除，免费 5 篇改播随包 MP3（同样走 expo-audio、会打
+         * 自然结束标记）。这段「非播放器路径」分流作为防御保留：任何拿不到播放器
+         * 状态的结束信号，只要过了 2.5s 最小时长就一律放行 → 保证礼花 100% 触发。
          */
         if (!clonedPlayingRef.current) {
           if (Date.now() - playingSinceRef.current < 2500) return;
@@ -1425,8 +1442,8 @@ export default function StoryPlayScreen() {
           }
           return;
         }
-        // 系统音（TTS）：拿不到真实播放位置，只靠引擎 onDone + 最小时长保护。
-        // TTS 的 onDone 在讲完后才回调，本就可靠；加 playedMs < 2500 防启动期假信号。
+        // 非播放器路径（v110 起仅作防御）：拿不到真实播放位置，只靠 onDone + 最小时长保护。
+        // onDone 在讲完后才回调，本就可靠；加 playedMs < 2500 防启动期假信号。
         if (playedMs < 2500) return;
         endFiredRef.current = true;
         handleStoryEnded();
@@ -1435,24 +1452,35 @@ export default function StoryPlayScreen() {
       onEndedRef.current = onEnded;
 
       /**
-       * v109 出海免费版：5 篇高亮故事改播「随包预装 MP3」（Cherry 大姐姐音色）。
+       * v110 出海免费版：5 篇高亮故事「100% 读随包预装 MP3」（Cherry 大姐姐音色）。
        * ------------------------------------------------------------------
-       * 彻底不走 expo-speech / 云端 TTS：零网络请求、不扣 AI 次数、断网能听、
-       * 音色固定为预装的大姐姐，免费用户点换声只会被 voiceLocked 挡住。
+       * 零网络请求、不扣 AI 次数、断网 / 飞行模式能听、音色固定为预装大姐姐，
+       * 免费用户点换声只会被 voiceLocked 挡住。
+       * 加载失败自动重试一次，仍失败则明确报错 —— **绝不回退机器音或云端 TTS**。
        *
        * 两个例外保留原有链路：
        *   · 会员：仍可自由选大姐姐 / 克隆声（付费权益不受影响）；
        *   · 免费克隆专属篇：保留「克隆一次声音讲一篇」这个已上线的核心权益。
        */
       const bundledAssetId = getBundledAudioAssetId(story.id, displayLang);
-      const isFreeClonePick = !isPremiumUser && freeCloneStoryId === story.id;
-      if (bundledAssetId && !story.audioUri && !isPremiumUser && !isFreeClonePick) {
-        const ok = await playBundledAudio(bundledAssetId, onEnded);
+      if (mustUseBundledOffline && !story.audioUri) {
+        // 资源缺失属于打包事故，也必须明确报错，绝不能落到下面的云端合成分支。
+        if (!bundledAssetId) {
+          setIsPlaying(false);
+          setPreparing(false);
+          Alert.alert(t('story.audioFailTitle'), t('story.audioFailMsg'));
+          return;
+        }
+        let ok = await playBundledAudio(bundledAssetId, onEnded);
+        if (!ok && token === playTokenRef.current) {
+          // 首次加载失败（资源初次解压 / 音频会话未就绪很常见）：自动重试一次
+          ok = await playBundledAudio(bundledAssetId, onEnded);
+        }
         if (token !== playTokenRef.current) return;
         if (!ok) {
           setIsPlaying(false);
           setPreparing(false);
-          Alert.alert(t('story.clipFailTitle'), t('story.clipFailMsg'));
+          Alert.alert(t('story.audioFailTitle'), t('story.audioFailMsg'));
           return;
         }
         // 与克隆声共用全局 player：真实进度条、拖动快进、播完检测都能用
@@ -1508,6 +1536,16 @@ export default function StoryPlayScreen() {
         isStillWanted: () => token === playTokenRef.current && focusedRef.current,
       });
       if (token !== playTokenRef.current) return;
+      // v110：机器音已整体删除，playStory 返回 false 只可能是「被取代」或「云端全失败」。
+      // 两种情况都必须立刻收尾，绝不能让「估算进度条」空转几十秒后假跳到「讲完啦」。
+      if (!used) {
+        // 已被更新的请求取代：静默让路，不补发声音、也不弹错
+        if (getLastPlayedVoice() === 'aborted') return;
+        setIsPlaying(false);
+        setPreparing(false);
+        Alert.alert(t('story.audioFailTitle'), t('story.audioFailMsg'));
+        return;
+      }
       setUsingClonedVoice(used);
       clonedPlayingRef.current = used;
       /**

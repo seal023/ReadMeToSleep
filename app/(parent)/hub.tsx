@@ -10,9 +10,11 @@ import { getForceFreeOverride, setForceFreeOverride } from '../../services/iap';
 
 /**
  * 测试开关：把账号在「会员 / 免费」之间切换，用于验收「新人登录后的免费体验」。
- * ⚠️ 上架前把它改成 false（或直接删掉对应卡片），避免审核看到测试字样。
+ * ⚠️ v110 已置为 false：家长中心不再出现测试卡片，避免审核看到测试字样。
+ *    同时 services/iap.ts 的 ENABLE_FORCE_FREE_TEST_OVERRIDE 也已置 false，
+ *    让「强制免费」覆盖彻底失效并清掉设备上残留的旧值（否则隐藏了 UI 却仍是免费态）。
  */
-const SHOW_PREMIUM_TEST_SWITCH = true;
+const SHOW_PREMIUM_TEST_SWITCH = false;
 
 /** 关于卡用：便于家长在真机上确认装的是哪一个包 */
 const APP_VERSION: string = (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';

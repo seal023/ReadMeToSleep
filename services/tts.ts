@@ -1,57 +1,44 @@
-import * as Speech from 'expo-speech';
 import { setAudioModeAsync } from 'expo-audio';
+
+/**
+ * 音频会话管理（v110：系统机器音已彻底废弃）
+ * ---------------------------------------------------------------------------
+ * ⚠️ 本文件**不再包含任何 expo-speech / AVSpeechSynthesizer 调用**。
+ *
+ * 产品决策（build 110）：儿童场景不接受机器音。5 篇免费故事已随包预装
+ * Cherry（大姐姐）高质量 MP3，其余故事与提示音一律走云端音色 / 克隆声 +
+ * 本地磁盘缓存。此前 PlayStory / speakWithBestVoice 末尾的「系统音兜底」
+ * 正是「开局机器音 + 大姐姐音双声叠加」的温床，已全部删除：
+ *   · 音频不可用时明确报错或静默收尾，绝不回退手机自带语音；
+ *   · 云端合成期间由 playback.ts 的 audioEpoch 统一仲裁，同一时刻
+ *     只允许一个音频实例存在。
+ *
+ * 这里只保留「让 iOS 在静音键开启时也能出声」的会话配置，expo-audio 播放
+ * 与提示音都依赖它。
+ */
 
 export interface Voice {
   id: string;
   name: string;
 }
 
+/** 兼容旧引用的展示用列表（已不含「手机系统语音」选项） */
 export const VOICES: Voice[] = [
-  { id: 'system', name: '系统默认' },
-  { id: 'mom', name: '妈妈' },
-  { id: 'dad', name: '爸爸' },
-  { id: 'grandma', name: '外婆' },
+  { id: 'preset:cherry', name: '大姐姐' },
 ];
-
-const VOICE_PARAMS: Record<string, { rate: number; pitch: number }> = {
-  system: { rate: 0.9, pitch: 1.0 },
-  mom: { rate: 0.85, pitch: 1.15 },
-  dad: { rate: 0.8, pitch: 0.85 },
-  grandma: { rate: 0.75, pitch: 0.9 },
-};
 
 /**
  * 把音频会话切到 playback 模式（允许在静音键开启时出声）。
- * expo-speech 底层是 AVSpeechSynthesizer，默认会被 iOS 静音/响铃开关静音，
- * 不先设置这一步，用户开静音时点播放会"没有语音"。
  *
- * ⚠️ 每次说话前都要重设，不能只做一次（2026-11-01 修复）
- *   原先用 audioModeReady 标记「设过一次就不再设」，但 iOS 会在以下时机
- *   自行把 AVAudioSession 置回未激活 / 换掉类别：
- *     · 锁屏或切到后台（App 失去前台音频权）
- *     · 录音（allowsRecording:true）结束后没切回来
- *     · 来电、蓝牙耳机插拔等路由变化
- *   一旦会话被系统收回，之后再 speak 就是「静默失败」——表现正是用户反馈的
- *   「听故事一半锁屏，回来以后很多提示音都没了」。这里改为每次都重设，
- *   一次原生调用只有几毫秒，比"没声音"划算得多。
+ * ⚠️ 每次说话前都要重设，不能只做一次（2026-11-01 修复）：
+ *   锁屏 / 切后台 / 录音结束 / 来电 / 蓝牙切换都会让 iOS 自行收回或改掉
+ *   AVAudioSession 类别，一旦会话被收回，之后再播就是「静默失败」。
+ *   这里每次都重设，一次原生调用只有几毫秒，比「没声音」划算得多。
  */
 let lastModeAt = 0;
 
-/**
- * v109 音频仲裁 · expo-speech 这一路的「在途请求代号」。
- * ---------------------------------------------------------------------------
- * build 107 反馈 #2「开局机器音 + 大姐姐音同时响」的一半根因：
- * `Speech.stop()` 只能停掉**已经在念**的那句；而 textToSpeech 是 async，
- * `await ensureAudioMode()` / `await Speech.stop()` 期间若别处调了 stopSpeech()，
- * 这条旧请求醒来后仍会照常 `Speech.speak()` —— 于是被"停掉"的声音又冒出来，
- * 与新发起的一路叠在一起。
- * 每次新请求取一个代号，stopSpeech() 让代号失效；所有 await 边界都复核，
- * 失效就静默放弃，绝不再出声。
- */
-let speechGen = 0;
-
 export async function ensureAudioMode(): Promise<void> {
-  // 1.5 秒内重复说话不重复设置（避免一句话里多次调用），但绝不"一辈子只设一次"
+  // 1.5 秒内重复说话不重复设置（避免一句话里多次调用），但绝不「一辈子只设一次」
   if (Date.now() - lastModeAt < 1500) return;
   try {
     /**
@@ -59,110 +46,16 @@ export async function ensureAudioMode(): Promise<void> {
      * 提问环节为了录音会把会话切成 playAndRecord，录音停止后若只设置
      * playsInSilentMode，会话仍停在 playAndRecord —— 此时播放会走「听筒」
      * 而不是扬声器，听感就是「AI 回答没有语音 / 声音小得像没响」。
-     * 这里每次说话前都把录音态关掉，保证一定从扬声器出来。
      */
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
     lastModeAt = Date.now();
   } catch (err) {
     lastModeAt = 0;
-    console.warn('[tts] setAudioModeAsync failed:', err);
+    console.warn('[audio] setAudioModeAsync failed:', err);
   }
 }
 
 /** 供 App 回到前台时调用：清掉时间戳，强制下一次说话重设会话 */
 export function invalidateAudioMode(): void {
   lastModeAt = 0;
-}
-
-/** 仅在真正的 Web 环境（存在 speechSynthesis）走浏览器 TTS，RN 一律走 expo-speech */
-function isWebSpeech(): boolean {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window && !!window.speechSynthesis;
-}
-
-export async function textToSpeech(
-  text: string,
-  voiceId?: string,
-  language: 'zh' | 'en' = 'zh',
-  onDone?: () => void,
-  /** 真正开始出声时回调（用于让界面文字与语音同时出现，避免"字先出、声后到"的时差） */
-  onStart?: () => void,
-): Promise<string> {
-  const params = VOICE_PARAMS[voiceId || 'system'] || VOICE_PARAMS.system;
-  const lang = language === 'en' ? 'en-US' : 'zh-CN';
-  // 取号：此后任何更新的请求 / stopSpeech() 都会让本次作废
-  const gen = ++speechGen;
-
-  await ensureAudioMode();
-  if (gen !== speechGen) return '';
-
-  if (isWebSpeech()) {
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
-      utterance.rate = params.rate;
-      utterance.pitch = params.pitch;
-      utterance.onstart = () => onStart?.();
-      utterance.onend = () => onDone?.();
-
-      const voices = window.speechSynthesis.getVoices();
-      const matched = voices.find(v => v.lang.startsWith(language === 'en' ? 'en' : 'zh'));
-      if (matched) {
-        utterance.voice = matched;
-      }
-
-      window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.warn('[tts] web speech failed:', err);
-    }
-  } else {
-    try {
-      await Speech.stop();
-      // stop 期间可能已被更新的请求取代：此刻必须再复核一次，否则旧句会重新冒出来
-      if (gen !== speechGen) return '';
-      await Speech.speak(text, {
-        language: lang,
-        rate: params.rate,
-        pitch: params.pitch,
-        onStart: () => onStart?.(),
-        onDone: () => onDone?.(),
-      });
-    } catch (err) {
-      console.warn('[tts] expo-speech failed:', err);
-    }
-  }
-  return '';
-}
-
-export async function stopSpeech(): Promise<void> {
-  // 同步作废所有还在 await 中的 speak 请求（必须放在最前面，不能等原生 stop 返回）
-  speechGen += 1;
-  if (isWebSpeech()) {
-    try {
-      window.speechSynthesis.cancel();
-    } catch {
-      /* noop */
-    }
-  } else {
-    try {
-      await Speech.stop();
-    } catch {
-      /* noop */
-    }
-  }
-}
-
-export async function isSpeakingAsync(): Promise<boolean> {
-  if (isWebSpeech()) {
-    try {
-      return window.speechSynthesis.speaking;
-    } catch {
-      return false;
-    }
-  }
-  try {
-    return await Speech.isSpeakingAsync();
-  } catch {
-    return false;
-  }
 }

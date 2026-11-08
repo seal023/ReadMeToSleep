@@ -685,11 +685,19 @@ export async function setFreeCloneUsed(used: boolean, target?: string): Promise<
   }
 }
 
-/** 免费用户克隆声专属的「唯一 1 篇」短故事 id（为空 = 还没选） */
+/**
+ * 免费用户克隆声专属的「唯一 1 篇」故事 id（为空 = 还没选）。
+ *
+ * v110 范围死锁：读回时也校验必须属于 5 篇免费池。服务端若是旧版本写入的
+ * 池外 id / 脏数据，一律不认并清掉本地副本 —— 否则克隆声会被放行到池外故事，
+ * 违背「免费克隆声绝对不允许合成 5 篇之外」的产品红线。
+ */
 export async function getFreeCloneStoryId(): Promise<string> {
+  const isInPool = (id: string) => !!id && FREE_OFFLINE_POOL_IDS.includes(id);
   try {
     const rights = await getServerRights();
     if (rights?.freeCloneStoryId) {
+      if (!isInPool(rights.freeCloneStoryId)) return '';
       try {
         await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, rights.freeCloneStoryId);
       } catch {
@@ -701,13 +709,24 @@ export async function getFreeCloneStoryId(): Promise<string> {
     /* 服务端不可用：退回本地 */
   }
   try {
-    return (await AsyncStorage.getItem(KEYS.FREE_CLONE_STORY_ID)) || '';
+    const local = (await AsyncStorage.getItem(KEYS.FREE_CLONE_STORY_ID)) || '';
+    if (!isInPool(local)) {
+      // 池外值（旧数据 / 越权写入）就地清掉，绝不留作后门
+      if (local) await AsyncStorage.removeItem(KEYS.FREE_CLONE_STORY_ID);
+      return '';
+    }
+    return local;
   } catch {
     return '';
   }
 }
 
+/** 写入免费克隆专属故事：只允许 5 篇免费池内的 id（v110 范围死锁，最底层防线） */
 export async function setFreeCloneStoryId(id: string): Promise<void> {
+  if (id && !FREE_OFFLINE_POOL_IDS.includes(id)) {
+    console.warn('[storage] 拒绝写入池外的免费克隆故事 id:', id);
+    return;
+  }
   try {
     if (id) {
       await AsyncStorage.setItem(KEYS.FREE_CLONE_STORY_ID, id);

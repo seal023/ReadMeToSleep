@@ -50,7 +50,10 @@ export const PRESET_VOICE_OPTIONS: VoiceOption[] = [
   { id: 'preset:nini', kind: 'preset', nameZh: '邻家姐姐', nameEn: 'Friendly sister', emoji: '🌻' },
 ];
 
-/** 手机自带语音：离线可用，机械感较重，作为可选/兜底 */
+/**
+ * 手机自带语音 —— v110 已废弃，不再出现在任何可选清单里。
+ * 仅保留常量供 voiceDisplayName 兼容老设置值；绝不会再被调用来发声。
+ */
 export const SYSTEM_VOICE_OPTION: VoiceOption = {
   id: 'system',
   kind: 'system',
@@ -76,7 +79,9 @@ const CLONE_META_ORDER = ['mom', 'dad', 'grandma'];
 export function normalizeVoiceId(id: string | undefined | null): string {
   const v = (id || '').trim();
   if (!v) return DEFAULT_VOICE;
-  if (v === 'system') return 'system';
+  // v110：老版本可能把 'system'（手机机器音）存进设置。该声线已整体删除，
+  // 这里就地迁移成默认大姐姐，避免老用户升级后「选了声音却没声音」。
+  if (v === 'system') return DEFAULT_VOICE;
   if (v.startsWith('preset:')) return v;
   return v; // 克隆音色（mom/dad/grandma/custom:xxx）原样返回
 }
@@ -149,7 +154,8 @@ export async function listAvailableVoices(): Promise<VoiceOption[]> {
     return { id, kind: 'clone', nameZh: label, nameEn: label, emoji: '🧑' };
   });
 
-  return [...PRESET_VOICE_OPTIONS, SYSTEM_VOICE_OPTION, ...cloned];
+  // v110：不再追加 SYSTEM_VOICE_OPTION —— 机器音已从 App 整体移除。
+  return [...PRESET_VOICE_OPTIONS, ...cloned];
 }
 
 /* -------------------------------------------------------------------------- */

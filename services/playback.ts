@@ -1,4 +1,3 @@
-import { textToSpeech, stopSpeech } from './tts';
 import {
   playClonedAudio,
   stopClonedAudio,
@@ -14,21 +13,22 @@ import { pickPhrase, type PhraseCategory } from './phraseBank';
 import type { CloneTarget } from './voiceClone';
 
 /**
- * 统一播放入口（v81 重构：提示音与故事朗读彻底分开）
+ * 统一播放入口（v110：彻底废弃系统机器音）
  * ---------------------------------------------------------------------------
- * 语义从此变得「选项即结果」，不再有隐藏的声线映射：
- *   'system'      → 手机自带离线语音（expo-speech）
+ * 语义仍然是「选项即结果」，但**没有任何机器音兜底**：
  *   'preset:xxx'  → 云端内置样本音色（中英文一致，无机器味）
  *   'mom'/'dad'…  → 家长克隆的真人音色
+ *   免费 5 篇     → 由 story 页直接读随包 MP3（本文件都不进来）
  *
- * 云端合成失败 / 未克隆时，按「换内置样本 → 落系统语音」两级兜底，
- * 保证任何情况下都有声音（离线也能讲）。
+ * 云端合成失败 / 未克隆时，只在样本音色之间降级（换回默认大姐姐）；
+ * 全部失败就明确返回 false + 标记 unavailable，由调用方报错重试。
+ * ⚠️ 绝不再调用 expo-speech：那是「开局机器音 + 大姐姐音双声叠加」的温床，
+ *    儿童场景也不需要机械嗓音。
  */
 
 /** 某个声线在云端不可用时的兜底链（供预热与播放共用） */
 function voiceCandidates(voiceId: string | undefined): string[] {
   const id = normalizeVoiceId(voiceId);
-  if (id === 'system') return []; // 系统语音不需要云端，直接本地合成
   const list = [id];
   if (id !== DEFAULT_VOICE) list.push(DEFAULT_VOICE); // 兜底换回默认样本音色
   return list;
@@ -125,10 +125,11 @@ export async function playStory(
   const myEpoch = audioEpoch;
   const wanted = () => myEpoch === audioEpoch && (stillWanted ? stillWanted() : true);
 
-  // 起播前把旧的播放器 / 系统语音彻底销毁（stop & release）。
+  // 起播前把旧的播放器彻底销毁（stop & release）。
   // 只停「已经在响」的不够：旧 player 若没被 remove，新 player 建起来就是两个实例并存。
+  // v110：系统机器音已整体移除，这里不再需要停 expo-speech；
+  // 仍在云端合成中的旧请求由 audioEpoch 在 await 边界静默作废。
   stopClonedAudio();
-  void stopSpeech();
 
   /**
    * v102 成本核验：整篇（含每一片）都已落盘时，本次播放的每一片都会命中本地文件，
@@ -143,7 +144,10 @@ export async function playStory(
   }
 
   for (const target of voiceCandidates(voiceId)) {
-    if (!wanted()) return false;
+    if (!wanted()) {
+      lastPlayedVoice = 'aborted';
+      return false;
+    }
     const ok = await playClonedAudio(
       text,
       target as CloneTarget,
@@ -162,25 +166,27 @@ export async function playStory(
       return true;
     }
   }
-  // 云端全不可用（离线 / 未授权 / 未克隆）：用手机自带语音讲，保证一定有声音
-  // 但「已经离开页面 / 已被更新的播放取代」时不兜底 —— 否则旧请求会用系统音补一句，
-  // 与正在响的新声音叠成双声（v109 反馈 #2）
-  if (!wanted()) return false;
-  lastPlayedVoice = 'system';
-  storyPlaying = true;
-  textToSpeech(text, 'system', language, onDone);
+  // v110：云端全部不可用（离线 / 未授权 / 未克隆）时**绝不回退系统机器音**。
+  // 明确标记 unavailable，由 story 页弹错误并停止播放态（不让估算进度条空转几十秒）。
+  // 「已被更新的播放取代」的请求则静默放弃，不报错、不发声。
+  if (!wanted()) {
+    lastPlayedVoice = 'aborted';
+    return false;
+  }
+  lastPlayedVoice = 'unavailable';
+  storyPlaying = false;
+  console.warn('[playback] 云端音频不可用：已按产品决策不回退系统机器音');
   return false;
 }
 
-/** 停止一切播放（云端音频 + 系统音），并作废所有还在合成/起播中的在途请求 */
+/** 停止一切播放，并作废所有还在合成/起播中的在途请求（v110：已无系统音这一路） */
 export function stopStory(): void {
-  // 必须先推进代号：stopSpeech()/stopClonedAudio() 内部若是 async，
-  // 在途请求可能在它们返回前就醒来，晚了就拦不住了。
+  // 必须先推进代号：stopClonedAudio() 内部若是 async，
+  // 在途请求可能在它返回前就醒来，晚了就拦不住了。
   audioEpoch += 1;
   storyPlaying = false;
   // 彻底销毁旧播放器实例（hardStopPlayer 内部 pause + remove 各自 try）
   stopClonedAudio();
-  stopSpeech();
 }
 
 /**
@@ -200,7 +206,7 @@ export function cancelSpeaking(): void {
 }
 
 /**
- * 用「当前最好的声音」说一句话（克隆声优先，失败/未克隆降级系统音）。
+ * 用「当前最好的声音」说一句话（内置样本 / 克隆声，v110 起无机器音兜底）。
  * 用于把克隆声贯穿全 App（每日问候、问答提示/反馈、AI 回答等）。
  *
  * 行为：
@@ -220,7 +226,8 @@ export function cancelSpeaking(): void {
  *   新声立刻响」，解决多个提示音叠加/串台的问题；
  * - 并发安全：云端合成期间若来了更新的请求，旧的那次合成完会放弃播放，不覆盖新声；
  * - 同一文本 + 同一音色只合成一次并落盘缓存：命中后秒出、零重复 token；
- * - 云端不可用（离线 / 未授权 / 未克隆）时逐级降级，最终一定落到手机自带语音，保证有声音。
+ * - 云端不可用（离线 / 未授权 / 未克隆）时静默收尾：绝不回退手机自带机器音（双声根因），
+ *   但 onStart/onDone 仍会触发，界面流程不会卡死。
  *
  * @param opts.urgent    （已废弃）保留仅为兼容旧调用点，不再影响行为。
  * @param opts.interrupt false=不打断上一段（极少用）；默认 true
@@ -236,13 +243,27 @@ export interface SpeakOptions {
   /** 本句播放结束时回调（克隆声 onEnded / 系统音 onDone 触发），用于"播完再进入下一环节" */
   onDone?: () => void;
   /**
-   * 只用「已落盘的」克隆音频：缓存没命中就立刻用系统音说，不在现场发起网络合成。
-   * 用于锁屏/切后台的告别语等「必须马上出声」的场景（后台网络会被 iOS 降速，等它就会慢十几秒）。
+   * 只用「已落盘的」克隆音频：不在现场发起网络合成。
+   * v110：缓存没命中就静默收尾（不再用系统机器音补一句），
+   * 用于锁屏/切后台的告别语等「必须马上结束」的场景。
    */
   cacheOnly?: boolean;
   /** 快速起播：跳过音频会话配置的等待，进一步压缩起播延迟（配合 cacheOnly 使用） */
   fast?: boolean;
 }
+
+/**
+ * v110 机器音兜底移除后的「静默收尾」。
+ * 不发出任何声音，但仍触发 onStart / onDone，让那些「播完这句再做下一步」的
+ * 交互（问答、告别、鼓励）不会因为无声而卡死。绝不调用 expo-speech。
+ */
+function silentSettle(opts: SpeakOptions): void {
+  setTimeout(() => {
+    opts.onStart?.();
+    opts.onDone?.();
+  }, 0);
+}
+
 export async function speakWithBestVoice(
   text: string,
   language: 'zh' | 'en' = 'zh',
@@ -272,7 +293,7 @@ export async function speakWithBestVoice(
   const target = normalizeVoiceId(voice);
 
   // 快通道（锁屏告别等）：只认本地已缓存的音频，不做任何存储查询 / 网络合成。
-  // 未命中就当场用系统音（本地合成，几乎瞬时），保证「再见了 xxx」不再等十几秒。
+  // v110：未命中就静默收尾，不再用系统机器音补一句（保证即刻结束、且不会双声）。
   if (opts.cacheOnly) {
     if (target !== 'system') {
       try {
@@ -287,12 +308,13 @@ export async function speakWithBestVoice(
         );
         if (ok) return true;
       } catch {
-        /* 继续降级系统音 */
+        /* 该候选不可用，继续静默收尾 */
       }
     }
     // 同样要校验：这期间可能已经有更新的请求（比如锁屏告别）抢走了播报权
     if (!stillCurrent()) return false;
-    textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
+    // v110：缓存未命中 → 静默收尾，绝不用系统机器音补一句（双声叠加的旧根因）
+    silentSettle(opts);
     return false;
   }
 
@@ -316,15 +338,15 @@ export async function speakWithBestVoice(
         if (ok) return true;
         // 关键修复（#4/#5）：若本请求已被更新的旁白请求取代（abortCheck 失败），
         // 则本句必须「静默放弃」——由取代它的新请求负责出声。
-        // 否则旧的这请求会落到下面的 textToSpeech 用系统女声补一句，
-        // 与正在响的克隆声叠加成「双声 / 几个声音同时出来」（首题长延迟、好几个语音挨个或同时出）。
+        // 否则旧的这请求会继续走完流程、再补发一次声音，与正在响的克隆声
+        // 叠加成「双声 / 几个声音同时出来」（首题长延迟、好几个语音挨个或同时出）。
         if (!stillCurrent()) return false;
       }
     } catch {
       /* 该候选不可用，继续下一个 */
     }
   }
-  // ★ 只有「最新一次」请求才有资格落回系统音。
+  // ★ 只有「最新一次」请求才有资格收尾。
   //
   // 这里原先没有这道校验，是「锁屏时听到『晚上好』和『再见』同时响」的根因：
   //   speak('hello') 进来时 mySeq=1，随后 await getVoiceSetting / hasClonedVoice
@@ -333,7 +355,10 @@ export async function speakWithBestVoice(
   //   它并不知道自己已经被取代，于是又用系统音补喊了一句「晚上好」——两句话叠在一起。
   // 加这道守卫后，被取代的请求到此为止，静默退出。
   if (!stillCurrent()) return false;
-  textToSpeech(content, 'system', language, () => opts.onDone?.(), () => opts.onStart?.());
+  // v110：云端候选全部不可用时静默收尾，绝不回退 expo-speech 机器音。
+  // onStart/onDone 仍会触发，保证界面流程不卡死。
+  console.warn('[playback] 提示音云端不可用：静默收尾（不回退机器音）');
+  silentSettle(opts);
   return false;
 }
 
@@ -371,7 +396,9 @@ export async function prewarmSpeech(text: string, language: 'zh' | 'en' = 'zh'):
     voice = undefined;
   }
   const target = normalizeVoiceId(voice);
-  if (target === 'system') return; // 系统音是本地合成，不需要预热
+  // v110：normalizeVoiceId 会把历史遗留的 'system' 迁移成默认大姐姐，
+  // 这里保留防御判断，避免任何老设置值触发已删除的机器音链路。
+  if (target === 'system') return;
   const t2 = presetTargetFor(target);
   if (!t2) return;
   try {
