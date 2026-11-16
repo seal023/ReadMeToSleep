@@ -33,6 +33,8 @@ import {
 import * as Linking from 'expo-linking';
 import { isAuthConfigured } from '@/services/supabase';
 import { clearEntitlement } from '@/services/iap';
+import { clearAccountScopedData } from '@/services/storage';
+import { clearAllClonedAudioCache } from '@/services/clonedVoicePlayback';
 
 export interface AuthContextValue {
   /** 账号服务是否已配置（构建时注入了 Supabase 变量） */
@@ -161,7 +163,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
+    // 1) 服务端：SECURITY DEFINER 的 delete_me() 删库 + supabase.auth.signOut()
     await deleteAccountAsync();
+    // 2) 本地：清会员权益（与 signOut 对齐，避免同机换号白用会员）
+    await clearEntitlement();
+    // 3) 本地：清账号身份/免费克隆资格等跟账号走的数据
+    await clearAccountScopedData();
+    // 4) 本地：清克隆声音缓存文件（父母/至亲声音，隐私敏感，账号删除后不留本机）
+    clearAllClonedAudioCache();
+    // 5) 客户端登出会话
     setSession(null);
   }, []);
 

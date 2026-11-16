@@ -798,6 +798,30 @@ export function clearClonedCacheForTarget(target: CloneTarget): void {
   }
 }
 
+/**
+ * 注销账号时调用：清空「所有」克隆声音缓存文件（Apple 5.1.1(v) 隐私要求）。
+ * ---------------------------------------------------------------------------
+ * 克隆声音是隐私敏感数据（父母/至亲的声音样本合成结果），账号删除后本机不该
+ * 继续留着。只删 `rms_clone_` 前缀的音频缓存；孩子自己录的故事在另一个目录
+ * （document/recordings/*.m4a），不受影响。
+ */
+export function clearAllClonedAudioCache(): void {
+  try {
+    const entries = audioDir().list();
+    for (const entry of entries) {
+      if (entry instanceof File && entry.name.startsWith('rms_clone_')) {
+        try {
+          entry.delete();
+        } catch {
+          /* 单个删除失败忽略 */
+        }
+      }
+    }
+  } catch {
+    /* 缓存目录不存在等异常，忽略 */
+  }
+}
+
 /** 起播一个已落盘的音频文件，并装上播完检测 */
 async function startPlayback(
   uri: string,

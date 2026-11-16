@@ -30,8 +30,19 @@ export default function AiCheckScreen() {
   }, []);
 
   useEffect(() => {
-    run();
+    // 生产包不跑诊断、不展示 Key/baseUrl/workspaceId（审核视角属信息泄露 / 调试残留）
+    if (__DEV__) run();
   }, [run]);
+
+  if (!__DEV__) {
+    return (
+      <CartoonScreen gradient="day" decor>
+        <View style={styles.container}>
+          <Text style={styles.desc}>{t('aicheck.subtitle')}</Text>
+        </View>
+      </CartoonScreen>
+    );
+  }
 
   const verdict = result?.verdict ?? 'unknown';
   const tone =

@@ -16,6 +16,7 @@ import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/th
 import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/hooks/useLanguage';
+import { lockParent } from '@/services/parentGate';
 import { getAccountNickname, setAccountNickname } from '@/services/storage';
 
 export default function AccountScreen() {
@@ -79,8 +80,15 @@ export default function AccountScreen() {
             setBusy(true);
             try {
               await deleteAccount();
-              Alert.alert(t('account.deleted'), t('account.deletedMsg'));
-              router.back();
+              // 注销成功后：家长门上锁 + 直接回首屏（此时账号页已是「未登录」态，
+              // router.back() 只会退到上一页家长页，体验不对）。
+              lockParent();
+              Alert.alert(t('account.deleted'), t('account.deletedMsg'), [
+                {
+                  text: t('common.ok'),
+                  onPress: () => router.replace('/(tabs)'),
+                },
+              ]);
             } catch (err) {
               Alert.alert(t('account.deleteFail'), (err as Error)?.message || t('sub.alert.retry'));
             } finally {

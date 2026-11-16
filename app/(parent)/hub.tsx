@@ -7,6 +7,7 @@ import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getForceFreeOverride, setForceFreeOverride } from '../../services/iap';
+import { lockParent } from '../../services/parentGate';
 
 /**
  * 测试开关：把账号在「会员 / 免费」之间切换，用于验收「新人登录后的免费体验」。
@@ -82,15 +83,18 @@ export default function ParentHub() {
     // 配色页在根级路由（孩子端设置页也能直接进），这里只是同一个页面的家长入口
     { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },
     { icon: '💌', title: t('parentHub.card.comments.title'), desc: t('parentHub.card.comments.desc'), href: '/(parent)/parent-comments' },
-    { icon: '🔍', title: t('parentHub.card.aiCheck.title'), desc: t('parentHub.card.aiCheck.desc'), href: '/(parent)/ai-check' },
     /**
-     * 奖励页是开发自测用的临时入口。
-     * 审核视角：「🧪 测试」这类字样会被认定成未完成功能 / Beta 特性（2.3.1），
-     * 而且它里面还有硬编码中文按钮，英文界面下很突兀 —— 生产包里直接不出现。
+     * AI 连接自检：仅开发环境显示。
+     * 它会展示 Key 前缀/长度、baseUrl、workspaceId —— 生产包里绝不能出现，
+     * 否则审核可据此判定信息泄露 / 未完成调试功能（2.3.1 / 5.x）。
      */
     ...(__DEV__
-      ? [{ icon: '🧪', title: t('parentHub.card.testing.title'), desc: t('parentHub.card.testing.desc'), href: '/(parent)/reward-test' }]
+      ? [{ icon: '🔍', title: t('parentHub.card.aiCheck.title'), desc: t('parentHub.card.aiCheck.desc'), href: '/(parent)/ai-check' }]
       : []),
+    /**
+     * reward-test 自测路由已从上架版本移除（_layout 不再注册），入口一并删除。
+     * 「🧪 测试」字样会被认定成未完成功能 / Beta 特性（2.3.1）。
+     */
     // 测试：会员/免费态切换（验收「新人登录后的免费体验」用，上架前 SHOW_PREMIUM_TEST_SWITCH 置 false）
     ...(SHOW_PREMIUM_TEST_SWITCH
       ? [{
@@ -122,7 +126,11 @@ export default function ParentHub() {
            * 于是每次退出家长模式都退回到输密码界面。现在直接 replace 回孩子端，
            * 家长相关的页面整体出栈；右滑返回同理（栈里只剩孩子端）。
            */
-          onPress: () => router.replace('/(tabs)'),
+          onPress: () => {
+            // 退出家长区立即上锁：下次进家长页必须重新过 PIN（Kids Category 家长门闭环）
+            lockParent();
+            router.replace('/(tabs)');
+          },
         },
       ]);
     }},

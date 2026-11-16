@@ -362,9 +362,15 @@ export default function SubscriptionPage() {
         ) : (
           <Text style={styles.buyBtnText}>
             {isSubscribed ? t('sub.changePlan') : t('sub.startSub')}
+            {' · '}
+            {priceOf(selected)} / {selected === 'yearly' ? t('sub.perYear') : t('sub.perMonth')}
           </Text>
         )}
       </TouchableOpacity>
+      {/* Apple 3.1.2：购买按钮旁必须直接露出价格与周期，不能只藏在方案卡里 */}
+      <Text style={styles.buyPriceNote}>
+        {t('sub.buyNote').replace('{price}', priceOf(selected)).replace('{period}', selected === 'yearly' ? t('sub.perYear') : t('sub.perMonth'))}
+      </Text>
 
       {/* 恢复 / 管理 */}
       <View style={styles.linkRow}>
@@ -521,7 +527,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnDisabled: { opacity: 0.6 },
-  buyBtnText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+  buyBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  buyPriceNote: {
+    fontSize: 12,
+    color: '#8A7A6E',
+    textAlign: 'center',
+    marginTop: 8,
+    fontFamily: FONT.rounded,
+  },
   linkRow: {
     flexDirection: 'row',
     justifyContent: 'center',

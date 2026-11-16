@@ -792,3 +792,30 @@ export async function setFreeCloneTarget(target: string): Promise<void> {
     /* 忽略 */
   }
 }
+
+/**
+ * 注销账号时清空「与该账号身份/权益绑定」的本地数据（Apple 5.1.1(v)）。
+ * ---------------------------------------------------------------------------
+ * 必须清掉，否则同一台设备换号登录会串数据 / 白嫖权益：
+ *  · ACCOUNT_NICKNAME         账号显示名
+ *  · FREE_CLONE_USED/STORY_ID/TARGET  免费用户的 1 次克隆资格与专属篇（权益跟账号走）
+ *
+ * 刻意「保留」的设备级偏好（不是账号数据，清了会伤本机体验）：
+ *  · PARENT_PIN（家长自己设的密码）、CHILD_NAME（孩子昵称）
+ *  · STORIES/PROGRESS/STORY_POSITIONS（本地故事与听故事进度）
+ *  · VOICE/PROMPT_VOICE、睡眠定时等偏好
+ * 会员权益 rms_entitlement 由 services/iap.clearEntitlement() 单独清；
+ * 克隆声音缓存文件由 services/clonedVoicePlayback.clearAllClonedAudioCache() 单独清。
+ */
+export async function clearAccountScopedData(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([
+      KEYS.ACCOUNT_NICKNAME,
+      KEYS.FREE_CLONE_USED,
+      KEYS.FREE_CLONE_STORY_ID,
+      KEYS.FREE_CLONE_TARGET,
+    ]);
+  } catch {
+    /* 忽略：清理失败不阻断注销主流程 */
+  }
+}

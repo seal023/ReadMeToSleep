@@ -6,8 +6,20 @@ import {
 import { router } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { getParentPin, saveParentPin, isParentSetup } from '@/services/storage';
+import { markParentVerified, takePendingParentTarget } from '@/services/parentGate';
 import { useLanguage } from '@/hooks/useLanguage';
 import { COLORS, FONT } from '@/constants/theme';
+
+/**
+ * PIN 验证成功后统一进入家长区：
+ *  1. markParentVerified() 打开家长门会话（否则会被 _layout 守卫又弹回来）；
+ *  2. 若之前有被拦截的目标路由（如孩子误点的订阅页），跳回那里；否则进 hub。
+ */
+function enterParentArea() {
+  markParentVerified();
+  const target = takePendingParentTarget();
+  router.replace((target as any) || '/(parent)/hub');
+}
 
 // 家长模式沿用全局 3D 粘土风吉祥物（原 raccoon-parent.png 已并入 assets/clay）
 
@@ -67,7 +79,7 @@ export default function ParentIndex() {
     await saveParentPin(digits1);
     // 用 replace：把「密码门」从栈里换掉，之后从家长中心退出/右滑返回会直接回到孩子端，
     // 而不是又落回这个密码页（v94 反馈 #2）
-    router.replace('/(parent)/hub');
+    enterParentArea();
   };
 
   // ---- Unlock flow ----
@@ -104,7 +116,7 @@ export default function ParentIndex() {
         return;
       }
       // 同上：replace 掉密码门，家长模式里再返回时直接回孩子端（v94 反馈 #2）
-      router.replace('/(parent)/hub');
+      enterParentArea();
     } catch {
       Alert.alert(t('parentPin.wrongTitle'), t('parentPin.verifyFail'));
     }
