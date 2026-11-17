@@ -34,7 +34,7 @@ export default function ParentLayout() {
     if (pathname === GATE_PATH) return; // PIN 门本身放行
     if (!isParentVerified()) {
       setPendingParentTarget(pathname);
-      router.replace('/(parent)/index');
+      router.replace('/(parent)');
     }
   }, [pathname]);
 
@@ -48,7 +48,7 @@ export default function ParentLayout() {
         const current = pathRef.current;
         if (current !== GATE_PATH && !isParentVerified()) {
           setPendingParentTarget(current);
-          router.replace('/(parent)/index');
+          router.replace('/(parent)');
         }
       }
     });

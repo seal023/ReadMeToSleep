@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   Modal,
   TextInput,
+  Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
@@ -17,12 +18,14 @@ import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
-import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getProgress, getPromptVoiceSetting, CLASSIC_EN_IDS } from '../../services/storage';
+import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getStory, getProgress, getPromptVoiceSetting, getVoiceSetting, CLASSIC_EN_IDS, FREE_OFFLINE_POOL_IDS } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { getClonedTargets } from '../../services/voiceClone';
 import { useEntitlement } from '../../hooks/useEntitlement';
-import { speakWithBestVoice, isStoryPlaying, isStoryResumePending } from '../../services/playback';
-import { checkStoryGate, checkCheckInGate } from '../../services/entitlement';
+import { speakWithBestVoice, playStory, stopStory, isStoryPlaying, isStoryResumePending } from '../../services/playback';
+import { isBundledFreeStory, getBundledAudioAssetId } from '../../services/bundledAudio';
+import { playBundledAudio } from '../../services/clonedVoicePlayback';
+import { checkStoryGate, checkCheckInGate, getSnapshot } from '../../services/entitlement';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 import type { RaccoState } from '../../types';
 
@@ -164,24 +167,42 @@ export default function HomeTab() {
     setRaccoState(next);
   };
 
-  // 语音推荐开关：沿用设置页原来的「语音引导」开关（那个提问卡片已删除）
-  useEffect(() => {
-    let mounted = true;
-    getVoiceGuidance().then((on) => {
-      if (mounted) setVoiceRecOn(on);
-    });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // 语音推荐开关：沿用设置页原来的「语音引导」开关（那个提问卡片已删除）。
+  // 必须每次聚焦都重读：tabs 是缓存的，用户在设置页打开开关后切回首页，mount 时的
+  // useEffect 不会再跑，导致开关状态一直是旧值 → 语音介绍永远不触发（v116 反馈 #4）。
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getVoiceGuidance().then((on) => {
+        if (alive) setVoiceRecOn(on);
+      });
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
 
-  // 每次进入首页随机挑一篇（不与上次重复）；英文界面只在有英文正文的故事里挑
+  // 每次进入首页随机挑一篇（不与上次重复）；英文界面只在有英文正文的故事里挑。
+  // v116+：今日推荐按会员身份分池——免费用户只能从 5 篇免费池挑（保证点开就能免费听，
+  // 不会推荐到付费故事被门禁拦）；会员则放开到全部 100 篇经典故事集随机挑。
+  // 这里实时读一次会员态（而非用首页缓存的 snapshot）：tabs 是缓存的，购买会员后
+  // 回首页 snapshot 可能还是旧的，实时读能保证「刚买完会员就看到全量池推荐」立刻生效。
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       (async () => {
         const all = storiesIndex as ClassicIndexItem[];
-        const pool = all.filter((s) => language !== 'en' || CLASSIC_EN_IDS.has(s.id));
+        // 实时读会员态：免费限定 5 篇免费池；会员放开到全部故事集
+        let premium = false;
+        try {
+          premium = (await getSnapshot()).premium === true;
+        } catch {
+          /* 读不到按免费处理，最保守 */
+        }
+        const source = premium
+          ? all
+          : all.filter((s) => FREE_OFFLINE_POOL_IDS.includes(s.id));
+        const pool = source.filter((s) => language !== 'en' || CLASSIC_EN_IDS.has(s.id));
         if (!pool.length) return;
         let last = '';
         try {
@@ -217,30 +238,80 @@ export default function HomeTab() {
     }, [language])
   );
 
-  /** 推荐语（手动点 🔊 与自动播报共用同一句，保证命中同一份缓存） */
-  const recSpeech = useCallback(() => {
-    if (!rec) return '';
-    return tRef.current('home.recVoice').replace('{title}', rec.title);
-  }, [rec]);
+  /** 喇叭是否在播这篇推荐故事（用于图标在 🔊 / ⏸ 间切换） */
+  const [recPlaying, setRecPlaying] = useState(false);
 
-  const speakRec = useCallback(() => {
-    const text = recSpeech();
-    if (text) void speakWithBestVoice(text, language);
-  }, [recSpeech, language]);
+  /**
+   * 喇叭：不进故事页、就地播放/停止今日推荐故事（v116 反馈 #5）。
+   * 免费池的 5 篇用随包 MP3（零成本、断网可听）；其余故事走云端 TTS 朗读正文。
+   * 再点一次即 stopStory() 停止，图标切回 🔊。
+   */
+  const toggleRecPlay = useCallback(async () => {
+    if (!rec) return;
+    if (recPlaying) {
+      stopStory();
+      setRecPlaying(false);
+      return;
+    }
+    const finish = () => setRecPlaying(false);
+    try {
+      if (isBundledFreeStory(rec.id)) {
+        const assetId = getBundledAudioAssetId(rec.id, language);
+        if (assetId) {
+          setRecPlaying(true);
+          await playBundledAudio(assetId, finish);
+          return;
+        }
+      }
+      const story = await getStory(rec.id);
+      if (!story) return;
+      const text = language === 'en' ? (story.contentEn || story.content) : story.content;
+      const voiceId = await getVoiceSetting();
+      setRecPlaying(true);
+      await playStory(text, voiceId, language, finish);
+    } catch {
+      setRecPlaying(false);
+    }
+  }, [rec, recPlaying, language]);
 
-  // 开关打开时，冷启动进入首页会把今天的推荐念给孩子听（不识字也能知道推荐了哪篇）。
-  // 4.5 秒后才出声，等每日问候先说完；若孩子已经点开故事，则直接跳过，绝不打断。
-  // 只在「本次启动的第一次」念，之后回首页换成新一篇也不再念叨，避免每回一次就吵一次。
-  const recAnnouncedRef = useRef(false);
+  // 离开首页/切走时把喇叭图标复位（声音会被全局的「换界面就闭嘴」停掉）
+  useFocusEffect(
+    useCallback(() => {
+      return () => { setRecPlaying(false); };
+    }, [])
+  );
+
+  // 开关打开时，进入首页会把今天的推荐念给孩子听（不识字也能知道推荐了哪篇）。
+  // 修复要点（v116 反馈 #4）：
+  //  1. 按 rec.id 去重，而不是「本次启动只念一次」的一次性布尔——换了一篇新推荐就能再念；
+  //  2. 若此刻每日问候/故事正在播，绝不把「已念」标记置真，而是隔几秒重试，
+  //     避免「正好撞上问候被跳过，然后这次会话再也不念」的死局；
+  //  3. 每次只念一次，重试有上限，绝不无限打扰。
+  const recAnnouncedIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!voiceRecOn || !rec || recAnnouncedRef.current) return;
-    const timer = setTimeout(() => {
-      recAnnouncedRef.current = true;
-      if (isStoryPlaying() || isStoryResumePending()) return;
+    if (!voiceRecOn || !rec || recAnnouncedIdRef.current === rec.id) return;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let tries = 0;
+    const speak = () => {
+      if (cancelled) return;
+      // 每日问候 / 故事还在播：等 2.5 秒重试，最多 3 次（≈7.5 秒），不打断、不遗失
+      if (isStoryPlaying() || isStoryResumePending()) {
+        if (++tries <= 3) {
+          retryTimer = setTimeout(speak, 2500);
+        }
+        return;
+      }
+      recAnnouncedIdRef.current = rec.id; // 真正要念了才标记，避免被跳过后永不再念
       const text = tRef.current('home.recVoice').replace('{title}', rec.title);
       void speakWithBestVoice(text, language);
-    }, 4500);
-    return () => clearTimeout(timer);
+    };
+    const timer = setTimeout(speak, 4500); // 先等每日问候说完
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [voiceRecOn, rec, language]);
 
   // 声音克隆是产品灵魂，首页常驻入口（不再因「已克隆 / 点过稍后」而消失）。
@@ -406,34 +477,39 @@ export default function HomeTab() {
         现在只留这一张：每次进首页从 100 篇公版故事里随机挑一篇，点开直接听。
       */}
       {rec && (
-        <TouchableOpacity
-          style={styles.recCard}
-          activeOpacity={0.85}
-          onPress={() => router.push(`/story/${rec.id}`)}
-        >
-          <View style={styles.recCover}>
-            <Text style={styles.recCoverEmoji}>{rec.emoji}</Text>
-          </View>
-          <View style={styles.recInfo}>
-            <Text style={styles.recKicker}>✨ {t('home.recTitle')}</Text>
-            <Text style={styles.recTitle} numberOfLines={1}>
-              {rec.title}
-            </Text>
-            <Text style={styles.recMeta} numberOfLines={1}>
-              {rec.tag ? `${rec.tag} · ` : ''}
-              {t('home.recMinutes').replace('{n}', String(rec.minutes))}
-            </Text>
-          </View>
-          <TouchableOpacity
+        <View style={styles.recCard}>
+          {/* 整卡点击进故事：用 Pressable 铺满整卡，文字/封面区域都可点。
+              喇叭独立叠在最上层、只响应自己的点击（v116 反馈 #5）。 */}
+          <Pressable
+            style={styles.recCardHit}
+            onPress={() => router.push(`/story/${rec.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel={rec.title}
+          >
+            <View style={styles.recCover}>
+              <Text style={styles.recCoverEmoji}>{rec.emoji}</Text>
+            </View>
+            <View style={styles.recInfo}>
+              <Text style={styles.recKicker}>✨ {t('home.recTitle')}</Text>
+              <Text style={styles.recTitle} numberOfLines={1}>
+                {rec.title}
+              </Text>
+              <Text style={styles.recMeta} numberOfLines={1}>
+                {rec.tag ? `${rec.tag} · ` : ''}
+                {t('home.recMinutes').replace('{n}', String(rec.minutes))}
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
             style={styles.recSpeakBtn}
-            onPress={speakRec}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={toggleRecPlay}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"
             accessibilityLabel={t('home.recSpeak')}
           >
-            <Text style={styles.recSpeakEmoji}>🔊</Text>
-          </TouchableOpacity>
-        </TouchableOpacity>
+            <Text style={styles.recSpeakEmoji}>{recPlaying ? '⏸️' : '🔊'}</Text>
+          </Pressable>
+        </View>
       )}
 
       {/* 需求 5：等级与奖励进度 */}
@@ -648,6 +724,14 @@ const styles = StyleSheet.create({
     padding: 14,
     boxShadow: '0 3px 10px rgba(214, 150, 80, 0.18)',
     elevation: 3,
+    position: 'relative',
+  },
+  /** 整卡可点的透明热区（铺满卡片，喇叭再叠在它上面） */
+  recCardHit: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 48, // 给右侧喇叭留出独立点击空间，避免抢事件
   },
   recCover: {
     width: 64,
@@ -683,8 +767,11 @@ const styles = StyleSheet.create({
     color: '#8A7767',
   },
   recSpeakBtn: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+    bottom: 14,
     width: 46,
-    height: 46,
     borderRadius: 23,
     backgroundColor: '#FFE0B2',
     alignItems: 'center',

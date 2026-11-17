@@ -2470,12 +2470,17 @@ export default function StoryPlayScreen() {
           </ScrollView>
         )}
 
+        {/* v116 反馈 #2：进度条本体只有 8pt，手指点不中、拖不动。
+            外层加一个大触摸热区（约 34pt），PanResponder 绑在热区上，
+            locationX 与 barLayout 都量热区宽度，比例换算保持一致。 */}
         <View
-          style={[styles.progressBar, isLandscape && styles.progressBarL]}
+          style={styles.progressBarTouch}
           onLayout={(e) => { barLayout.current.width = e.nativeEvent.layout.width; }}
           {...progressPan.panHandlers}
         >
-          <View style={{ ...styles.progressFill, width: progressWidth }} />
+          <View style={[styles.progressBar, isLandscape && styles.progressBarL]}>
+            <View style={{ ...styles.progressFill, width: progressWidth }} />
+          </View>
         </View>
         {seekToast ? <Text style={styles.seekToast}>{seekToast}</Text> : null}
 
@@ -2726,7 +2731,7 @@ export default function StoryPlayScreen() {
           <Text style={styles.sleepDesc}>{t('sleep.locked.desc')}</Text>
           <Text style={styles.sleepStars}>⭐ ✨ 🌟 ✨ ⭐</Text>
           {sleepLocked ? (
-            <TouchableOpacity style={styles.sleepBtn} onPress={() => router.push('/(parent)/index')}>
+            <TouchableOpacity style={styles.sleepBtn} onPress={() => router.push('/(parent)')}>
               <Text style={styles.sleepBtnText}>{t('sleep.locked.unlock')}</Text>
             </TouchableOpacity>
           ) : (
@@ -3074,7 +3079,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   lockedUnlockText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, marginTop: 12, overflow: 'hidden' },
+  progressBarTouch: { paddingVertical: 13, marginTop: 0, justifyContent: 'center' },
+  progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#F7A072', borderRadius: 4 },
   // 播放页呼吸光晕（背景，盖在内容之下）
   glow: {
@@ -3229,7 +3235,7 @@ const styles = StyleSheet.create({
   titleL: { fontSize: 17 },
   storyScrollL: { padding: 12, borderRadius: 14 },
   storyTextL: { fontSize: 21, lineHeight: 34, maxWidth: 1000 },
-  progressBarL: { height: 6, marginTop: 4 },
+  progressBarL: { height: 6 },
   waveWrapCompact: { height: 22, marginTop: 2, gap: 4 },
   waveBarCompact: { width: 5, height: 18 },
   controlsL: { marginTop: 6, gap: 22 },
