@@ -35,10 +35,24 @@ export default function SettingsScreen() {
   const [raccoHappy, setRaccoHappy] = useState(false);
   const raccoTapIdx = useRef(0);
   const raccoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 记录当前气泡显示的是哪一句的 key：切换语言时据此用新语言重算，不存死文本 */
+  const raccoLineKey = useRef<string | null>(null);
+
+  /**
+   * 切换界面语言后，气泡里那句「已经点出来过的话」不会自己变（state 存的是旧语言文本）。
+   * 这里在 language 变化时用当前 key 重新 t() 一次，气泡立刻跟着换语言，
+   * 不用等孩子再点几次小浣熊。（v115 反馈 #1）
+   */
+  useEffect(() => {
+    if (raccoLineKey.current) setRaccoLine(t(raccoLineKey.current));
+    // intent: 只在语言变化时重算；t 会随语言 provider 更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
 
   const tapRacco = () => {
     const key = RACCO_REPLIES[raccoTapIdx.current % RACCO_REPLIES.length];
     raccoTapIdx.current += 1;
+    raccoLineKey.current = key;
     const line = t(key);
     setRaccoLine(line);
     setRaccoHappy(true);
