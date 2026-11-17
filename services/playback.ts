@@ -3,8 +3,6 @@ import {
   stopClonedAudio,
   hasClonedVoice,
   prewarmClonedAudio,
-  hasAllChunksCached,
-  getSynthCacheStats,
   type ChunkPlace,
 } from './clonedVoicePlayback';
 import { getPromptVoiceSetting } from './storage';
@@ -130,18 +128,6 @@ export async function playStory(
   // v110：系统机器音已整体移除，这里不再需要停 expo-speech；
   // 仍在云端合成中的旧请求由 audioEpoch 在 await 边界静默作废。
   stopClonedAudio();
-
-  /**
-   * v102 成本核验：整篇（含每一片）都已落盘时，本次播放的每一片都会命中本地文件，
-   * 绝不会调用云端 TTS。打一条日志方便在 TestFlight 里确认「再次播放零扣费」。
-   */
-  const primary = presetTargetFor(voiceId);
-  if (primary && hasAllChunksCached(text, primary as CloneTarget, language)) {
-    const s = getSynthCacheStats();
-    console.log(
-      `[TTSCache] 全分片命中本地缓存，本次播放 0 次云端合成（累计命中 ${s.cacheHits} / 云端 ${s.networkCalls}）`,
-    );
-  }
 
   for (const target of voiceCandidates(voiceId)) {
     if (!wanted()) {

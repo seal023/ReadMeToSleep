@@ -431,8 +431,6 @@ export async function refreshEntitlement(): Promise<Entitlement | null> {
  * 整个调用不弹任何系统框（getAvailablePurchases 是静默查询），可以放心在登录后自动跑。
  */
 export async function trySilentRestore(): Promise<Entitlement | null> {
-  // 测试开关：强制免费态时不做静默找回，否则一登录又变回会员
-  if (await getForceFreeOverride()) return null;
   if (!(await ensureConnection())) return null;
 
   const current = await loadEntitlement();
@@ -549,65 +547,8 @@ export async function clearEntitlement(): Promise<void> {
   }
 }
 
-/**
- * 测试用：强制免费态（v110 上架构建已整体关闭）。
- * ---------------------------------------------------------------------------
- * 原本用于让沙盒测试账号验收「新人登录后的免费体验」：
- *   · isPremium() 恒为 false（所有免费门禁生效）
- *   · trySilentRestore() 直接跳过（不会一登录又被找回会员）
- *
- * ⚠️ 只把家长中心的卡片藏起来是不够的：开关状态存在 AsyncStorage 里，
- *    测试机上如果还留着 'true'，用户升级后**依然是免费态且无法切回**。
- *    所以这里加全局总闸：关闭时 getForceFreeOverride 恒返回 false、
- *    并顺手清掉设备上残留的旧值；setForceFreeOverride 也变成只清理、不写入。
- */
-const FORCE_FREE_KEY = 'rms_force_free_override';
-/** 全局总闸：false = 测试覆盖彻底失效（上架值） */
-export const ENABLE_FORCE_FREE_TEST_OVERRIDE = false;
-
-let cleanedLegacyOverride = false;
-
-export async function getForceFreeOverride(): Promise<boolean> {
-  if (!ENABLE_FORCE_FREE_TEST_OVERRIDE) {
-    // 只清一次：把测试期间写入的残留值删掉，恢复按真实订阅判定
-    if (!cleanedLegacyOverride) {
-      cleanedLegacyOverride = true;
-      try {
-        await AsyncStorage.removeItem(FORCE_FREE_KEY);
-      } catch {
-        /* 忽略 */
-      }
-    }
-    return false;
-  }
-  try {
-    return (await AsyncStorage.getItem(FORCE_FREE_KEY)) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export async function setForceFreeOverride(on: boolean): Promise<void> {
-  if (!ENABLE_FORCE_FREE_TEST_OVERRIDE) {
-    try {
-      await AsyncStorage.removeItem(FORCE_FREE_KEY);
-    } catch {
-      /* 忽略 */
-    }
-    return;
-  }
-  try {
-    if (on) await AsyncStorage.setItem(FORCE_FREE_KEY, 'true');
-    else await AsyncStorage.removeItem(FORCE_FREE_KEY);
-  } catch (err) {
-    console.warn('[IAP] setForceFreeOverride failed:', err);
-  }
-}
-
 /** 当前是否享有会员权益（本地缓存判定，秒开不阻塞 UI） */
 export async function isPremium(): Promise<boolean> {
-  // 测试开关优先级最高：强制免费态下一切按免费处理
-  if (await getForceFreeOverride()) return false;
   const entitlement = await loadEntitlement();
   return !!entitlement && entitlement.expiryMs > Date.now();
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { router } from 'expo-router';
 import { useWindowDimensions, View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import Constants from 'expo-constants';
@@ -6,16 +6,7 @@ import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { COLORS, FONT } from '../../constants/theme';
 import { useLanguage } from '../../hooks/useLanguage';
-import { getForceFreeOverride, setForceFreeOverride } from '../../services/iap';
 import { lockParent } from '../../services/parentGate';
-
-/**
- * 测试开关：把账号在「会员 / 免费」之间切换，用于验收「新人登录后的免费体验」。
- * ⚠️ v110 已置为 false：家长中心不再出现测试卡片，避免审核看到测试字样。
- *    同时 services/iap.ts 的 ENABLE_FORCE_FREE_TEST_OVERRIDE 也已置 false，
- *    让「强制免费」覆盖彻底失效并清掉设备上残留的旧值（否则隐藏了 UI 却仍是免费态）。
- */
-const SHOW_PREMIUM_TEST_SWITCH = false;
 
 /** 关于卡用：便于家长在真机上确认装的是哪一个包 */
 const APP_VERSION: string = (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';
@@ -36,18 +27,6 @@ const MAX_CONTENT_WIDTH = 1024;
 export default function ParentHub() {
   const { t } = useLanguage();
   const { width, height } = useWindowDimensions();
-
-  // 测试开关当前状态（forceFree=true 表示强制免费态）
-  const [forceFree, setForceFree] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    getForceFreeOverride().then((v) => {
-      if (alive) setForceFree(v);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   /**
    * iPad 是这个 App 的主要设备，横屏是主场景。
@@ -83,38 +62,6 @@ export default function ParentHub() {
     // 配色页在根级路由（孩子端设置页也能直接进），这里只是同一个页面的家长入口
     { icon: '🎨', title: t('parentHub.card.theme.title'), desc: t('parentHub.card.theme.desc'), href: '/theme' },
     { icon: '💌', title: t('parentHub.card.comments.title'), desc: t('parentHub.card.comments.desc'), href: '/(parent)/parent-comments' },
-    /**
-     * AI 连接自检：仅开发环境显示。
-     * 它会展示 Key 前缀/长度、baseUrl、workspaceId —— 生产包里绝不能出现，
-     * 否则审核可据此判定信息泄露 / 未完成调试功能（2.3.1 / 5.x）。
-     */
-    ...(__DEV__
-      ? [{ icon: '🔍', title: t('parentHub.card.aiCheck.title'), desc: t('parentHub.card.aiCheck.desc'), href: '/(parent)/ai-check' }]
-      : []),
-    /**
-     * reward-test 自测路由已从上架版本移除（_layout 不再注册），入口一并删除。
-     * 「🧪 测试」字样会被认定成未完成功能 / Beta 特性（2.3.1）。
-     */
-    // 测试：会员/免费态切换（验收「新人登录后的免费体验」用，上架前 SHOW_PREMIUM_TEST_SWITCH 置 false）
-    ...(SHOW_PREMIUM_TEST_SWITCH
-      ? [{
-          icon: forceFree ? '🆓' : '💎',
-          title: '测试：免费 / 会员态',
-          desc: forceFree ? '当前：强制免费（新人视角）· 点击切回' : '当前：按订阅判定 · 点击切到免费',
-          action: async () => {
-            const next = !forceFree;
-            await setForceFreeOverride(next);
-            setForceFree(next);
-            Alert.alert(
-              next ? '已切换到「强制免费」' : '已恢复按订阅判定',
-              next
-                ? '接下来所有会员功能都按免费拦截：AI 生成 / 旅行打卡 / 录音创作 / 换声全部锁掉，只保留 5 篇经典 + 1 次克隆体验。\n\n回到首页后生效。'
-                : '已关闭强制免费，重新按真实订阅判定（若沙盒有订阅则又是会员）。\n\n回到首页后生效。',
-              [{ text: '回到首页', onPress: () => router.replace('/(tabs)') }],
-            );
-          },
-        }]
-      : []),
     { icon: '🚪', title: t('parentHub.card.exit.title'), desc: t('parentHub.card.exit.desc'), action: () => {
       Alert.alert(t('parentHub.exitTitle'), t('parentHub.exitMsg'), [
         { text: t('common.cancel') },
@@ -134,7 +81,7 @@ export default function ParentHub() {
         },
       ]);
     }},
-  ], [t, forceFree]);
+  ], [t]);
 
   const handleCardPress = (card: CardDef) => {
     if (card.href) {

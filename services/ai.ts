@@ -428,7 +428,6 @@ export async function generateStory(
   const cacheKey = storyCacheKey(params);
   const cached = await getCachedResult(cacheKey);
   if (cached) {
-    console.log('[ai] 命中本地故事缓存，跳过云端生成');
     // origin='cache'：调用方据此**绝不扣次数**（用户只是复用已编好的故事）
     return { ...cached, origin: 'cache' };
   }

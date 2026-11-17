@@ -18,6 +18,7 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { FONT } from '@/constants/theme';
 import type { Story, Language, RaccoState, GenerateStoryParams } from '@/types';
 
 // 出海适配：海外用户到新加坡节点延迟偏高。
@@ -432,7 +433,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 10,
   },
-  input: { flex: 1, fontSize: 15, lineHeight: 20, color: '#3D3229', padding: 0 },
+  /**
+   * placeholder 渲染修复：显式锁定系统字体 + letterSpacing 0。
+   * 之前第一个输入框的英文 placeholder 在某些 iOS/字体环境下被渲染成字距拉宽
+   * （"e.g. a sea voyage" 显示成 "e . g . a   s e a..."），而下面两个却正常。
+   * 根因是 TextInput 未显式指定字体时继承了站酷快乐体（ZCOOLKuaiLe），
+   * 该字体对 ASCII 的字形/字距处理与系统字体不同。这里统一用 FONT.body（PingFang SC），
+   * 保证三个输入框的英文 placeholder 字形、字距完全一致。
+   */
+  input: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#3D3229',
+    padding: 0,
+    fontFamily: FONT.body,
+    letterSpacing: 0,
+  },
   inputMultiline: {
     flex: 1,
     fontSize: 15,
@@ -441,6 +458,8 @@ const styles = StyleSheet.create({
     padding: 0,
     minHeight: 56,
     textAlignVertical: 'top',
+    fontFamily: FONT.body,
+    letterSpacing: 0,
   },
   langRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 12, gap: 10 },
   chip: {

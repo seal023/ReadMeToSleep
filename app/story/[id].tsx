@@ -1266,17 +1266,6 @@ export default function StoryPlayScreen() {
     // 免费池普通篇：无论全局默认是什么声线，都强制交给随包 MP3 分支（零网络）。
     // 这里给确定值只是防御「bundled 分支因数据异常没接住」时不会把克隆声传下去。
     if (mustUseBundledOffline) effectiveVoice = DEFAULT_VOICE;
-    // v102 诊断：音色路由结果——用于真机验收「克隆声绝不串到池外 / 免费池死绑预装 MP3」。
-    // 若 effective 出现 'mom'/'dad' 等克隆目标却 story 不是专属故事，即为串台 bug。
-    console.log('[voice-route]', JSON.stringify({
-      story: story.id,
-      pool: FREE_OFFLINE_POOL_IDS.includes(story.id),
-      premium: isPremiumUser,
-      cloneStory: freeCloneStoryId ?? null,
-      selected: voice,
-      kind: voiceKind ?? '?',
-      effective: effectiveVoice,
-    }));
     // 同步并发保护：合成/预热期间重复点击不再开第二路播放。
     // （v54 现象：点一次没反应又点一次，两路同时朗读、先结束的那路把界面推到「讲完啦」）
     if (startingRef.current && Date.now() - startingAtRef.current < 20000) return;
