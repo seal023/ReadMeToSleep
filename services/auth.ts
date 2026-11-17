@@ -1,39 +1,41 @@
 /**
- * services/auth.ts — 账号：Sign in with Apple + 邮件验证码
+ * services/auth.ts — 账号：本地 Sign in with Apple（去 Supabase 化，v116）
  *
- * 两种方式都落到同一个 Supabase 用户体系（同一个人的 Pro 权益只有一份）：
- *   1) Apple：expo-apple-authentication 拿到 identityToken → supabase.auth.signInWithIdToken
- *      —— 纯原生，不需要跳浏览器，也不会离开 App。
- *   2) 邮件：signInWithOtp 发验证码 → verifyOtp 校验。
- *      这里兼容两种邮件形态，因为 Supabase 免费版可能不允许改邮件模板：
- *        a) 模板已改成 {{ .Token }}  → 邮件里有 6 位数字，用户在本页输入。
- *        b) 模板还是默认的 {{ .ConfirmationURL }} → 邮件里只有一个链接，
- *           用户点它，系统用 readmetosleep:// 深链把 App 拉回来，
- *           由 handleAuthUrl() 从链接里取出 token 建立会话（见该函数）。
- *      两条路最终都落到同一个 Supabase 用户，权益一致。
+ * 2026-11-17：彻底移除 Supabase。原因：Supabase 免费项目长期不活跃被回收，
+ * 域名 NXDOMAIN → 真机登录报「未能找到使用指定主机名的服务器」，全 App 登录瘫痪。
  *
- * 会话持久化由 services/supabase.ts 的 storage: AsyncStorage 负责，
- * 重开 App 自动恢复登录态，不需要重复登录。
+ * 现在的设计：
+ *   · 登录只做「本地身份」——Sign in with Apple 拿到 Apple 的稳定 user id + 邮箱，
+ *     只写到本机 AsyncStorage，不发任何服务器。
+ *   · Pro 权益从来不在账号后端：它是 StoreKit 2 交易 + 本地 AsyncStorage（services/iap.ts），
+ *     换机靠「恢复购买」向 App Store 查账，与登录无关。
+ *   · 账号注销 = 清本机全部账号/权益/克隆音频数据（Apple 5.1.1(v) 依然满足）。
+ *
+ * 会话持久化：本地 AsyncStorage，重开 App 自动恢复，不需要重复登录。
  */
 
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import type { Session, User } from '@supabase/supabase-js';
-import { isAuthConfigured, supabase } from './supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ts } from './i18n';
 
-/** 账号服务未配置时统一抛这个，UI 据此给出准确提示而不是"网络错误" */
-export const AUTH_NOT_CONFIGURED =
-  ts('auth.err.notConfigured');
+const SESSION_KEY = 'rms_local_auth_session';
 
-function client() {
-  if (!supabase || !isAuthConfigured) throw new Error(AUTH_NOT_CONFIGURED);
-  return supabase;
+/** 极简本地用户：Apple 稳定 id + 首次授权返回的邮箱/姓名 */
+export interface User {
+  id: string;
+  email: string | null;
+  fullName: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Apple 登录
-// ---------------------------------------------------------------------------
+export interface Session {
+  user: User;
+}
+
+export interface AppleSignInResult {
+  session: Session | null;
+  user: User | null;
+}
 
 /** 当前设备能否用 Apple 登录（iOS 13+ 且系统支持） */
 export async function isAppleSignInAvailable(): Promise<boolean> {
@@ -45,18 +47,11 @@ export async function isAppleSignInAvailable(): Promise<boolean> {
   }
 }
 
-export interface AppleSignInResult {
-  session: Session | null;
-  user: User | null;
-}
-
 /**
- * 发起 Apple 登录。
+ * 发起 Apple 登录：只取身份存本地，不上传任何服务器。
  * @throws 用户取消时抛出的 Error 带 `userCancelled = true`（调用方应静默处理）
  */
 export async function signInWithApple(): Promise<AppleSignInResult> {
-  const sb = client();
-
   let credential: AppleAuthentication.AppleAuthenticationCredential;
   try {
     credential = await AppleAuthentication.signInAsync({
@@ -76,210 +71,60 @@ export async function signInWithApple(): Promise<AppleSignInResult> {
     throw new Error(ts('auth.err.appleFail'));
   }
 
-  const identityToken = credential.identityToken;
-  if (!identityToken) {
-    throw new Error(ts('auth.err.noToken'));
-  }
+  const id = credential.user;
+  if (!id) throw new Error(ts('auth.err.appleFail'));
 
-  const { data, error } = await sb.auth.signInWithIdToken({
-    provider: 'apple',
-    token: identityToken,
-  });
-  if (error) throw friendlyAuthError(error);
-
-  // Apple 只在「第一次授权」返回姓名，之后都是 null。
-  // 首次拿到就写进用户元数据，后续所有设备都能读到这个名字。
+  // Apple 只在首次授权返回姓名/邮箱（之后可能为 null）——与旧会话合并，避免丢失显示名
   const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
     .filter(Boolean)
     .join(' ')
     .trim();
-  if (fullName) {
-    try {
-      await sb.auth.updateUser({ data: { full_name: fullName } });
-    } catch {
-      /* 写元数据失败不影响登录本身 */
-    }
-  }
-
-  return { session: data.session ?? null, user: data.user ?? null };
-}
-
-// ---------------------------------------------------------------------------
-// 邮件验证码
-// ---------------------------------------------------------------------------
-
-/** 发送 6 位验证码到邮箱（新邮箱自动注册）
- *  redirectTo 用于「邮件模板不可改、只有链接」时的回跳地址（如 readmetosleep://auth-callback）。
- *  该地址必须同时被加入 Supabase 的 Authentication → URL Configuration → Redirect URLs。
- */
-export async function sendEmailCode(email: string, redirectTo?: string): Promise<void> {
-  const sb = client();
-  const clean = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
-    throw new Error(ts('auth.err.emailInvalid'));
-  }
-  const { error } = await sb.auth.signInWithOtp({
-    email: clean,
-    options: {
-      shouldCreateUser: true,
-      ...(redirectTo ? { emailRedirectTo: redirectTo } : {}),
-    },
-  });
-  if (error) throw friendlyAuthError(error);
-}
-
-/** 校验 6 位验证码，成功后即建立会话（首次即注册） */
-export async function verifyEmailCode(
-  email: string,
-  code: string
-): Promise<AppleSignInResult> {
-  const sb = client();
-  const clean = email.trim().toLowerCase();
-  const token = code.replace(/\D/g, '');
-  if (token.length < 6) throw new Error(ts('auth.err.codeShort'));
-
-  const { data, error } = await sb.auth.verifyOtp({
-    email: clean,
-    token,
-    type: 'email',
-  });
-  if (error) throw friendlyAuthError(error);
-  return { session: data.session ?? null, user: data.user ?? null };
-}
-
-// ---------------------------------------------------------------------------
-// 深链回跳登录（邮件模板只有链接时走这条路）
-// ---------------------------------------------------------------------------
-
-/** 从 readmetosleep://auth-callback#access_token=... 这类 URL 里取出参数 */
-function parseUrlParams(url: string): Record<string, string> {
-  const hashIdx = url.indexOf('#');
-  const hash = hashIdx >= 0 ? url.slice(hashIdx + 1) : '';
-  const beforeHash = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
-  const qIdx = beforeHash.indexOf('?');
-  const query = qIdx >= 0 ? beforeHash.slice(qIdx + 1) : '';
-
-  // 优先用 hash（implicit 流把 token 放在 # 后面），再退回 query（PKCE 流放 code）
-  const raw = hash || query;
-  const out: Record<string, string> = {};
-  for (const pair of raw.split('&')) {
-    if (!pair) continue;
-    const eq = pair.indexOf('=');
-    const k = eq >= 0 ? pair.slice(0, eq) : pair;
-    const v = eq >= 0 ? pair.slice(eq + 1) : '';
-    // token 里可能有 %xx，decodeURIComponent 对残缺序列会抛错，这里兜住
-    try {
-      out[decodeURIComponent(k)] = decodeURIComponent(v);
-    } catch {
-      out[k] = v;
-    }
-  }
-  return out;
-}
-
-/**
- * 处理认证回跳 URL，成功则返回会话。
- * 兼容 implicit（#access_token=…&refresh_token=…）与 PKCE（?code=…）两种形态。
- * 不是认证链接时返回 null，调用方不必处理。
- */
-export async function handleAuthUrl(url: string): Promise<Session | null> {
-  const sb = client();
-  const p = parseUrlParams(url);
-
-  if (p.error || p.error_description) {
-    throw new Error(p.error_description || p.error || ts('auth.err.linkExpired'));
-  }
-
-  if (p.access_token && p.refresh_token) {
-    const { data, error } = await sb.auth.setSession({
-      access_token: p.access_token,
-      refresh_token: p.refresh_token,
-    });
-    if (error) throw friendlyAuthError(error);
-    return data.session ?? null;
-  }
-
-  if (p.code) {
-    const { data, error } = await sb.auth.exchangeCodeForSession(p.code);
-    if (error) throw friendlyAuthError(error);
-    return data.session ?? null;
-  }
-
-  return null;
-}
-
-/** 判断一个 URL 是否是登录回跳（供 useAuth 过滤无关深链） */
-export function isAuthCallbackUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  if (!url.startsWith('readmetosleep://')) return false;
-  return /(access_token|refresh_token|code|error_description)=/.test(url);
-}
-
-// ---------------------------------------------------------------------------
-// 会话
-// ---------------------------------------------------------------------------
-
-export async function getSession(): Promise<Session | null> {
-  if (!supabase) return null;
+  const prev = await getSession().catch(() => null);
+  const user: User = {
+    id,
+    email: credential.email || prev?.user?.email || null,
+    fullName: fullName || prev?.user?.fullName || null,
+  };
+  const session: Session = { user };
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session ?? null;
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    /* 写失败不阻塞本次登录态（内存里仍算登录） */
+  }
+  return { session, user };
+}
+
+/** 读本地会话；没有 / 损坏都返回 null */
+export async function getSession(): Promise<Session | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Session;
+    if (parsed?.user?.id) return parsed;
+    return null;
   } catch {
     return null;
   }
 }
 
-export function onAuthStateChange(cb: (session: Session | null) => void) {
-  if (!supabase) return { unsubscribe: () => {} };
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => cb(session));
-  return data.subscription;
-}
-
+/** 退出登录：只清本地会话，不动权益（权益清理由 useAuth.signOut 负责） */
 export async function signOutAsync(): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
-  if (error) throw friendlyAuthError(error);
+  try {
+    await AsyncStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* 忽略 */
+  }
 }
 
 /**
- * 注销账号（Apple 5.1.1(v) 硬性要求：能注册就必须能删除）。
- * 服务端通过 SECURITY DEFINER 的 SQL 函数 delete_me() 以 auth.uid() 删除自己，
- * 客户端拿不到 service_role key，也不需要。
+ * 注销账号（Apple 5.1.1(v)）。
+ * 去后端后「删除账号」= 清本机身份会话；会员权益/账号昵称/免费克隆资格/克隆音频缓存
+ * 由 useAuth.deleteAccount() 统一清理（clearEntitlement / clearAccountScopedData / clearAllClonedAudioCache）。
  */
 export async function deleteAccountAsync(): Promise<void> {
-  const sb = client();
-  const { error } = await sb.rpc('delete_me');
-  if (error) {
-    throw new Error(
-      ts('auth.err.deleteFail')
-    );
+  try {
+    await AsyncStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* 忽略 */
   }
-  await sb.auth.signOut().catch(() => {});
-}
-
-// ---------------------------------------------------------------------------
-// 错误本地化
-// ---------------------------------------------------------------------------
-
-function friendlyAuthError(error: { message?: string; status?: number }): Error {
-  const msg = (error?.message || '').toLowerCase();
-
-  if (msg.includes('provider is not enabled') || msg.includes('unsupported provider')) {
-    return new Error(ts('auth.err.providerOff'));
-  }
-  if (msg.includes('rate limit') || msg.includes('too many')) {
-    return new Error(ts('auth.err.tooFrequent'));
-  }
-  if (msg.includes('expired') || msg.includes('invalid') || msg.includes('token')) {
-    return new Error(ts('auth.err.codeWrong'));
-  }
-  if (msg.includes('signups not allowed') || msg.includes('email not confirmed')) {
-    return new Error(ts('auth.err.emailBlocked'));
-  }
-  if (msg.includes('network') || msg.includes('fetch')) {
-    // 把底层真实原因（如 fetch failed / DNS 解析失败 / Invalid API key）一并返回，
-    // 方便定位：是构建机根本没连上 Supabase 项目，还是 key/项目配错。
-    return new Error(ts('auth.err.network').replace('{detail}', error?.message || 'fetch failed'));
-  }
-  return new Error(`${error?.message || ts('auth.err.generic')}`);
 }

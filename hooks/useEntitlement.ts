@@ -59,17 +59,8 @@ export function useEntitlement(): UseEntitlementResult {
     (gate: GateResult): boolean => {
       if (gate.allowed) return true;
 
-      // v107 防白嫖：AI 生成要求先登录（额度必须落在账号上，否则卸载重装就重置）
-      if (gate.reason === 'login') {
-        openUpsell({
-          title: gate.title,
-          message: gate.message,
-          confirmLabel: ts('gate.goLogin'),
-          cancelLabel: ts('gate.later'),
-          action: 'login',
-        });
-        return false;
-      }
+      // 去 Supabase 化后三个门禁只返回 free / premium，不再有 login 分支
+      //（免费克隆 1 次体验也已改为无需登录，资格存本地 AsyncStorage）。
 
       // 会员今天 3 次已用完：不能再去卖会员，只提示并给「去经典故事库」的出口，
       // 与提示文案「或者去经典故事库听听哦」对应（孩子不识字也能照着点）。

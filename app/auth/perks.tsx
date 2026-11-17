@@ -16,7 +16,6 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
-import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/hooks/useLanguage';
 
@@ -108,9 +107,7 @@ export default function PerksScreen() {
         {/* 为什么要登录 */}
         <View style={styles.whyCard}>
           <Text style={styles.whyTitle}>{t('perks.whyTitle')}</Text>
-          <Text style={styles.whyBody}>
-            {EMAIL_LOGIN_ENABLED ? t('perks.whyBodyEmail') : t('perks.whyBodyApple')}
-          </Text>
+          <Text style={styles.whyBody}>{t('perks.whyBodyApple')}</Text>
         </View>
 
         <View style={styles.cta}>

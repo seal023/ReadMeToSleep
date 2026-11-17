@@ -7,7 +7,7 @@
  * 当前规则（口径 v104，最终确认）：
  *   每日 AI 生成故事   免费 1 次 / 月付会员（$4.99）2 次 / 年付会员（$49.99）3 次，本地 0 点重置
  *   旅行打卡           免费累计 3 次 / 会员无限
- *   声音克隆           会员无限；免费用户登录后仅 1 次体验
+ *   声音克隆           会员无限；免费用户仅 1 次体验（去后端后无需登录）
  *   离线故事池         5 篇经典系统音，所有用户无限免费听（不扣次数、不走云端）
  *
  * ⚠️ 月付 $4.99 的算力成本覆盖不了「每天 3 次」TTS，故月付与年付严格区分上限，
@@ -285,28 +285,12 @@ export async function checkStoryGate(): Promise<GateResult> {
 /**
  * 声音克隆门禁。
  * ---------------------------------------------------------------------------
- * 规则（v104 最终口径）：
- *   · 必须先登录（克隆声线绑定账号；未登录既无法保存/恢复，也违背「付费绑定账号」原则）。
+ * 规则（v116 去后端口径）：
  *   · 会员（月付 / 年付）无限次克隆。
- *   · 免费用户登录后仅 1 次克隆体验；已用过则拦截。
+ *   · 免费用户仅 1 次克隆体验；已用过则拦截。
+ *   · 不再要求登录：账号后端已移除，资格存本地 AsyncStorage，未登录也能用这一次。
  */
 export async function checkVoiceCloneGate(): Promise<GateResult> {
-  // 必须先登录：动态 import 避免与 auth 形成静态依赖环
-  try {
-    const { getSession } = await import('./auth');
-    const session = await getSession();
-    if (!session) {
-      return {
-        allowed: false,
-        title: ts('gate.cloneLoginTitle'),
-        message: ts('gate.cloneLoginMsg'),
-        reason: 'free',
-      };
-    }
-  } catch {
-    // 登录模块不可用时退回会员判断，避免把功能彻底卡死
-  }
-
   const snap = await getSnapshot();
   if (snap.premium) return { allowed: true };
 

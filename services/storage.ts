@@ -638,10 +638,11 @@ export async function clearStoryPosition(storyId: string): Promise<void> {
 
 // ---- 免费用户「1 次克隆体验」状态（会员不走这里，会员克隆不受限） ----
 /**
- * v107 防白嫖：这组状态改为「服务端为准、本地做缓存」。
- * 原先只写 AsyncStorage —— 卸载重装 / 换机就把「1 次免费克隆」重置了。
- * 现在优先读 Supabase 的 user_rights（按 user_id 存），读不到（离线 / 未登录）才用本地。
- * ⚠️ 服务端说「已用过」优先于本地「没用过」：两个方向取「更严格」的那个。
+ * 免费用户「1 次克隆体验」状态（去 Supabase 化后为纯本地）。
+ * 2026-11-17：账号后端已移除，资格只存本机 AsyncStorage。
+ * 下方虽仍调用 serverQuota 的函数，但它们恒返回 null（服务端不可用），
+ * 于是自动走本地读写分支 —— 与 Supabase 失效期间的降级路径完全一致。
+ * 注意：卸载重装会重置这 1 次机会（去后端后已接受此代价）。
  */
 export async function getFreeCloneUsed(): Promise<boolean> {
   const local = await (async () => {

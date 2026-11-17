@@ -3,7 +3,7 @@
  *
  * 家长在这里能看到：当前登录方式、邮箱、会员归属，并且可以退出登录或注销账号。
  * ⚠️ Apple Guideline 5.1.1(v)：App 支持注册账号，就必须提供「删除账号」入口，
- *    否则审核会被拒。删除走服务端的 delete_me() 函数（见 Supabase 配置说明）。
+ *    否则审核会被拒。去后端后删除=清本机身份/权益/免费克隆资格/克隆音频缓存。
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -13,7 +13,6 @@ import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
-import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/hooks/useLanguage';
 import { lockParent } from '@/services/parentGate';
@@ -23,7 +22,6 @@ export default function AccountScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const {
-    configured,
     loading,
     isSignedIn,
     email,
@@ -113,12 +111,6 @@ export default function AccountScreen() {
           <Text style={styles.title}>{t('account.title')}</Text>
         </View>
 
-        {!configured && (
-          <View style={styles.warnCard}>
-            <Text style={styles.warnText}>{t('account.notConfigured')}</Text>
-          </View>
-        )}
-
         {loading ? (
           <ActivityIndicator color={COLORS.purple} style={{ marginTop: SPACING.xl }} />
         ) : isSignedIn ? (
@@ -154,9 +146,7 @@ export default function AccountScreen() {
 
             <View style={styles.tipCard}>
               <Text style={styles.tipTitle}>{t('account.tipTitle')}</Text>
-              <Text style={styles.tipBody}>
-                {EMAIL_LOGIN_ENABLED ? t('account.tipBodyAccount') : t('account.tipBodyApple')}
-              </Text>
+              <Text style={styles.tipBody}>{t('account.tipBodyApple')}</Text>
             </View>
 
             <View style={styles.actions}>
@@ -223,14 +213,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT.rounded,
     marginTop: SPACING.sm,
   },
-
-  warnCard: {
-    backgroundColor: '#FFF3D6',
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  warnText: { fontSize: FONT_SIZE.caption, color: '#8A6A20', lineHeight: 20 },
 
   profileCard: {
     flexDirection: 'row',

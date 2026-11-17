@@ -1,23 +1,20 @@
 /**
- * app/auth/login.tsx — 登录页（当前只暴露 Sign in with Apple）
+ * app/auth/login.tsx — 登录页（去 Supabase 化后只保留 Sign in with Apple）
  *
- * ⚠️ 邮件登录开关：见 constants/featureFlags.ts 的 EMAIL_LOGIN_ENABLED
- *    现在为 false —— 邮箱输入框、发送验证码按钮、验证码输入框、相关提示文案
- *    全部不渲染，页面只剩「通过 Apple 登录」一个大按钮。
- *    底层实现（sendCode / verifyCode / 深链回调）完整保留，把开关改成 true
- *    即可原样恢复，不需要改本文件任何一行 JSX。
+ * 2026-11-17：账号后端移除。邮件验证码登录彻底删除（D1）——
+ * 它原本就因 Supabase 免费邮件限流 2 封/小时、只投递组织成员而完全不可用，
+ * 且深链回跳页 auth-callback 也已一并删除。现在本页只有一个 Apple 登录按钮：
+ * 点一下走系统授权 → Apple 稳定 id + 邮箱只存本机 AsyncStorage，不发任何服务器。
  *
  * 交互原则：这是给「家长」看的页面，允许文字为主，但按钮要大、状态要清楚。
  * 不识字的孩子不该被卡在这里 —— 所以本页只在家长主动点击「开通会员」后才出现。
  *
  * 登录成功后固定 router.back()，回到来源页（订阅页 / 权益说明页）。
- * 不用 replace 是为了不把导航栈搞乱（replace 会替换栈顶，留重复页面）。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -25,60 +22,28 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
-import { CartoonButton, ElasticPressable } from '@/components/ui/CartoonButton';
 import { COLORS, FONT, FONT_SIZE, RADIUS, SHADOW, SPACING } from '@/constants/theme';
-import { EMAIL_LOGIN_ENABLED } from '@/constants/featureFlags';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/hooks/useLanguage';
 
-const RESEND_SECONDS = 60;
 /** Apple 原生登录按钮尺寸：全页唯一主操作，做得足够大、足够圆（胶囊） */
 const APPLE_BTN_HEIGHT = 72;
 const APPLE_BTN_RADIUS = APPLE_BTN_HEIGHT / 2;
 const PRIVACY_URL = 'https://seal023.github.io/ReadMeToSleep/privacy.html';
 const TERMS_URL = 'https://seal023.github.io/ReadMeToSleep/terms.html';
 
-/** 简易邮箱格式校验：决定「发送验证码」按键是否可点（Issue 10 按键变灰） */
-function isValidEmail(s: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
-}
-
 export default function LoginScreen() {
   const router = useRouter();
   const { t } = useLanguage();
-  const { configured, appleAvailable, signInApple, sendCode, verifyCode } = useAuth();
+  const { appleAvailable, signInApple } = useAuth();
 
-  const [step, setStep] = useState<'email' | 'code'>('email');
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(0);
-  const codeInputRef = useRef<TextInput>(null);
-
-  // 重发倒计时
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const timer = setTimeout(() => setCountdown((n) => n - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown]);
-
-  /**
-   * ⚠️ 这里曾经有一段「linkLoginSeq 变化就 router.back()」的逻辑，已删除。
-   *
-   * 两个原因：
-   *   1) 深链到达时 expo-router 会把导航切到 auth-callback 页面，登录页可能仍挂在栈底；
-   *      此时登录页若执行 back()，弹掉的很可能是栈顶的 auth-callback，
-   *      导致它的「登录成功 → 回首页」来不及执行。这是一个竞态，没必要留着。
-   *   2) 深链登录落地页应该只有一个负责人。现在统一由 app/auth-callback.tsx 处理，
-   *      它会明确显示「登录成功 + 账号」，用户不会再误以为点了链接没反应。
-   */
 
   const handleApple = useCallback(async () => {
     setError(null);
@@ -93,48 +58,6 @@ export default function LoginScreen() {
       setBusy(false);
     }
   }, [signInApple, router, t]);
-
-  const handleSendCode = useCallback(async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await sendCode(email);
-      setStep('code');
-      setCountdown(RESEND_SECONDS);
-      setTimeout(() => codeInputRef.current?.focus(), 350);
-    } catch (err) {
-      setError((err as Error).message || t('login.sendFail'));
-    } finally {
-      setBusy(false);
-    }
-  }, [sendCode, email, t]);
-
-  const handleVerify = useCallback(async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await verifyCode(email, code);
-      router.back();
-    } catch (err) {
-      setError((err as Error).message || t('login.loginFail'));
-    } finally {
-      setBusy(false);
-    }
-  }, [verifyCode, email, code, router, t]);
-
-  const handleResend = useCallback(async () => {
-    if (countdown > 0 || busy) return;
-    setError(null);
-    setBusy(true);
-    try {
-      await sendCode(email);
-      setCountdown(RESEND_SECONDS);
-    } catch (err) {
-      setError((err as Error).message || t('login.sendFail'));
-    } finally {
-      setBusy(false);
-    }
-  }, [countdown, busy, sendCode, email, t]);
 
   return (
     <CartoonScreen gradient="candy" decor>
@@ -158,18 +81,10 @@ export default function LoginScreen() {
           </Pressable>
 
           <View style={styles.hero}>
-            {/* 邮箱表单下线后整页只剩一个按钮，插画放大撑住画面重心 */}
-            <Racco state="happy" size={EMAIL_LOGIN_ENABLED ? 76 : 168} />
+            <Racco state="happy" size={168} />
             <Text style={styles.title}>{t('login.title')}</Text>
             <Text style={styles.subtitle}>{t('login.sub')}</Text>
           </View>
-
-          {!configured && (
-            <View style={styles.warnCard}>
-              <Text style={styles.warnTitle}>{t('login.notConfiguredTitle')}</Text>
-              <Text style={styles.warnBody}>{t('login.notConfiguredBody')}</Text>
-            </View>
-          )}
 
           {error && (
             <View style={styles.errorCard}>
@@ -179,11 +94,9 @@ export default function LoginScreen() {
 
           {/* Apple 登录：全页唯一的主操作，做成大胶囊。
               ⚠️ 这里**不能**用 expo-apple-authentication 的原生 AppleAuthenticationButton：
-                 它的按钮文案由 **系统语言** 决定（Apple SDK 内部本地化），
-                 跟 App 内的语言开关无关，于是「英文界面 + 中文系统」就会出现
-                 中文的「通过 Apple 登录」，v77 用户截图反馈的正是这一处。
-                 改为自绘黑色胶囊 + 系统字体里的  字形（U+F8FF，即官方 Apple 标志），
-                 文案走 t()，两种语言都对；视觉上与 Apple 官方黑色按钮一致。 */}
+                 它的按钮文案由 **系统语言** 决定，跟 App 内的语言开关无关，于是会出现
+                 「英文界面 + 中文系统」显示中文按钮的错乱。改为自绘黑色胶囊 +
+                 系统字体里的 Apple 标志字形（U+F8FF），文案走 t()，两种语言都对。 */}
           {appleAvailable ? (
             <View style={styles.appleShadow}>
               <Pressable
@@ -213,105 +126,6 @@ export default function LoginScreen() {
             </View>
           )}
 
-          {/* 邮箱入口与邮箱表单：受 EMAIL_LOGIN_ENABLED 控制，关闭时整段不渲染，
-              实现代码完整保留在下方（改成 true 即恢复，JSX 无需改动） */}
-          {EMAIL_LOGIN_ENABLED && appleAvailable && (
-            <Text style={styles.orText}>{t('login.orEmail')}</Text>
-          )}
-
-          {/*
-            邮箱流程（2026-11-01 起暂时关闭，开关见 constants/featureFlags.ts）
-
-            ⚠️ 关闭的是「入口」，不是「功能」：
-            services/auth.ts 的 sendCode / verifyCode、hooks/useAuth 的深链监听、
-            app/auth-callback.tsx 的落地页全部原样保留。已发出的旧登录邮件点进来
-            依然能登录成功。
-            原因：Supabase 免费版邮件限流 2 封/小时且仅组织成员可收，
-            免费版模板又锁死无法发 6 位码。等 SMTP2GO 接好后把开关改回 true 即恢复。
-          */}
-          {EMAIL_LOGIN_ENABLED && (step === 'email' ? (
-            <View style={styles.form}>
-              <Text style={styles.label}>{t('login.emailLabel')}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="name@example.com"
-                placeholderTextColor={COLORS.textLight}
-                value={email}
-                onChangeText={(v) => {
-                  setEmail(v);
-                  if (error) setError(null);
-                }}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-                editable={!busy}
-                returnKeyType="send"
-                onSubmitEditing={handleSendCode}
-              />
-              <CartoonButton
-                title={busy ? t('login.sending') : t('login.sendCode')}
-                emoji="✉️"
-                full
-                onPress={handleSendCode}
-                disabled={busy || !configured || !isValidEmail(email)}
-              />
-              <Text style={styles.hint}>{t('login.emailHint')}</Text>
-            </View>
-          ) : (
-            <View style={styles.form}>
-              {/* 明确告知「验证码已发送」+ 填写位置（Issue 10） */}
-              <View style={styles.successCard}>
-                <Text style={styles.successTitle}>{t('login.sentTitle')}</Text>
-                <Text style={styles.successText}>{t('login.sentTo')}</Text>
-                <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
-                <Text style={styles.successText}>{t('login.sentBody')}</Text>
-              </View>
-
-              <TextInput
-                ref={codeInputRef}
-                style={styles.codeInput}
-                placeholder="123456"
-                placeholderTextColor={COLORS.textLight}
-                value={code}
-                onChangeText={(v) => {
-                  setCode(v.replace(/\D/g, '').slice(0, 6));
-                  if (error) setError(null);
-                }}
-                keyboardType="number-pad"
-                maxLength={6}
-                editable={!busy}
-                returnKeyType="done"
-                onSubmitEditing={handleVerify}
-              />
-
-              <CartoonButton
-                title={busy ? t('login.loggingIn') : t('login.doLogin')}
-                emoji="🔓"
-                full
-                onPress={handleVerify}
-                disabled={busy || code.length < 6}
-              />
-
-              <Text style={styles.hint}>
-                {t('login.codeHint').replace('{s}', String(RESEND_SECONDS))}
-              </Text>
-
-              <View style={styles.codeActions}>
-                <ElasticPressable onPress={() => setStep('email')} disabled={busy}>
-                  <Text style={styles.linkText}>{t('login.changeEmail')}</Text>
-                </ElasticPressable>
-                <ElasticPressable onPress={handleResend} disabled={countdown > 0 || busy}>
-                  <Text style={[styles.linkText, countdown > 0 && styles.linkDisabled]}>
-                    {countdown > 0
-                      ? t('login.resendIn').replace('{s}', String(countdown))
-                      : t('login.resend')}
-                  </Text>
-                </ElasticPressable>
-              </View>
-            </View>
-          ))}
-
           {busy && <ActivityIndicator style={{ marginTop: SPACING.md }} color={COLORS.purple} />}
 
           {/* 条款 */}
@@ -325,7 +139,7 @@ export default function LoginScreen() {
               <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
                 {' '}{t('login.legalPrivacy')}{' '}
               </Text>
-              {EMAIL_LOGIN_ENABLED ? t('login.legalTailEmail') : t('login.legalTailApple')}
+              {t('login.legalTailApple')}
             </Text>
           </View>
 
@@ -342,7 +156,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: {
     flexGrow: 1,
-    // 邮箱表单下线后内容变短，整块垂直居中，别让按钮浮在半空
     justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xl * 2.2,
@@ -418,77 +231,6 @@ const styles = StyleSheet.create({
   //  U+F8FF：iOS 系统字体里就是 Apple 标志本身，白色
   appleLogo: { fontSize: 30, color: '#FFFFFF' },
   appleLabel: { fontSize: 22, color: '#FFFFFF', fontWeight: '600', letterSpacing: 0.2 },
-  orText: {
-    fontSize: FONT_SIZE.caption,
-    color: COLORS.textSub,
-    textAlign: 'center',
-    marginVertical: SPACING.md,
-  },
-
-  form: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    ...SHADOW.card,
-  },
-  // 验证码已发送的明确提示卡（Issue 10）
-  successCard: {
-    backgroundColor: '#E7F7EC',
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#B7E4C7',
-  },
-  successTitle: { fontSize: FONT_SIZE.body, fontWeight: '800', color: '#1E7A3C', marginBottom: SPACING.xs },
-  successText: { fontSize: FONT_SIZE.caption, color: '#2E7D4F', lineHeight: 20, textAlign: 'center' },
-  successEmail: { fontSize: FONT_SIZE.body, fontWeight: '800', color: '#1E7A3C', marginVertical: SPACING.xs },
-  label: { fontSize: FONT_SIZE.caption, color: COLORS.textSub, marginBottom: SPACING.sm },
-  emailEcho: {
-    fontSize: FONT_SIZE.body,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: SPACING.md,
-  },
-  input: {
-    borderWidth: 2,
-    borderColor: COLORS.divider,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    fontSize: FONT_SIZE.body,
-    color: COLORS.text,
-    backgroundColor: COLORS.cardSoft,
-    marginBottom: SPACING.md,
-  },
-  codeInput: {
-    borderWidth: 2,
-    borderColor: COLORS.purpleLight,
-    borderRadius: RADIUS.md,
-    paddingVertical: 16,
-    fontSize: 30,
-    fontWeight: '800',
-    letterSpacing: 10,
-    textAlign: 'center',
-    color: COLORS.text,
-    backgroundColor: COLORS.cardSoft,
-    marginBottom: SPACING.md,
-  },
-  hint: {
-    fontSize: FONT_SIZE.tiny,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginTop: SPACING.md,
-    lineHeight: 18,
-  },
-  codeActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: SPACING.md,
-  },
-  linkText: { fontSize: FONT_SIZE.caption, color: COLORS.purple, fontWeight: '700' },
-  linkDisabled: { color: COLORS.textLight, fontWeight: '400' },
 
   legal: { marginTop: SPACING.lg },
   legalText: {
