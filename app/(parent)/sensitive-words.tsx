@@ -109,26 +109,44 @@ export default function SensitiveWordsScreen() {
 
         <Text style={styles.sectionTitle}>{t('settings.sensitiveWords.add') || '添加新词'}</Text>
         <View style={styles.addRow}>
-          <TextInput
-            style={styles.input}
-            value={newWord}
-            onChangeText={setNewWord}
-            placeholder={t('settings.sensitiveWords.placeholder') || '输入敏感词'}
-          />
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              value={newWord}
+              onChangeText={setNewWord}
+              placeholder=""
+            />
+            {!newWord && (
+              <View style={styles.hintOverlay} pointerEvents="none">
+                <Text style={styles.hintText} numberOfLines={1}>
+                  {t('settings.sensitiveWords.placeholder') || '输入敏感词'}
+                </Text>
+              </View>
+            )}
+          </View>
           <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
             <Text style={styles.addBtnText}>{t('common.add') || '添加'}</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.sectionTitle}>{t('settings.sensitiveWords.batch') || '批量导入'}</Text>
-        <TextInput
-          style={styles.multilineInput}
-          value={batchText}
-          onChangeText={setBatchText}
-          placeholder={t('settings.sensitiveWords.batchPlaceholder') || '每行一个或用逗号分隔'}
-          multiline
-          numberOfLines={3}
-        />
+        <View style={styles.batchWrap}>
+          <TextInput
+            style={styles.multilineInput}
+            value={batchText}
+            onChangeText={setBatchText}
+            placeholder=""
+            multiline
+            numberOfLines={3}
+          />
+          {!batchText && (
+            <View style={styles.hintOverlay} pointerEvents="none">
+              <Text style={styles.hintText}>
+                {t('settings.sensitiveWords.batchPlaceholder') || '每行一个或用逗号分隔'}
+              </Text>
+            </View>
+          )}
+        </View>
         <TouchableOpacity style={styles.addBtn} onPress={handleBatchImport}>
           <Text style={styles.addBtnText}>{t('settings.sensitiveWords.batchImport') || '📋 批量导入'}</Text>
         </TouchableOpacity>
@@ -160,9 +178,14 @@ const styles = StyleSheet.create({
   wordRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
   wordLabel: { fontSize: 15, flex: 1, color: COLORS.text },
   deleteIcon: { fontSize: 18, marginLeft: 8 },
-  addRow: { flexDirection: 'row', marginBottom: 12 },
-  input: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, marginRight: 8, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
-  multilineInput: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', marginBottom: 8, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
+  addRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'center' },
+  // 输入框 + 自定义居中占位：原生 placeholder 在多行 TextInput 上不跟随 textAlign，改用叠加层保证真正居中
+  inputWrap: { flex: 1, position: 'relative', marginRight: 8 },
+  batchWrap: { position: 'relative', marginBottom: 8 },
+  input: { width: '100%', borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
+  multilineInput: { width: '100%', borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
+  hintOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  hintText: { fontSize: 15, color: '#A8988A', fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
   addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   saveBtnBlock: { backgroundColor: COLORS.mint, borderRadius: 22, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
