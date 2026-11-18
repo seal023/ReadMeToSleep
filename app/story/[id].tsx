@@ -26,6 +26,7 @@ import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecording
 // 避免「刚录完能听、过一会儿/重进页面就播不出来」。
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
+import { FONT } from '../../constants/theme';
 import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
@@ -3044,7 +3045,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   headerSpacer: { width: 40 },
 
-  title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: '#3D3229', flex: 1 },
+  title: { fontSize: 22, fontFamily: FONT.rounded, textAlign: 'center', color: '#3D3229', flex: 1 },
   storyScroll: { flex: 1, borderRadius: 22, backgroundColor: '#FFFDF7', padding: 20 },
   /**
    * iPad 横屏下整行能到 1300pt 宽，一行字太长很难读。
@@ -3078,7 +3079,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  lockedUnlockText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  lockedUnlockText: { fontSize: 16, fontFamily: FONT.rounded, color: '#fff' },
   progressBarTouch: { paddingVertical: 13, marginTop: 0, justifyContent: 'center' },
   progressBar: { height: 8, backgroundColor: '#E0D5C7', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#F7A072', borderRadius: 4 },
@@ -3187,7 +3188,7 @@ const styles = StyleSheet.create({
 
   /* 孩子端「想让谁来讲」：常显大按钮，选中态用品牌橙 + 白字 */
   voiceBlock: { marginTop: 14, paddingHorizontal: 4 },
-  voicePickLabel: { fontSize: 14, color: '#3D3229', fontWeight: '700', marginBottom: 8 },
+  voicePickLabel: { fontSize: 16, color: '#3D3229', fontFamily: FONT.rounded, marginBottom: 8 },
   voiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   voiceChip: {
     flexDirection: 'row',
@@ -3202,7 +3203,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   voiceChipActive: { backgroundColor: '#F7A072', borderColor: '#F7A072' },
-  voiceChipText: { fontSize: 15, color: '#3D3229', fontWeight: '600' },
+  voiceChipText: { fontSize: 16, color: '#3D3229', fontFamily: FONT.rounded },
   voiceChipTextActive: { color: '#FFFFFF' },
   // v80 #3：当前实际发音的音色名（"现在是 Cherry（大姐姐）的声音"）
   voiceNow: { fontSize: 13, color: '#8A6D5B', marginTop: 10, lineHeight: 18 },
@@ -3232,7 +3233,7 @@ const styles = StyleSheet.create({
   /** 横屏：快退 / 播放 / 快进 / 停止并成一行，省下约 30pt 给正文 */
   controlZoneL: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
   headerRowL: { marginBottom: 4 },
-  titleL: { fontSize: 17 },
+  titleL: { fontSize: 19 },
   storyScrollL: { padding: 12, borderRadius: 14 },
   storyTextL: { fontSize: 21, lineHeight: 34, maxWidth: 1000 },
   progressBarL: { height: 6 },
@@ -3247,8 +3248,8 @@ const styles = StyleSheet.create({
   sleepBadgeL: { marginTop: 3, paddingVertical: 3 },
   voiceBarL: { marginTop: 4, paddingVertical: 5, alignSelf: 'center' },
   voiceBarIcon: { fontSize: 17 },
-  voiceBarText: { flex: 1, fontSize: 14, color: '#3D3229', fontWeight: '600' },
-  voiceBarAction: { fontSize: 13, color: '#F7A072', fontWeight: '700' },
+  voiceBarText: { flex: 1, fontSize: 15, color: '#3D3229', fontFamily: FONT.rounded },
+  voiceBarAction: { fontSize: 14, color: '#F7A072', fontFamily: FONT.rounded },
 
   /* v82 #4：声线选择底部弹层（只占下半屏，故事正文始终可见） */
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(40,28,20,0.45)', justifyContent: 'flex-end' },
@@ -3265,7 +3266,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center', width: 44, height: 5, borderRadius: 3,
     backgroundColor: '#E6D8C8', marginBottom: 12,
   },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#3D3229', textAlign: 'center', marginBottom: 14 },
+  sheetTitle: { fontSize: 20, fontFamily: FONT.rounded, color: '#3D3229', textAlign: 'center', marginBottom: 14 },
   sheetList: { maxHeight: 360 },
   sheetRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -3280,7 +3281,7 @@ const styles = StyleSheet.create({
   sheetHint: { fontSize: 12, color: '#8A7B6E', textAlign: 'center', marginTop: 4 },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
 
-  completedText: { fontSize: 24, fontWeight: 'bold', color: '#3D3229', marginTop: 20, marginBottom: 8 },
+  completedText: { fontSize: 26, fontFamily: FONT.rounded, color: '#3D3229', marginTop: 20, marginBottom: 8 },
   /** 完成页的「答题得奖励」提示：弱化处理，别抢主标题 */
   completedHint: {
     fontSize: 14,
@@ -3291,7 +3292,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  qaRoundTitle: { fontSize: 20, fontWeight: 'bold', color: '#3D3229', textAlign: 'center', marginTop: 20, marginBottom: 16 },
+  qaRoundTitle: { fontSize: 22, fontFamily: FONT.rounded, color: '#3D3229', textAlign: 'center', marginTop: 20, marginBottom: 16 },
   qaQuestion: { fontSize: 18, color: '#3D3229', textAlign: 'center', marginBottom: 24, lineHeight: 28 },
   optionsWrap: { gap: 16, paddingHorizontal: 20 },
   // v79：选项按钮加大（孩子手指好点），左侧配 3D 粘土圆凳做视觉锚点
@@ -3483,14 +3484,14 @@ const styles = StyleSheet.create({
   },
   moonGlow: { marginBottom: 8 },
   sleepMoon: { fontSize: 96 },
-  sleepTitle: { fontSize: 26, fontWeight: 'bold', color: '#fff', marginTop: 12, textAlign: 'center' },
+  sleepTitle: { fontSize: 28, fontFamily: FONT.rounded, color: '#fff', marginTop: 12, textAlign: 'center' },
   sleepDesc: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 12, lineHeight: 24, textAlign: 'center' },
   sleepStars: { fontSize: 24, marginTop: 18, letterSpacing: 6 },
   sleepBtn: {
     marginTop: 32, backgroundColor: '#FFD66B', paddingVertical: 14, paddingHorizontal: 36,
     borderRadius: 26,
   },
-  sleepBtnText: { fontSize: 16, fontWeight: '700', color: '#5B4B23' },
+  sleepBtnText: { fontSize: 17, fontFamily: FONT.rounded, color: '#5B4B23' },
   /** 到点关屏：整屏纯黑（轻点返回），配合释放常亮让系统自动熄屏 */
   screenOffOverlay: {
     position: 'absolute',

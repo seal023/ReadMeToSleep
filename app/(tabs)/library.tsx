@@ -14,6 +14,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { useLanguage } from '../../hooks/useLanguage';
+import { FONT } from '../../constants/theme';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 // 长篇原创故事轻量索引（id/标题/标签/时长/来源/长度档），不含正文
 import longIndex from '../../data/classic-stories/long/index.json';
@@ -586,8 +587,8 @@ const styles = StyleSheet.create({
     borderRadius: 24, marginHorizontal: 4,
     backgroundColor: '#FFB347', borderWidth: 1, borderColor: '#FF8C00',
   },
-  tabLabel: { fontSize: 13, color: '#A8988A', fontWeight: '500' },
-  tabLabelActive: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  tabLabel: { fontSize: 15, color: '#A8988A', fontFamily: FONT.rounded },
+  tabLabelActive: { fontSize: 15, color: '#fff', fontFamily: FONT.rounded },
   // 单行分类条：左侧横向滚动，右侧固定「筛选」按钮
   chipBar: {
     flexDirection: 'row', alignItems: 'center',
@@ -610,8 +611,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 22,
     backgroundColor: '#FFB347', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#FF8C00',
   },
-  tagChipText: { fontSize: 13, color: '#3D3229', fontWeight: '600' },
-  tagChipTextActive: { fontSize: 13, color: '#fff', fontWeight: '600' },
+  tagChipText: { fontSize: 15, color: '#3D3229', fontFamily: FONT.rounded },
+  tagChipTextActive: { fontSize: 15, color: '#fff', fontFamily: FONT.rounded },
   filterDivider: { width: 1, height: 22, backgroundColor: '#E8D5B5', marginHorizontal: 8, marginVertical: 4 },
   // 关键修复：FlatList 必须占满剩余高度，否则横屏时内容被挤出屏幕且无法上滑
   listFlex: { flex: 1 },
@@ -629,7 +630,7 @@ const styles = StyleSheet.create({
   cardLeft: { marginRight: 12 },
   cardEmoji: { fontSize: 32 },
   cardCenter: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#3D3229' },
+  cardTitle: { fontSize: 17, fontFamily: FONT.rounded, color: '#3D3229' },
   tagRow: { flexDirection: 'row', marginTop: 4, flexWrap: 'wrap' },
   tag: {
     fontSize: 11, color: '#FF8C00', backgroundColor: '#FFF0D6',
@@ -654,7 +655,7 @@ const styles = StyleSheet.create({
   emptyList: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 16, color: '#A8988A' },
+  emptyText: { fontSize: 17, color: '#A8988A', fontFamily: FONT.rounded },
 
   // 筛选弹层
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
@@ -674,7 +675,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: 6,
   },
-  sheetTitle: { fontSize: 17, fontWeight: '700', color: '#3D3229' },
+  sheetTitle: { fontSize: 19, fontFamily: FONT.rounded, color: '#3D3229' },
   sheetReset: { fontSize: 13, color: '#FF8C00', fontWeight: '600' },
   sheetLabel: { fontSize: 12, color: '#A8988A', fontWeight: '600', marginTop: 12, marginBottom: 2 },
   sheetRow: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -682,5 +683,5 @@ const styles = StyleSheet.create({
     marginTop: 20, height: 46, borderRadius: 23,
     backgroundColor: '#FFB347', alignItems: 'center', justifyContent: 'center',
   },
-  sheetDoneText: { fontSize: 16, color: '#fff', fontWeight: '700' },
+  sheetDoneText: { fontSize: 17, color: '#fff', fontFamily: FONT.rounded },
 });

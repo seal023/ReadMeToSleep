@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
+import { FONT } from '../../constants/theme';
 import Racco from '../../components/common/Racco';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -625,8 +626,8 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   greetingText: {
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
   },
 
@@ -649,7 +650,7 @@ const styles = StyleSheet.create({
   },
   premiumEmoji: { fontSize: 30, marginRight: 12 },
   premiumTextWrap: { flex: 1, marginRight: 8 },
-  premiumTitle: { fontSize: 16, fontWeight: 'bold', color: '#4A2B8C', marginBottom: 3 },
+  premiumTitle: { fontSize: 17, fontFamily: FONT.rounded, color: '#4A2B8C', marginBottom: 3 },
   premiumDesc: { fontSize: 12, color: '#7A6AA8', lineHeight: 18 },
   premiumCta: {
     backgroundColor: '#9B7EDE',
@@ -678,8 +679,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cloneBannerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontFamily: FONT.rounded,
     color: '#5B2E9C',
     marginBottom: 4,
   },
@@ -757,8 +758,8 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   recTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
     marginBottom: 5,
   },
@@ -822,8 +823,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   actionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 16,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
     textAlign: 'center',
   },
@@ -832,8 +833,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
     marginBottom: 12,
   },
@@ -869,8 +870,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   recentItemTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
     marginBottom: 2,
   },
@@ -902,12 +903,12 @@ const styles = StyleSheet.create({
   },
   onboardEmoji: { fontSize: 46, marginBottom: 12 },
   onboardTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 23,
+    fontFamily: FONT.rounded,
     color: '#3D3229',
     textAlign: 'center',
     marginBottom: 20,
-    lineHeight: 28,
+    lineHeight: 30,
   },
   onboardInput: {
     width: '100%',
@@ -929,5 +930,5 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 48,
   },
-  onboardBtnText: { fontSize: 17, fontWeight: '700', color: '#3D3229' },
+  onboardBtnText: { fontSize: 18, fontFamily: FONT.rounded, color: '#3D3229' },
 });
