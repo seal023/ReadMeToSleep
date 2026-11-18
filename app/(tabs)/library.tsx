@@ -367,10 +367,14 @@ export default function LibraryScreen() {
     <>
     <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
-      {/* 顶栏：小浣熊 + 搜索同一行，横屏时压到最小高度，把空间让给列表 */}
+      {/* 顶栏：横屏时搜索框在左、小浣熊移到右上角并放大；竖屏保持浣熊在左 */}
       <View style={[styles.header, isLandscape && styles.headerLandscape, { paddingTop: headerPadTop }]}>
-        <Racco state="idle" size={isLandscape ? 54 : 78} />
-        <View style={styles.searchBox}>
+        {!isLandscape && (
+          <View style={styles.raccoWrap}>
+            <Racco state="idle" size={78} />
+          </View>
+        )}
+        <View style={[styles.searchBox, isLandscape && styles.searchBoxLandscape]}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
@@ -386,6 +390,11 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+        {isLandscape && (
+          <View style={styles.raccoWrapLandscape}>
+            <Racco state="idle" size={100} />
+          </View>
+        )}
       </View>
 
       <View style={styles.tabRow}>
@@ -568,13 +577,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingTop: 10, paddingBottom: 4, paddingHorizontal: 14,
   },
-  headerLandscape: { paddingTop: 2, paddingBottom: 0 },
+  headerLandscape: { paddingTop: 2, paddingBottom: 0, alignItems: 'flex-start' },
+  // 横屏：搜索框在左、浣熊在右上（DOM 顺序已按横竖屏切换，这里只需让浣熊贴右）
+  raccoWrap: {},
+  raccoWrapLandscape: { marginLeft: 'auto' },
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 26, paddingHorizontal: 14,
     borderWidth: 1, borderColor: '#F0D9B5', height: 40, marginLeft: 6,
     maxWidth: 640,
   },
+  searchBoxLandscape: { marginLeft: 0, marginTop: 8, flex: 0, width: 640 },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 14, color: '#3D3229', height: '100%' },
   clearBtn: { fontSize: 14, color: '#A8988A', marginLeft: 4 },

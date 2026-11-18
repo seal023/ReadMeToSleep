@@ -2625,7 +2625,7 @@ export default function StoryPlayScreen() {
         </TouchableOpacity>)}
 
         <View style={styles.raccoCorner}>
-          <Racco state="talking" size={60} />
+          <Racco state="talking" size={110} />
         </View>
       </View>
 
@@ -3244,7 +3244,7 @@ const styles = StyleSheet.create({
   resumeRowL: { marginTop: 4 },
   storyTimeRowL: { marginTop: 3, paddingVertical: 2, paddingHorizontal: 12 },
   sleepBadgeL: { marginTop: 3, paddingVertical: 3 },
-  voiceBarL: { marginTop: 4, paddingVertical: 5, alignSelf: 'center' },
+  voiceBarL: { marginTop: 4, paddingVertical: 5, alignSelf: 'flex-start' },
   voiceBarIcon: { fontSize: 17 },
   voiceBarText: { flex: 1, fontSize: 15, color: '#3D3229', fontFamily: FONT.rounded },
   voiceBarAction: { fontSize: 14, color: '#F7A072', fontFamily: FONT.rounded },
