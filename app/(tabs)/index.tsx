@@ -161,9 +161,10 @@ export default function HomeTab() {
   );
 
   const { width: screenW } = useWindowDimensions();
-  // iPad 横屏（以及大屏）视为宽屏：内容限宽居中，浣熊不要占满整个高度
+  // iPad 横屏（以及大屏）视为宽屏：内容限宽居中
+  // 宽屏浣熊从 0.18 放大到 0.24（物理约 660px），更醒目；Racco 组件另加立体阴影
   const isWide = screenW >= 768;
-  const raccoSize = isWide ? screenW * 0.18 : screenW * 0.4;
+  const raccoSize = isWide ? screenW * 0.24 : screenW * 0.4;
 
   const handleRaccoPress = () => {
     const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];

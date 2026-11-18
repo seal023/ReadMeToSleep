@@ -73,7 +73,19 @@ const Racco: React.FC<RaccoProps> = ({
 
   const img = (
     <Animated.View style={{ transform: [{ scale: breathe }], alignItems: 'center' }}>
-      <Image source={source ?? RACCOON} style={{ width: size, height: size, resizeMode: 'contain' }} />
+      <Image
+        source={source ?? RACCOON}
+        style={{
+          width: size,
+          height: size,
+          resizeMode: 'contain',
+          // 立体阴影：让吉祥物从背景里"浮"出来，更醒目（ASC 截图同步还原此效果）
+          shadowColor: '#8A6A55',
+          shadowOffset: { width: 0, height: Math.round(size * 0.04) },
+          shadowOpacity: 0.28,
+          shadowRadius: Math.round(size * 0.06),
+        }}
+      />
 
       {/* 睡觉 Zzz */}
       {state === 'sleeping' && (
