@@ -117,11 +117,9 @@ export default function SensitiveWordsScreen() {
               placeholder=""
             />
             {!newWord && (
-              <View style={styles.hintOverlay} pointerEvents="none">
-                <Text style={styles.hintText} numberOfLines={1}>
-                  {t('settings.sensitiveWords.placeholder') || '输入敏感词'}
-                </Text>
-              </View>
+              <Text style={styles.inputHintAbs} numberOfLines={1} pointerEvents="none">
+                {t('settings.sensitiveWords.placeholder') || '输入敏感词'}
+              </Text>
             )}
           </View>
           <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
@@ -140,11 +138,9 @@ export default function SensitiveWordsScreen() {
             numberOfLines={3}
           />
           {!batchText && (
-            <View style={styles.hintOverlay} pointerEvents="none">
-              <Text style={styles.hintText}>
-                {t('settings.sensitiveWords.batchPlaceholder') || '每行一个或用逗号分隔'}
-              </Text>
-            </View>
+            <Text style={styles.batchHintAbs} pointerEvents="none">
+              {t('settings.sensitiveWords.batchPlaceholder') || '每行一个或用逗号分隔'}
+            </Text>
           )}
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={handleBatchImport}>
@@ -184,9 +180,10 @@ const styles = StyleSheet.create({
   batchWrap: { position: 'relative', marginBottom: 8 },
   input: { width: '100%', borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
   multilineInput: { width: '100%', borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
-  hintOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  hintText: { fontSize: 15, color: '#A8988A', fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
-  addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, justifyContent: 'center' },
+  // 占位文字自己 absolute 铺满输入区并 textAlign center——不依赖父级 flex 居中，真机最稳
+  inputHintAbs: { position: 'absolute', left: 12, right: 12, top: 8, fontSize: 15, lineHeight: 20, color: '#A8988A', fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
+  batchHintAbs: { position: 'absolute', left: 12, right: 12, top: 29, fontSize: 15, lineHeight: 22, color: '#A8988A', fontFamily: FONT.body, letterSpacing: 0, textAlign: 'center' },
+  addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   saveBtnBlock: { backgroundColor: COLORS.mint, borderRadius: 22, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   saveBtnBlockText: { color: '#fff', fontSize: 16, fontWeight: '700' },
