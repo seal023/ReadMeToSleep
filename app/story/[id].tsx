@@ -2624,8 +2624,8 @@ export default function StoryPlayScreen() {
           </Text>
         </TouchableOpacity>)}
 
-        <View style={styles.raccoCorner}>
-          <Racco state="talking" size={110} />
+        <View style={[styles.raccoCorner, isLandscape && styles.raccoCornerL]}>
+          <Racco state="talking" size={isLandscape ? Math.round(winW * 0.24) : 110} />
         </View>
       </View>
 
@@ -3278,6 +3278,8 @@ const styles = StyleSheet.create({
   sheetRowCheck: { fontSize: 18, color: '#F7A072', fontWeight: '800' },
   sheetHint: { fontSize: 12, color: '#8A7B6E', textAlign: 'center', marginTop: 4 },
   raccoCorner: { position: 'absolute', bottom: 20, right: 20 },
+  // 横屏：陪伴浣熊放大到家门口吉祥物同款尺寸(winW*0.24)，落在中右下空白区，不挡正文/控制区
+  raccoCornerL: { right: '13%', bottom: '11%' },
 
   completedText: { fontSize: 26, fontFamily: FONT.rounded, color: '#3D3229', marginTop: 20, marginBottom: 8 },
   /** 完成页的「答题得奖励」提示：弱化处理，别抢主标题 */

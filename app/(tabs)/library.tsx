@@ -392,7 +392,7 @@ export default function LibraryScreen() {
         </View>
         {isLandscape && (
           <View style={styles.raccoWrapLandscape}>
-            <Racco state="idle" size={100} />
+            <Racco state="idle" size={144} />
           </View>
         )}
       </View>
@@ -578,9 +578,9 @@ const styles = StyleSheet.create({
     paddingTop: 10, paddingBottom: 4, paddingHorizontal: 14,
   },
   headerLandscape: { paddingTop: 2, paddingBottom: 0, alignItems: 'flex-start' },
-  // 横屏：搜索框在左、浣熊在右上（DOM 顺序已按横竖屏切换，这里只需让浣熊贴右）
+  // 横屏：搜索框在左、浣熊从最右往左让到搜索框右侧的空白区（红圈位置，中心约屏宽80%）
   raccoWrap: {},
-  raccoWrapLandscape: { marginLeft: 'auto' },
+  raccoWrapLandscape: { marginLeft: 'auto', marginRight: '15%' },
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fff', borderRadius: 26, paddingHorizontal: 14,
