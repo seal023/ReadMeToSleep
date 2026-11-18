@@ -270,6 +270,7 @@ export default function VoiceSettings() {
         visible={!!renaming}
         transparent
         animationType="fade"
+        supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
         onRequestClose={() => setRenaming(null)}
       >
         <KeyboardAvoidingView

@@ -491,6 +491,7 @@ export default function LibraryScreen() {
           onPress={() => setFilterOpen(false)}
         />
         <View style={styles.sheet}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{t('library.filterTitle')}</Text>
             <TouchableOpacity
@@ -552,6 +553,7 @@ export default function LibraryScreen() {
           <TouchableOpacity style={styles.sheetDone} onPress={() => setFilterOpen(false)}>
             <Text style={styles.sheetDoneText}>{t('common.done')}</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -670,6 +672,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 28,
+    maxHeight: '88%', // 横屏矮屏限制高度，内部 ScrollView 滚动，避免顶部筛选项被裁
   },
   sheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

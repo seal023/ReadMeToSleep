@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Modal, View, Text, Pressable, Linking, StyleSheet, AppState } from 'react-native';
+import { Modal, View, Text, Pressable, Linking, StyleSheet, AppState, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LanguageProvider, useLanguage } from '../hooks/useLanguage';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
@@ -358,33 +358,41 @@ function PrivacyModal({
 }) {
   const { t } = useLanguage();
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
+    >
       <View style={styles.privacyOverlay}>
-        <View style={styles.privacyCard}>
-          <Text style={styles.privacyEmoji}>📖</Text>
-          <Text style={styles.privacyTitle}>{t('privacy.title')}</Text>
-          <Text style={styles.privacyIntro}>{t('privacy.intro')}</Text>
+        <ScrollView contentContainerStyle={styles.privacyScroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.privacyCard}>
+            <Text style={styles.privacyEmoji}>📖</Text>
+            <Text style={styles.privacyTitle}>{t('privacy.title')}</Text>
+            <Text style={styles.privacyIntro}>{t('privacy.intro')}</Text>
 
-          <View style={styles.privacyBulletRow}>
-            <Text style={styles.privacyCheck}>✅</Text>
-            <Text style={styles.privacyBullet}>{t('privacy.b1')}</Text>
-          </View>
-          <View style={styles.privacyBulletRow}>
-            <Text style={styles.privacyCheck}>✅</Text>
-            <Text style={styles.privacyBullet}>{t('privacy.b2')}</Text>
-          </View>
-          <View style={styles.privacyBulletRow}>
-            <Text style={styles.privacyCheck}>✅</Text>
-            <Text style={styles.privacyBullet}>{t('privacy.b3')}</Text>
-          </View>
+            <View style={styles.privacyBulletRow}>
+              <Text style={styles.privacyCheck}>✅</Text>
+              <Text style={styles.privacyBullet}>{t('privacy.b1')}</Text>
+            </View>
+            <View style={styles.privacyBulletRow}>
+              <Text style={styles.privacyCheck}>✅</Text>
+              <Text style={styles.privacyBullet}>{t('privacy.b2')}</Text>
+            </View>
+            <View style={styles.privacyBulletRow}>
+              <Text style={styles.privacyCheck}>✅</Text>
+              <Text style={styles.privacyBullet}>{t('privacy.b3')}</Text>
+            </View>
 
-          <View style={styles.privacyBtnWrap}>
-            <CartoonButton title={t('privacy.agree')} emoji="✅" full onPress={onAgree} />
+            <View style={styles.privacyBtnWrap}>
+              <CartoonButton title={t('privacy.agree')} emoji="✅" full onPress={onAgree} />
+            </View>
+            <Pressable onPress={onOpenPolicy} hitSlop={8}>
+              <Text style={styles.privacyLink}>{t('privacy.policy')}</Text>
+            </Pressable>
           </View>
-          <Pressable onPress={onOpenPolicy} hitSlop={8}>
-            <Text style={styles.privacyLink}>{t('privacy.policy')}</Text>
-          </Pressable>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -394,6 +402,10 @@ const styles = StyleSheet.create({
   privacyOverlay: {
     flex: 1,
     backgroundColor: 'rgba(60, 45, 35, 0.55)',
+  },
+  // 横屏矮屏可滚，避免同意按钮/隐私政策链接被裁
+  privacyScroll: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.lg,

@@ -9,6 +9,8 @@ import {
   Modal,
   TextInput,
   Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
@@ -566,25 +568,36 @@ export default function HomeTab() {
       </ScrollView>
 
       {/* 首启昵称引导：进入 App 的第一步，询问"如何称呼宝贝"（从设置前置到首屏） */}
-      <Modal visible={onboardVisible} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.onboardOverlay}>
-          <View style={styles.onboardCard}>
-            <Text style={styles.onboardEmoji}>🐻</Text>
-            <Text style={styles.onboardTitle}>{t('onboard.title')}</Text>
-            <TextInput
-              style={styles.onboardInput}
-              value={onboardText}
-              onChangeText={setOnboardText}
-              placeholder={t('settings.childName.placeholder')}
-              placeholderTextColor="#bca"
-              autoFocus
-              maxLength={20}
-            />
-            <TouchableOpacity style={styles.onboardBtn} onPress={finishOnboard}>
-              <Text style={styles.onboardBtnText}>{t('onboard.start')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      <Modal
+        visible={onboardVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
+      >
+        <KeyboardAvoidingView
+          style={styles.onboardOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.onboardScroll} keyboardShouldPersistTaps="handled">
+            <View style={styles.onboardCard}>
+              <Text style={styles.onboardEmoji}>🐻</Text>
+              <Text style={styles.onboardTitle}>{t('onboard.title')}</Text>
+              <TextInput
+                style={styles.onboardInput}
+                value={onboardText}
+                onChangeText={setOnboardText}
+                placeholder={t('settings.childName.placeholder')}
+                placeholderTextColor="#bca"
+                autoFocus
+                maxLength={20}
+              />
+              <TouchableOpacity style={styles.onboardBtn} onPress={finishOnboard}>
+                <Text style={styles.onboardBtnText}>{t('onboard.start')}</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </CartoonScreen>
   );
@@ -884,6 +897,10 @@ const styles = StyleSheet.create({
   onboardOverlay: {
     flex: 1,
     backgroundColor: 'rgba(60, 45, 35, 0.55)',
+  },
+  // 横屏矮屏/键盘弹起时内容可滚动，避免输入框与「开始」按钮被裁掉
+  onboardScroll: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,

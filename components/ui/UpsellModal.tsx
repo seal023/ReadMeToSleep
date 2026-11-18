@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import Racco from '@/components/common/Racco';
 import { COLORS } from '@/constants/theme';
@@ -21,6 +21,8 @@ export function UpsellModal() {
   const payload = useUpsellStore((s) => s.payload);
   const close = useUpsellStore((s) => s.close);
   const router = useRouter();
+  const { height: screenH } = useWindowDimensions();
+  const isShort = screenH < 500; // 横屏矮屏：收起浣熊、缩小内边距
 
   const handleConfirm = () => {
     if (!payload) return;
@@ -51,17 +53,24 @@ export function UpsellModal() {
       transparent
       animationType="fade"
       statusBarTranslucent
+      supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
       onRequestClose={close}
     >
       <View style={styles.overlay}>
         {payload ? (
           <View style={styles.cardWrap}>
-            {/* 小浣熊探头：负 margin 让它压住卡片上沿，形成「它在说话」的感觉 */}
-            <View style={styles.raccoWrap} pointerEvents="none">
-              <Racco state="talking" size={116} />
-            </View>
+            {/* 小浣熊探头：横屏矮屏收起，避免挤压卡片；竖屏保留探头效果 */}
+            {!isShort && (
+              <View style={styles.raccoWrap} pointerEvents="none">
+                <Racco state="talking" size={116} />
+              </View>
+            )}
 
-            <View style={styles.card}>
+            <ScrollView
+              style={[styles.cardScroll, { maxHeight: screenH * 0.85 }]}
+              contentContainerStyle={styles.card}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.title}>{payload.title}</Text>
               <Text style={styles.message}>{payload.message}</Text>
 
@@ -81,7 +90,7 @@ export function UpsellModal() {
                   <Text style={styles.confirmText}>{payload.confirmLabel}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
           </View>
         ) : null}
       </View>
@@ -102,14 +111,22 @@ const styles = StyleSheet.create({
   cardWrap: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '90%',
     alignItems: 'center',
   },
   raccoWrap: {
     zIndex: 2,
     marginBottom: -46,
   },
+  // 横屏矮屏可滚，避免标题/按钮被裁；flexGrow 让短内容仍垂直居中观感
+  cardScroll: {
+    width: '100%',
+    flexGrow: 0,
+  },
   card: {
     width: '100%',
+    flexGrow: 1,
+    justifyContent: 'center',
     backgroundColor: COLORS.cardSoft,
     borderRadius: 28,
     borderWidth: 2,

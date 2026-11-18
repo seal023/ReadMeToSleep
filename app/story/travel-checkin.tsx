@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
-  Animated, Dimensions, ActivityIndicator, Alert,
+  Animated, ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -24,8 +24,6 @@ import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import type { Language } from '../../types';
-
-const { width } = Dimensions.get('window');
 
 type Step = 'locate' | 'generate' | 'play' | 'success';
 
@@ -283,6 +281,7 @@ const stepConfig: { key: Step; icon: string; zh: string; en: string }[] = [
 export default function TravelCheckinScreen() {
   const router = useRouter();
   const { language, t } = useLanguage();
+  const { width } = useWindowDimensions(); // 跟随旋转，彩带按当前宽度分布
   const [step, setStep] = useState<Step>('locate');
   const [location, setLocation] = useState('');
   const [selectedLoc, setSelectedLoc] = useState<typeof LOCATIONS[number] | null>(null);
@@ -660,7 +659,7 @@ export default function TravelCheckinScreen() {
     ));
 
   return (
-    <CartoonScreen gradient="day" decor wide={false}>
+    <CartoonScreen gradient="day" decor>
       <View style={styles.container}>
       {/* Background confetti */}
       {step === 'success' && renderConfetti()}

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   Platform,
   Animated,
   TextInput,
@@ -69,8 +68,6 @@ const FALLBACK_QA: QAItem[] = [
   { type: 'choice', question: '故事发生在哪里？', options: ['安静的森林', '温暖的家里'], correctIndex: 0 },
   { type: 'voice', question: VOICE_QUESTION_ZH },
 ];
-
-const { width } = Dimensions.get('window');
 
 /** 把剩余毫秒格式化为 mm:ss，用于睡眠定时倒计时展示 */
 function formatSleep(ms: number): string {
@@ -316,12 +313,12 @@ export default function StoryPlayScreen() {
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderMove: (evt) => {
-        const w = barLayout.current.width || width || 1;
+        const w = barLayout.current.width || winW || 1;
         const r = Math.max(0, Math.min(1, evt.nativeEvent.locationX / w));
         setProgress(r * 100);
       },
       onPanResponderRelease: (evt) => {
-        const w = barLayout.current.width || width || 1;
+        const w = barLayout.current.width || winW || 1;
         const r = Math.max(0, Math.min(1, evt.nativeEvent.locationX / w));
         setProgress(r * 100);
         if (clonedPlayingRef.current) {
@@ -2449,7 +2446,7 @@ export default function StoryPlayScreen() {
           <View style={[styles.storyScroll, isLandscape && styles.storyScrollL, styles.lockedWrap]}>
             {/* 滑动手势接管：竖向划动即弹付费窗；内容本身不可滚动、看不到其余部分 */}
             <View {...lockPan.panHandlers} style={styles.lockedScrollArea}>
-              <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
+              <Text style={[styles.storyText, isLandscape && styles.storyTextL, isLandscape && winW >= 1024 && styles.storyTextXL]}>
                 {previewText || t('story.contentLoading')}
               </Text>
               <View style={styles.lockedFade} pointerEvents="none" />
@@ -2465,7 +2462,7 @@ export default function StoryPlayScreen() {
             style={[styles.storyScroll, isLandscape && styles.storyScrollL]}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={[styles.storyText, isLandscape && styles.storyTextL]}>
+            <Text style={[styles.storyText, isLandscape && styles.storyTextL, isLandscape && winW >= 1024 && styles.storyTextXL]}>
               {storyText || t('story.contentLoading')}
             </Text>
           </ScrollView>
@@ -2690,8 +2687,8 @@ export default function StoryPlayScreen() {
     return (
       <CartoonScreen gradient="day" decor>
       <>
-        <View style={styles.completedContainer}>
-          <Racco state="happy" size={150} />
+        <ScrollView contentContainerStyle={styles.completedContainer} keyboardShouldPersistTaps="handled">
+          <Racco state="happy" size={isLandscape ? 88 : 150} />
           <Text style={styles.completedText}>{t('story.completed.text')}</Text>
           {/* v96：奖励改成答完 3 个问题才给，这里先把「奖励在后头」讲清楚，
               孩子知道答题不是白答的，也避免家长以为奖励丢了 */}
@@ -2699,7 +2696,7 @@ export default function StoryPlayScreen() {
           <TouchableOpacity style={styles.primaryBtn} onPress={() => { setQaIndex(0); setQaLoading(true); setPhase('qa_round1'); generateQuestions(); }}>
             <Text style={styles.primaryBtnText}>{t('story.completed.enterQa')}</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </>
       {/* 每次听完必播的结尾庆典：礼花 + 满天星星 + 鲜花，约 3.6s 后自动露出上面的「讲完啦」页 */}
       <StoryFinaleCelebration
@@ -2716,7 +2713,7 @@ export default function StoryPlayScreen() {
   if (phase === 'sleep') {
     return (
       <CartoonScreen gradient="night" decor decorVariant="night">
-        <View style={styles.sleepScreen}>
+        <ScrollView contentContainerStyle={styles.sleepScreen} keyboardShouldPersistTaps="handled">
           <Animated.View
             style={[
               styles.moonGlow,
@@ -2726,7 +2723,7 @@ export default function StoryPlayScreen() {
               },
             ]}
           >
-            <Text style={styles.sleepMoon}>🌙</Text>
+            <Text style={[styles.sleepMoon, isLandscape && styles.sleepMoonL]}>🌙</Text>
           </Animated.View>
           <Text style={styles.sleepTitle}>{t('sleep.locked.title')}</Text>
           <Text style={styles.sleepDesc}>{t('sleep.locked.desc')}</Text>
@@ -2740,7 +2737,7 @@ export default function StoryPlayScreen() {
               <Text style={styles.sleepBtnText}>{t('sleep.locked.continue')}</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
         {/* 到点关屏：纯黑遮罩 +（外面已释放常亮）让系统尽快熄屏。
             轻点任意处回到月亮页，家长可解锁或继续。 */}
         {screenOff ? (
@@ -2934,7 +2931,7 @@ export default function StoryPlayScreen() {
 
   return (
     <CartoonScreen gradient="day" decor>
-    <View style={styles.finishedContainer}>
+    <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
       {/* 月亮呼吸光晕 */}
       <Animated.View
         pointerEvents="none"
@@ -2977,7 +2974,7 @@ export default function StoryPlayScreen() {
       >
         <Text style={styles.shootEmoji}>💫</Text>
       </Animated.View>
-      <Racco state="sleeping" size={150} />
+      <Racco state="sleeping" size={isLandscape ? 88 : 150} />
       <Text style={styles.finishedText}>{t('story.finished.text')} 🌙</Text>
 
       {parentComment?.text ? (
@@ -3019,7 +3016,7 @@ export default function StoryPlayScreen() {
         <Text style={styles.finishedBtnIcon}>🔄</Text>
         <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
     {/* 万一孩子手快直接点到「晚安」页，奖励动画也跟着过来，不会白答 */}
     {rewardOverlay}
     </CartoonScreen>
@@ -3029,8 +3026,8 @@ export default function StoryPlayScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   loadingContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
-  completedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
-  finishedContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  completedContainer: { flexGrow: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
+  finishedContainer: { flexGrow: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   // 晚安页夜间装饰
   moon: { position: 'absolute', top: 80, right: 46, zIndex: 0 },
   moonEmoji: { fontSize: 74 },
@@ -3236,6 +3233,7 @@ const styles = StyleSheet.create({
   titleL: { fontSize: 19 },
   storyScrollL: { padding: 12, borderRadius: 14 },
   storyTextL: { fontSize: 21, lineHeight: 34, maxWidth: 1000 },
+  storyTextXL: { fontSize: 27, lineHeight: 42, maxWidth: 1100 }, // iPad 大屏横屏：正文放大，观看距离更远
   progressBarL: { height: 6 },
   waveWrapCompact: { height: 22, marginTop: 2, gap: 4 },
   waveBarCompact: { width: 5, height: 18 },
@@ -3480,10 +3478,11 @@ const styles = StyleSheet.create({
   sleepBadgeText: { fontSize: 14, color: '#6B5B95', fontWeight: '600' },
   // 晚安锁屏页
   sleepScreen: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32,
+    flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32,
   },
   moonGlow: { marginBottom: 8 },
   sleepMoon: { fontSize: 96 },
+  sleepMoonL: { fontSize: 60 }, // 横屏矮屏缩小月亮，给文字/按钮让出空间
   sleepTitle: { fontSize: 28, fontFamily: FONT.rounded, color: '#fff', marginTop: 12, textAlign: 'center' },
   sleepDesc: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 12, lineHeight: 24, textAlign: 'center' },
   sleepStars: { fontSize: 24, marginTop: 18, letterSpacing: 6 },

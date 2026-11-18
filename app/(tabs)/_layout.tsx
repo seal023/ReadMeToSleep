@@ -1,10 +1,15 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { Text, useWindowDimensions } from 'react-native';
 import { useLanguage } from '../../hooks/useLanguage';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 
 export default function TabsLayout() {
   const { t } = useLanguage();
+  const { width, height } = useWindowDimensions();
+  // 横屏矮屏：tabBar 从 80 降到 56，把宝贵的垂直空间还给内容（跟随旋转实时更新）
+  const landscape = width > height;
+  const barHeight = landscape ? 56 : 80;
+  const barPadBottom = landscape ? 6 : 20;
 
   return (
     <Tabs
@@ -14,8 +19,8 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: '#BDBDBD',
         tabBarStyle: {
           backgroundColor: '#FFF8F0',
-          height: 80,
-          paddingBottom: 20,
+          height: barHeight,
+          paddingBottom: barPadBottom,
           borderTopColor: '#F5E6D3',
           borderTopWidth: 1,
         },
