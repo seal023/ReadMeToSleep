@@ -464,12 +464,17 @@ export default function VoiceClonePage() {
           <Text style={styles.guide}>{t('vc.guideText')}</Text>
 
           <View style={styles.textCard}>
-            <Text style={styles.subLabel}>{t('vc.exampleZh')}</Text>
-            <Text style={styles.readText}>{READ_TEXT_ZH}</Text>
-          </View>
-          <View style={styles.textCard}>
-            <Text style={styles.subLabel}>{t('vc.exampleEn')}</Text>
-            <Text style={styles.readText}>{READ_TEXT_EN}</Text>
+            {uiLang === 'zh' ? (
+              <>
+                <Text style={styles.subLabel}>{t('vc.exampleZh')}</Text>
+                <Text style={styles.readText}>{READ_TEXT_ZH}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.subLabel}>{t('vc.exampleEn')}</Text>
+                <Text style={styles.readText}>{READ_TEXT_EN}</Text>
+              </>
+            )}
           </View>
 
           {step === 'select' && (

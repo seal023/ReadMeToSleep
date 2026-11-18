@@ -235,6 +235,7 @@
   "settings.sensitiveWords.batch": "批量导入",
   "settings.sensitiveWords.batchPlaceholder": "每行一个词",
   "settings.sensitiveWords.batchImport": "导入",
+  "settings.sensitiveWords.empty": "暂无敏感词",
   "create.alert.title": "提示",
   "create.alert.themeRequired": "请输入故事主题",
   "create.aiUnavailable": "AI 服务暂时不可用，已按你输入的主题生成了一个本地故事～",

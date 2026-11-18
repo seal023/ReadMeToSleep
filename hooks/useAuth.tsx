@@ -35,6 +35,7 @@ import {
 import { clearEntitlement } from '@/services/iap';
 import { clearAccountScopedData } from '@/services/storage';
 import { clearAllClonedAudioCache } from '@/services/clonedVoicePlayback';
+import { useLanguage } from '@/hooks/useLanguage';
 
 export interface AuthContextValue {
   /** 兼容旧字段：去后端后账号服务恒可用（纯本地），恒为 true */
@@ -108,13 +109,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
+  const { language } = useLanguage();
   const user = session?.user ?? null;
   const email = user?.email ?? null;
   const displayName = useMemo(() => {
     if (user?.fullName && user.fullName.trim()) return user.fullName.trim();
     if (email) return email.split('@')[0];
-    return '妈妈/爸爸';
-  }, [user, email]);
+    // 无姓名无邮箱时的兜底称呼：按界面语言给对应语种，避免英文界面冒出中文。
+    return language === 'en' ? 'Mom / Dad' : '妈妈/爸爸';
+  }, [user, email, language]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

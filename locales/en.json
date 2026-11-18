@@ -235,6 +235,7 @@
   "settings.sensitiveWords.batch": "Batch import",
   "settings.sensitiveWords.batchPlaceholder": "One word per line",
   "settings.sensitiveWords.batchImport": "Import",
+  "settings.sensitiveWords.empty": "No sensitive words",
   "create.alert.title": "Notice",
   "create.alert.themeRequired": "Please enter a story theme",
   "create.aiUnavailable": "AI service is unavailable right now. We generated a local story with your theme instead.",

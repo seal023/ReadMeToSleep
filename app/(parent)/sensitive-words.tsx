@@ -95,7 +95,7 @@ export default function SensitiveWordsScreen() {
         </View>
         <View style={styles.listWrap}>
           {allWords.length === 0 && (
-            <Text style={styles.emptyText}>暂无敏感词 / No sensitive words</Text>
+            <Text style={styles.emptyText}>{t('settings.sensitiveWords.empty')}</Text>
           )}
           {allWords.map((label, idx) => (
             <View key={idx} style={styles.wordRow}>
@@ -161,8 +161,8 @@ const styles = StyleSheet.create({
   wordLabel: { fontSize: 15, flex: 1, color: COLORS.text },
   deleteIcon: { fontSize: 18, marginLeft: 8 },
   addRow: { flexDirection: 'row', marginBottom: 12 },
-  input: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, marginRight: 8, color: COLORS.text },
-  multilineInput: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', marginBottom: 8, color: COLORS.text },
+  input: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, marginRight: 8, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0 },
+  multilineInput: { flex: 1, borderWidth: 1, borderColor: COLORS.divider, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, fontSize: 15, backgroundColor: COLORS.card, height: 80, textAlignVertical: 'top', marginBottom: 8, color: COLORS.text, fontFamily: FONT.body, letterSpacing: 0 },
   addBtn: { backgroundColor: COLORS.orange, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   saveBtnBlock: { backgroundColor: COLORS.mint, borderRadius: 22, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
