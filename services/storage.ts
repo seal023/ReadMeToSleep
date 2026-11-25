@@ -79,6 +79,8 @@ const KEYS = {
   PROMPT_VOICE: 'rms_prompt_voice',
   PARENT_COMMENTS: 'rms_parent_comments',
   VOICE_GUIDANCE: 'rms_voice_guidance',
+  /** 向导语音角色：racco=小浣熊卡通声(默认) / preset=按提示音声线(大姐姐等) */
+  GUIDE_VOICE: 'rms_guide_voice',
   CHILD_NAME: 'rms_child_name',
   CHILD_QA: 'rms_child_qa',
   CHILD_QUIZ: 'rms_child_quiz',
@@ -453,6 +455,19 @@ export async function getVoiceGuidance(): Promise<boolean> {
 
 export async function setVoiceGuidance(on: boolean): Promise<void> {
   await AsyncStorage.setItem(KEYS.VOICE_GUIDANCE, on ? '1' : '0');
+}
+
+/** 向导语音角色：默认小浣熊卡通声；preset 时按家长选的提示音声线念同一句文案 */
+export type GuideVoice = 'racco' | 'preset';
+export const DEFAULT_GUIDE_VOICE: GuideVoice = 'racco';
+
+export async function getGuideVoice(): Promise<GuideVoice> {
+  const val = await AsyncStorage.getItem(KEYS.GUIDE_VOICE);
+  return val === 'preset' ? 'preset' : DEFAULT_GUIDE_VOICE;
+}
+
+export async function setGuideVoice(role: GuideVoice): Promise<void> {
+  await AsyncStorage.setItem(KEYS.GUIDE_VOICE, role);
 }
 
 /** 宝宝名字：家长自定义，首页问候会用它亲切称呼宝宝；空时回退默认 */

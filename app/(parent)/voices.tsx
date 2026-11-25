@@ -11,6 +11,7 @@ import {
   getVoiceSetting, saveVoiceSetting,
   getPromptVoiceSetting, savePromptVoiceSetting,
   DEFAULT_PROMPT_VOICE,
+  getGuideVoice, setGuideVoice, type GuideVoice,
 } from '../../services/storage';
 import {
   listAvailableVoices, renameClonedVoice, deleteClonedVoice,
@@ -35,6 +36,7 @@ export default function VoiceSettings() {
   const { t, language: uiLang } = useLanguage();
   const [storyVoice, setStoryVoice] = useState('preset:cherry');
   const [promptVoice, setPromptVoice] = useState('preset:cherry');
+  const [guideVoice, setGuideVoiceState] = useState<GuideVoice>('racco');
   const [options, setOptions] = useState<VoiceOption[]>([]);
   const [loaded, setLoaded] = useState(false);
   /** 正在改名的对象（null = 弹层关闭） */
@@ -45,13 +47,15 @@ export default function VoiceSettings() {
 
   /** 读一次当前设置与可选清单（进入页面、改名、删除后都复用） */
   const reload = useCallback(async () => {
-    const [s, p, list] = await Promise.all([
+    const [s, p, g, list] = await Promise.all([
       getVoiceSetting(),
       getPromptVoiceSetting(),
+      getGuideVoice(),
       listAvailableVoices(),
     ]);
     setStoryVoice(s);
     setPromptVoice(p);
+    setGuideVoiceState(g);
     setOptions(list);
     setLoaded(true);
   }, []);
@@ -65,14 +69,16 @@ export default function VoiceSettings() {
     useCallback(() => {
       let alive = true;
       (async () => {
-        const [s, p, list] = await Promise.all([
+        const [s, p, g, list] = await Promise.all([
           getVoiceSetting(),
           getPromptVoiceSetting(),
+          getGuideVoice(),
           listAvailableVoices(),
         ]);
         if (!alive) return;
         setStoryVoice(s);
         setPromptVoice(p);
+        setGuideVoiceState(g);
         setOptions(list);
         setLoaded(true);
       })();
@@ -105,6 +111,12 @@ export default function VoiceSettings() {
     await savePromptVoiceSetting(id);
     warmPresetVoiceInBackground(id);
     preview(id);
+  };
+
+  /** 向导语音角色：小浣熊卡通声 / 跟随提示音声线。切换后立刻让孩子端生效 */
+  const pickGuideVoice = async (role: GuideVoice) => {
+    setGuideVoiceState(role);
+    await setGuideVoice(role);
   };
 
   /** 已克隆的声音（管理区只列这些；预置音色与手机语音不可改名/删除） */
@@ -213,6 +225,34 @@ export default function VoiceSettings() {
         </View>
 
         <Text style={styles.desc}>{t('voices.desc')}</Text>
+
+        {/* 向导语音角色：小浣熊卡通声（默认）/ 跟随提示音声线。孩子端设置页同一份设置。 */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{t('guideVoice.title')}</Text>
+          <Text style={styles.sectionSub}>{t('guideVoice.hint')}</Text>
+          {(
+            [
+              { id: 'racco' as GuideVoice, label: t('guideVoice.racco'), emoji: '🦝' },
+              { id: 'preset' as GuideVoice, label: t('guideVoice.preset'), emoji: '🔔' },
+            ]
+          ).map((o) => {
+            const active = guideVoice === o.id;
+            return (
+              <TouchableOpacity
+                key={o.id}
+                style={active ? styles.optionActive : styles.option}
+                onPress={() => void pickGuideVoice(o.id)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.optionLeft}>
+                  <Text style={styles.optionEmoji}>{o.emoji}</Text>
+                  <Text style={active ? styles.optionTextActive : styles.optionText}>{o.label}</Text>
+                </View>
+                {active ? <Text style={styles.check}>✓</Text> : null}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t('voices.sectionPrompt')}</Text>

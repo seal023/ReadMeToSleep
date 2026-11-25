@@ -19,7 +19,7 @@
  *  - 卸载时停止发音、清定时器，绝不把声音带出页面。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { playRaccoGuide, stopRaccoGuide } from '../services/raccoGuide';
+import { speakGuideLine, stopRaccoGuide } from '../services/raccoGuide';
 import { getRaccoGuideLine } from '../services/raccoGuideLines';
 import { getRaccoAnimForKey, type RaccoAnim } from '../services/raccoAnim';
 import type { RaccoEnter, RaccoGesture } from '../components/common/Racco';
@@ -74,6 +74,8 @@ export function useRaccoGuide(opts: Options = {}): RaccoGuideApi {
     setLine('');
     setState('idle');
     setGesture('none');
+    // 动画回到 idle 动作并继续循环，不保留上一句话的动作定格（否则页面变静态）
+    setAnim('none');
     setAnimPlaying(false);
   }, []);
 
@@ -91,8 +93,8 @@ export function useRaccoGuide(opts: Options = {}): RaccoGuideApi {
     setAnim(getRaccoAnimForKey(key));
     setAnimPlaying(true);
 
-    // 发音（失败也不影响气泡显示）
-    playRaccoGuide(key, { force: o.force }).catch(() => {});
+    // 发音走统一入口（按向导语音角色选小浣熊声 / 提示音声线），失败也不影响气泡显示
+    speakGuideLine(key, { force: o.force }).catch(() => {});
 
     // 气泡自动收起（按字数估，中文每字约 220ms、英文每字符约 95ms，至少 1.8s）
     const cjk = /[\u4e00-\u9fa5]/.test(text);
@@ -103,7 +105,9 @@ export function useRaccoGuide(opts: Options = {}): RaccoGuideApi {
       setLine('');
       setState('idle');
       setGesture('none');
-      setAnimPlaying(false); // 语音结束，动画定格，避免声画错位
+      // 语音结束回到 idle 循环挥手，避免定格首帧让页面看起来"没动画"
+      setAnim('none');
+      setAnimPlaying(false);
     }, ms);
   }, [defaultGesture, bubbleMs]);
 

@@ -33,7 +33,7 @@ import {
   type User,
 } from '@/services/auth';
 import { clearEntitlement } from '@/services/iap';
-import { clearAccountScopedData } from '@/services/storage';
+import { clearAccountScopedData, getAccountNickname } from '@/services/storage';
 import { clearAllClonedAudioCache } from '@/services/clonedVoicePlayback';
 import { useLanguage } from '@/hooks/useLanguage';
 
@@ -48,6 +48,10 @@ export interface AuthContextValue {
   /** 展示用账号标识：邮箱优先，Apple 无邮箱时回落 id 片段 */
   email: string | null;
   displayName: string;
+  /** 家长在「我的账号」里自定义的称呼（如"妈妈"）；未设置时为空串 */
+  nickname: string;
+  /** 昵称保存后刷新全局展示，让订阅页/设置页立即跟上 */
+  refreshNickname: () => Promise<void>;
   /** 当前设备是否支持 Apple 登录 */
   appleAvailable: boolean;
   signInApple: () => Promise<void>;
@@ -61,14 +65,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [nickname, setNickname] = useState('');
 
   // 冷启动恢复本地会话（读一次 AsyncStorage，很快）
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const s = await getSession();
+        const [s, nick] = await Promise.all([getSession(), getAccountNickname()]);
         if (alive) setSession(s);
+        if (alive) setNickname(nick);
       } catch {
         /* 读失败当作未登录，不阻塞启动 */
       }
@@ -88,12 +94,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (result.session) setSession(result.session);
   }, []);
 
+  const refreshNickname = useCallback(async () => {
+    try {
+      setNickname(await getAccountNickname());
+    } catch {
+      /* 读失败保留旧值，不影响主流程 */
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     await signOutAsync();
     // 会员归属账号：退出后清掉本地权益，避免同机换号白用会员。
     // 下次登录会由 EntitlementSyncOnLogin 静默找回。
     await clearEntitlement();
     setSession(null);
+    setNickname('');
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -107,17 +122,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAllClonedAudioCache();
     // 5) 客户端登出会话
     setSession(null);
+    setNickname('');
   }, []);
 
   const { language } = useLanguage();
   const user = session?.user ?? null;
   const email = user?.email ?? null;
   const displayName = useMemo(() => {
+    // 家长自定义的称呼优先（"妈妈"/"爸爸"等），所有页面统一显示它。
+    if (nickname.trim()) return nickname.trim();
     if (user?.fullName && user.fullName.trim()) return user.fullName.trim();
     if (email) return email.split('@')[0];
-    // 无姓名无邮箱时的兜底称呼：按界面语言给对应语种，避免英文界面冒出中文。
+    // 无昵称无姓名无邮箱时的兜底称呼：按界面语言给对应语种。
     return language === 'en' ? 'Mom / Dad' : '妈妈/爸爸';
-  }, [user, email, language]);
+  }, [nickname, user, email, language]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -128,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSignedIn: !!session,
       email,
       displayName,
+      nickname,
+      refreshNickname,
       appleAvailable,
       signInApple,
       signOut,
@@ -139,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       email,
       displayName,
+      nickname,
+      refreshNickname,
       appleAvailable,
       signInApple,
       signOut,

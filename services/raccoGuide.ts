@@ -14,8 +14,10 @@
  */
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { getRuntimeLanguage } from './i18n';
-import { isStoryPlaying } from './playback';
+import { isStoryPlaying, speakWithBestVoice } from './playback';
 import { getRaccoGuideAssetId } from './raccoGuideAudio';
+import { getRaccoGuideLine } from './raccoGuideLines';
+import { getGuideVoice } from './storage';
 
 type PlayerLike = {
   play: () => void;
@@ -74,6 +76,33 @@ export async function playRaccoGuide(
     guidePlayer = null;
     return false;
   }
+}
+
+/**
+ * 统一的向导语发音入口：按家长在设置里选的「向导语音角色」决定用谁的声音。
+ *  - racco（默认）：播打包的小浣熊卡通声 mp3，离线、零费用。
+ *  - preset：走提示音声线（默认大姐姐，家长也可换成克隆亲人）念同一句文案。
+ * 故事正在播时仍不让路插话；发音失败都静默，不影响气泡与动画。
+ */
+export async function speakGuideLine(
+  key: string,
+  opts: { force?: boolean } = {},
+): Promise<boolean> {
+  if (!opts.force && isStoryPlaying()) return false;
+  let role;
+  try {
+    role = await getGuideVoice();
+  } catch {
+    role = 'racco';
+  }
+  if (role === 'preset') {
+    const text = getRaccoGuideLine(key);
+    if (!text) return false;
+    // 读提示音声线设置；这句文案短，用 fast 免等待音频会话配置
+    speakWithBestVoice(text, getRuntimeLanguage(), { fast: true });
+    return true;
+  }
+  return playRaccoGuide(key, opts);
 }
 
 /** 停止当前向导语（页面卸载、进入睡眠锁屏时调用） */

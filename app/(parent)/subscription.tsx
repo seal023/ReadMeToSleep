@@ -111,7 +111,7 @@ export default function SubscriptionPage() {
 
   const router = useRouter();
   // 会员权益要绑在账号上：未登录就购买，换手机将无法证明"是本人付的费"
-  const { isSignedIn, email: accountEmail, displayName } = useAuth();
+  const { isSignedIn, displayName } = useAuth();
 
   const {
     initializing,
@@ -173,7 +173,7 @@ export default function SubscriptionPage() {
         t('sub.alert.successMsg')
           .replace('{plan}', t(STATUS_MAP[result.plan].labelKey))
           .replace('{date}', formatDate(result.expiryMs))
-          .replace('{account}', accountEmail || displayName)
+          .replace('{account}', displayName)
       );
     } catch (err) {
       Alert.alert(t('sub.alert.purchaseFail'), (err as Error)?.message || t('sub.alert.retry'));
@@ -266,7 +266,7 @@ export default function SubscriptionPage() {
         <View style={{ flex: 1 }}>
           <Text style={styles.accountTitle} numberOfLines={1}>
             {isSignedIn
-              ? t('sub.signedInAs').replace('{name}', accountEmail || displayName)
+              ? t('sub.signedInAs').replace('{name}', displayName)
               : t('sub.notSignedIn')}
           </Text>
           <Text style={styles.accountSub}>
@@ -391,7 +391,7 @@ export default function SubscriptionPage() {
           <ReceiptRow label={t('sub.receipt.plan')} value={t(STATUS_MAP[entitlement.plan].labelKey)} />
           <ReceiptRow
             label={t('sub.receipt.account')}
-            value={accountEmail || (isSignedIn ? displayName : t('sub.receipt.noAccount'))}
+            value={isSignedIn ? displayName : t('sub.receipt.noAccount')}
           />
           {!!entitlement.purchasedAtMs && (
             <ReceiptRow label={t('sub.receipt.date')} value={formatDate(entitlement.purchasedAtMs)} />

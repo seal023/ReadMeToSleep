@@ -28,6 +28,7 @@ export default function AccountScreen() {
     displayName,
     signOut,
     deleteAccount,
+    refreshNickname,
   } = useAuth();
   const [busy, setBusy] = useState(false);
   // 显示名称：用户可以自己改称呼；系统给的姓名/邮箱仍是账号的唯一标识
@@ -40,9 +41,11 @@ export default function AccountScreen() {
 
   const handleSaveNickname = useCallback(async () => {
     await setAccountNickname(nickname);
+    // 同步全局展示：订阅页/设置页的"已登录"卡立即跟上新称呼
+    await refreshNickname();
     setNickSaveTip(true);
     setTimeout(() => setNickSaveTip(false), 1800);
-  }, [nickname]);
+  }, [nickname, refreshNickname]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert(t('account.signOutAsk'), t('account.signOutMsg'), [

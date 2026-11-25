@@ -27,8 +27,19 @@ interface RaccoProps {
   animPlaying?: boolean;
 }
 
-// 3D 粘土风吉祥物（用户 AI 生成素材，已抠透明底 + 去水印，见 assets/clay/）
-const RACCOON = require('../../assets/clay/mascot_raccoon.png');
+// 默认静态图改用无圆盘的序列帧首帧（wave_01），彻底去掉木质圆盘底座。
+// 带底座的 mascot_raccoon.png 只保留给旧 asset 兼容，不再作为吉祥物默认图。
+const RACCOON = require('../../assets/racco_anim/wave_01.png');
+
+/** 各 state 的默认循环动作：让没显式传 anim 的页面也能看到会动的小浣熊 */
+const STATE_IDLE_ANIM: Record<string, RaccoAnim> = {
+  idle: 'wave',
+  talking: 'wave',
+  listening: 'listen',
+  thinking: 'think',
+  happy: 'happy',
+  sleeping: 'sleep',
+};
 
 const Racco: React.FC<RaccoProps> = ({
   state = 'idle',
@@ -44,17 +55,26 @@ const Racco: React.FC<RaccoProps> = ({
   anim = 'none',
   animPlaying = true,
 }) => {
-  // 序列帧：anim 有值且 animPlaying 时循环切帧；否则定格第一帧
-  const animFrames = getRaccoAnimFrames(anim);
+  // 序列帧：显式 anim 用它；anim='none' 时按 state 挑一个默认动作，
+  // 让所有没接语音的页面也能看到会动的小浣熊（且默认图无圆盘）。
+  // 传了自定义 source（家长页专属静态图）时尊重 source，不走序列帧。
+  const frameAnim: RaccoAnim = source
+    ? 'none'
+    : anim !== 'none'
+      ? anim
+      : (STATE_IDLE_ANIM[state] ?? 'wave');
+  const animFrames = getRaccoAnimFrames(frameAnim);
+  // 显式 anim 尊重 animPlaying（语音期间播、结束定格首帧）；anim='none' 的页面始终循环
+  const shouldPlay = anim === 'none' ? true : animPlaying;
   const [frameIdx, setFrameIdx] = useState(0);
   useEffect(() => {
     setFrameIdx(0);
-    if (!animFrames || !animPlaying || animFrames.length <= 1) return;
+    if (!animFrames || !shouldPlay || animFrames.length <= 1) return;
     const id = setInterval(() => {
       setFrameIdx((i) => (i + 1) % animFrames.length);
     }, Math.round(1000 / RACCO_ANIM_FPS));
     return () => clearInterval(id);
-  }, [anim, animPlaying, animFrames]);
+  }, [frameAnim, shouldPlay, animFrames]);
 
   const breathe = useRef(new Animated.Value(1)).current;
   const zzzV = useRef(new Animated.Value(0)).current;
@@ -180,8 +200,10 @@ const Racco: React.FC<RaccoProps> = ({
         transform: [
           { translateX: enterX },
           { translateY: enterY },
-          ...gestureTransform,
-          { scale: breathe },
+          // 序列帧本身已是完整动作（含挥手）：不再叠加整只身体的旋转/呼吸缩放，
+          // 否则看起来像"挥手时身体在抖"。仅静态图模式才用旧的手势/呼吸动画。
+          ...(animFrames ? [] : gestureTransform),
+          { scale: animFrames ? 1 : breathe },
         ],
         opacity: enterOpacity,
         alignItems: 'center',
