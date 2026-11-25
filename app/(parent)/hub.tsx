@@ -9,7 +9,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { lockParent } from '../../services/parentGate';
 
 /** 关于卡用：便于家长在真机上确认装的是哪一个包 */
-const APP_VERSION: string = (Constants.expoConfig?.version as string | undefined) ?? '1.1.0';
+const APP_VERSION: string = (Constants.expoConfig?.version as string | undefined) ?? '2.0.0';
 const BUILD_NUMBER: string = (Constants.nativeBuildVersion as string | undefined) ?? '?';
 
 interface CardDef {
