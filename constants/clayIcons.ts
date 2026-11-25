@@ -30,6 +30,26 @@ export const CLAY_ICONS = {
   button: require('../assets/clay/item_button.png'),
   badge: require('../assets/clay/reward_badge.png'),
 
+  /* 故事分类（2026-11-25 新增，替换 emoji 标签） */
+  catGrowth: require('../assets/clay/cat_growth.png'),
+  catOwl: require('../assets/clay/cat_owl.png'),
+  catAnimal: require('../assets/clay/cat_animal.png'),
+
+  /* UI 功能图标（2026-11-25 新增） */
+  play: require('../assets/clay/ui_play.png'),
+  lock: require('../assets/clay/ui_lock.png'),
+  search: require('../assets/clay/ui_search.png'),
+  settings: require('../assets/clay/ui_settings.png'),
+  headphone: require('../assets/clay/ui_headphone.png'),
+
+  /* 装饰与旅行（2026-11-25 新增） */
+  cloud: require('../assets/clay/deco_cloud.png'),
+  rainbow: require('../assets/clay/deco_rainbow.png'),
+  sun: require('../assets/clay/deco_sun.png'),
+  plane: require('../assets/clay/item_plane.png'),
+  suitcase: require('../assets/clay/item_suitcase.png'),
+  calendar: require('../assets/clay/item_calendar.png'),
+
   /* 装饰 */
   moon: require('../assets/clay/deco_moon.png'),
   starBig: require('../assets/clay/deco_star_big.png'),

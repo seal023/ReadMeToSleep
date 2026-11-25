@@ -5,6 +5,7 @@ import { CartoonScreen } from '../components/ui/CartoonScreen';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChildTitle } from '../types';
 import { useState } from 'react';
+import RaccoOnboarding, { hasSeenOnboarding } from '../components/onboarding/RaccoOnboarding';
 
 const TITLE_KEYS = [
   'title.star',
@@ -25,18 +26,34 @@ export default function IndexScreen() {
   const compact = height < 520;
   const [titleIndex] = useState(() => Math.floor(Math.random() * ChildTitle.length));
   const childTitle = t(TITLE_KEYS[titleIndex]);
+  /** v1.2.0 引导：首次进儿童模式先看 3 屏，之后再进直达 tabs */
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const toggleLanguage = () => {
     setLanguage(language === 'zh' ? 'en' : 'zh');
   };
 
-  const handleChildMode = () => {
+  const handleChildMode = async () => {
+    const seen = await hasSeenOnboarding();
+    if (seen) {
+      router.push('/(tabs)');
+    } else {
+      setShowOnboarding(true);
+    }
+  };
+
+  const finishOnboarding = () => {
+    setShowOnboarding(false);
     router.push('/(tabs)');
   };
 
   const handleParentMode = () => {
     router.push('/(parent)');
   };
+
+  if (showOnboarding) {
+    return <RaccoOnboarding onDone={finishOnboarding} />;
+  }
 
   return (
     <CartoonScreen gradient="day" decor>

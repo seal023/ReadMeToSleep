@@ -26,6 +26,7 @@ import { useEntitlement } from '../../hooks/useEntitlement';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import Racco from '@/components/common/Racco';
+import { useRaccoGuide } from '@/hooks/useRaccoGuide';
 import { COLORS, FONT } from '@/constants/theme';
 import type { Story, Language } from '../../types';
 
@@ -52,6 +53,9 @@ export default function RecordScreen() {
   // 历史录音目录：录音页下方列出每次录音的标题 / 日期 / 时长，可直接试听、删除
   const [recordings, setRecordings] = useState<Story[]>([]);
   const [previewId, setPreviewId] = useState<string | null>(null);
+
+  // 小浣熊向导：进页面说一句"轮到你讲啦，我听着呢"
+  const guide = useRaccoGuide({ autoKey: 'e1', autoDelay: 1000, enterFrom: 'bottom', gesture: 'wave' });
 
   const loadRecordings = useCallback(async () => {
     try {
@@ -271,7 +275,15 @@ export default function RecordScreen() {
         <Text style={styles.intro}>{t('record.intro')}</Text>
 
         <View style={styles.raccoWrap}>
-          <Racco state={raccoState} size={120} showSpeechBubble speechText={t('record.racco')} />
+          <Racco
+            state={guide.line && !recording ? guide.state : raccoState}
+            size={120}
+            showSpeechBubble={recording || !!guide.line}
+            speechText={recording ? t('record.racco') : guide.line}
+            gesture={guide.gesture}
+            anim={recording ? 'listen' : guide.anim}
+            animPlaying={recording || guide.animPlaying}
+          />
         </View>
 
         {/* 录音中：波形 + 计时 */}

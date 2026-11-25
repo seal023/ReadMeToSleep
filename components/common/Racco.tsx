@@ -1,5 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Image, Easing } from 'react-native';
+import { getRaccoAnimFrames, RACCO_ANIM_FPS, type RaccoAnim } from '../../services/raccoAnim';
+
+export type RaccoEnter = 'none' | 'left' | 'bottom' | 'right';
+export type RaccoGesture = 'none' | 'wave' | 'nod' | 'clap' | 'point';
 
 interface RaccoProps {
   state?: 'idle' | 'talking' | 'listening' | 'thinking' | 'happy' | 'sleeping';
@@ -11,6 +15,16 @@ interface RaccoProps {
   bubbleColor?: string;
   /** 自定义图源：不传则用默认小浣熊；家长页可用更可爱的专属版本 */
   source?: any;
+  /** 进场动画：从边缘滑入并轻弹一下（B 档"走过来"观感）。默认 none，不影响旧调用 */
+  enterFrom?: RaccoEnter;
+  /** 一次性手势动画：挥手 / 点头 / 拍手 / 指向。默认 none，不影响旧调用 */
+  gesture?: RaccoGesture;
+  /** 进场动画延迟（毫秒），用于多元素错峰 */
+  enterDelay?: number;
+  /** 序列帧动画动作（wave/walk/think/happy/listen/sleep）。传了就循环播放序列帧，不传则用静态图+原 Animated */
+  anim?: RaccoAnim;
+  /** 序列帧是否正在播放。false 时停在第一帧（配合语音只在说话期间播动画） */
+  animPlaying?: boolean;
 }
 
 // 3D 粘土风吉祥物（用户 AI 生成素材，已抠透明底 + 去水印，见 assets/clay/）
@@ -24,10 +38,38 @@ const Racco: React.FC<RaccoProps> = ({
   speechText = '',
   bubbleColor,
   source,
+  enterFrom = 'none',
+  gesture = 'none',
+  enterDelay = 0,
+  anim = 'none',
+  animPlaying = true,
 }) => {
+  // 序列帧：anim 有值且 animPlaying 时循环切帧；否则定格第一帧
+  const animFrames = getRaccoAnimFrames(anim);
+  const [frameIdx, setFrameIdx] = useState(0);
+  useEffect(() => {
+    setFrameIdx(0);
+    if (!animFrames || !animPlaying || animFrames.length <= 1) return;
+    const id = setInterval(() => {
+      setFrameIdx((i) => (i + 1) % animFrames.length);
+    }, Math.round(1000 / RACCO_ANIM_FPS));
+    return () => clearInterval(id);
+  }, [anim, animPlaying, animFrames]);
+
   const breathe = useRef(new Animated.Value(1)).current;
   const zzzV = useRef(new Animated.Value(0)).current;
   const starV = useRef(new Animated.Value(0.3)).current;
+  const bubbleV = useRef(new Animated.Value(0)).current;
+
+  // 进场：位移 + 淡入 + 轻微过冲回弹
+  const enterX = useRef(new Animated.Value(
+    enterFrom === 'left' ? -size * 1.4 : enterFrom === 'right' ? size * 1.4 : 0,
+  )).current;
+  const enterY = useRef(new Animated.Value(enterFrom === 'bottom' ? size * 1.2 : 0)).current;
+  const enterOpacity = useRef(new Animated.Value(enterFrom === 'none' ? 1 : 0)).current;
+
+  // 手势：单值驱动，映射到不同 transform
+  const gestureV = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (state !== 'sleeping') {
@@ -71,10 +113,82 @@ const Racco: React.FC<RaccoProps> = ({
     starV.setValue(0.3);
   }, [state, starV]);
 
+  // 进场动画（只在挂载时跑一次）
+  useEffect(() => {
+    if (enterFrom === 'none') return;
+    enterX.setValue(enterFrom === 'left' ? -size * 1.4 : enterFrom === 'right' ? size * 1.4 : 0);
+    enterY.setValue(enterFrom === 'bottom' ? size * 1.2 : 0);
+    enterOpacity.setValue(0);
+    const t = Animated.delay(enterDelay);
+    Animated.parallel([
+      Animated.timing(enterX, {
+        toValue: 0, duration: 620, delay: enterDelay,
+        easing: Easing.out(Easing.back(1.4)), useNativeDriver: true,
+      }),
+      Animated.timing(enterY, {
+        toValue: 0, duration: 620, delay: enterDelay,
+        easing: Easing.out(Easing.back(1.4)), useNativeDriver: true,
+      }),
+      Animated.timing(enterOpacity, {
+        toValue: 1, duration: 420, delay: enterDelay,
+        easing: Easing.out(Easing.quad), useNativeDriver: true,
+      }),
+    ]).start();
+    return () => t.stop();
+  }, [enterFrom, enterDelay, size]);
+
+  // 手势动画：state 或 gesture 变化时跑一轮
+  useEffect(() => {
+    gestureV.setValue(0);
+    if (gesture === 'none') return;
+    const rotate = gesture === 'wave' ? [-8, 14, -8, 14, 0]
+      : gesture === 'nod' ? [0, -10, 6, -4, 0]
+      : gesture === 'clap' ? [0, -6, 0, -6, 0]
+      : [0, 5, 0, 5, 0]; // point
+    const seq = rotate.map((to, i) =>
+      Animated.timing(gestureV, {
+        toValue: to, duration: 180, delay: i === 0 ? 320 : 0,
+        easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+      }),
+    );
+    Animated.sequence(seq).start();
+  }, [gesture, state]);
+
+  // 气泡淡入上浮
+  useEffect(() => {
+    if (showSpeechBubble && speechText) {
+      bubbleV.setValue(0);
+      Animated.timing(bubbleV, {
+        toValue: 1, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true,
+      }).start();
+    } else {
+      bubbleV.setValue(0);
+    }
+  }, [showSpeechBubble, speechText]);
+
+  // 手势映射：挥手=旋转，点头=旋转(X 用 scaleY 近似)，拍手=横向摆动
+  const gestureTransform: any[] =
+    gesture === 'wave'
+      ? [{ rotate: gestureV.interpolate({ inputRange: [-10, 14], outputRange: ['-10deg', '14deg'] }) }]
+      : gesture === 'nod'
+      ? [{ rotate: gestureV.interpolate({ inputRange: [-10, 6], outputRange: ['-10deg', '6deg'] }) }]
+      : [{ translateX: gestureV.interpolate({ inputRange: [-8, 14], outputRange: [-6, 10] }) }];
+
   const img = (
-    <Animated.View style={{ transform: [{ scale: breathe }], alignItems: 'center' }}>
+    <Animated.View
+      style={{
+        transform: [
+          { translateX: enterX },
+          { translateY: enterY },
+          ...gestureTransform,
+          { scale: breathe },
+        ],
+        opacity: enterOpacity,
+        alignItems: 'center',
+      }}
+    >
       <Image
-        source={source ?? RACCOON}
+        source={animFrames ? animFrames[frameIdx] : (source ?? RACCOON)}
         style={{
           width: size,
           height: size,
@@ -117,9 +231,7 @@ const Racco: React.FC<RaccoProps> = ({
 
       {/* 开心星星：换成粘土小星星，和吉祥物同一套材质 */}
       {state === 'happy' && (
-        <Animated.View
-          style={{ position: 'absolute', top: size * 0.02, right: -size * 0.04, opacity: starV }}
-        >
+        <Animated.View style={{ position: 'absolute', top: size * 0.02, right: -size * 0.04, opacity: starV }}>
           <Image
             source={require('../../assets/clay/deco_star_small.png')}
             style={{ width: size * 0.24, height: size * 0.24, resizeMode: 'contain' }}
@@ -139,10 +251,21 @@ const Racco: React.FC<RaccoProps> = ({
   return (
     <View style={{ alignItems: 'center' }}>
       {showSpeechBubble && speechText ? (
-        <View style={[styles.bubble, bubbleColor && { backgroundColor: bubbleColor }]}>
+        <Animated.View
+          style={[
+            styles.bubble,
+            bubbleColor && { backgroundColor: bubbleColor },
+            {
+              opacity: bubbleV,
+              transform: [{
+                translateY: bubbleV.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }),
+              }],
+            },
+          ]}
+        >
           <Text style={[styles.bubbleText, bubbleColor && { color: '#fff' }]}>{speechText}</Text>
           <View style={[styles.arrow, bubbleColor && { borderTopColor: bubbleColor }]} />
-        </View>
+        </Animated.View>
       ) : null}
       {onPress ? <TouchableOpacity onPress={onPress} activeOpacity={0.8}>{img}</TouchableOpacity> : img}
     </View>

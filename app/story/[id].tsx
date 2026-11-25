@@ -20,12 +20,15 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import * as StoreReview from 'expo-store-review';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 // 语音题录音落盘：录音器给的是缓存里的临时文件，拷一份到稳定的 qa_clips 目录，
 // 避免「刚录完能听、过一会儿/重进页面就播不出来」。
 import { Directory, File, Paths } from 'expo-file-system';
 import { useLanguage } from '../../hooks/useLanguage';
-import { FONT } from '../../constants/theme';
+import { FONT, GRADIENTS, RADIUS, SPACING, SHADOW } from '../../constants/theme';
+import { COLORS } from '../../constants/Colors';
 import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
 import { pickPhrase } from '../../services/phraseBank';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
@@ -43,10 +46,15 @@ import { ClayIcon } from '../../components/ui/ClayIcon';
 import { RewardAnimation } from '../../components/ui/RewardAnimation';
 import { StoryFinaleCelebration } from '../../components/ui/StoryFinaleCelebration';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { GradientView } from '../../components/ui/Gradient';
 import { getLevel, getNewBadges, computeRewardExtras, type BadgeRule, type LevelRule } from '../../constants/rewards';
 import type { Story } from '../../types';
 
 type Phase = 'loading' | 'playing' | 'completed' | 'qa_round1' | 'qa_round2' | 'finished' | 'sleep';
+
+/** 评分节流：每讲完 RATING_EVERY_N 个故事，在晚安页问一次评分 */
+const RATING_COUNT_KEY = 'rms_rating_story_count';
+const RATING_EVERY_N = 10;
 
 type QAItem =
   | { type: 'choice'; question: string; options: string[]; correctIndex: number }
@@ -178,6 +186,37 @@ export default function StoryPlayScreen() {
   useEffect(() => {
     setShowFinale(phase === 'completed');
   }, [phase]);
+
+  /* ── v1.2.0 评分卡：每完成 10 个故事，在晚安页问一次 ────────────── */
+  const [showRating, setShowRating] = useState(false);
+  // 讲完一个故事（phase→completed）计数 +1；满 10 次则标记下一次晚安页可展示
+  useEffect(() => {
+    if (phase !== 'completed') return;
+    void (async () => {
+      try {
+        const n = Number((await AsyncStorage.getItem(RATING_COUNT_KEY)) || '0') + 1;
+        await AsyncStorage.setItem(RATING_COUNT_KEY, String(n));
+        if (n >= RATING_EVERY_N) {
+          setShowRating(true);
+          await AsyncStorage.setItem(RATING_COUNT_KEY, '0');
+        }
+      } catch {
+        /* 计数失败不影响 App */
+      }
+    })();
+  }, [phase]);
+
+  const onRateYes = async () => {
+    setShowRating(false);
+    try {
+      if (await StoreReview.isAvailableAsync()) {
+        await StoreReview.requestReview();
+      }
+      // 系统不给弹（年度限额 / TestFlight）时静默降级，不再追问
+    } catch {
+      /* 静默失败 */
+    }
+  };
   const [story, setStory] = useState<Story | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -428,6 +467,20 @@ export default function StoryPlayScreen() {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   // 录音时麦克风持续跳动，给孩子可见的「正在录音」反馈（不识字也能看懂）
   const micPulse = useRef(new Animated.Value(1)).current;
+  /**
+   * v1.2.0 就寝渐变：播放开始后，夜色覆盖层缓慢淡入（目标 alpha≈0.35）、
+   * 正文文字渐隐，让播放页从"清醒"过渡到"安静入睡"的氛围。
+   * 暂停时回退、重播重来；纯视觉，pointerEvents=none 不挡任何触摸。
+   */
+  const windAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (phase === 'playing' && isPlaying) {
+      Animated.timing(windAnim, { toValue: 1, duration: 9000, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(windAnim, { toValue: 0, duration: 800, useNativeDriver: true }).start();
+    }
+  }, [phase, isPlaying, windAnim]);
+
   // 播放页背景呼吸光晕：缓慢明暗 + 缩放，营造被温柔包裹的氛围（对应设计稿 s-play 的 glow）
   const glowAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -2397,6 +2450,9 @@ export default function StoryPlayScreen() {
     const totalStorySec = Math.round(
       (lastTotalDuration.current || estimatedSec * 1000) / 1000,
     );
+    // 就寝渐隐：文字随夜色淡出（1 → 0.3），覆盖层 alpha 0 → 0.35
+    const windTextOpacity = windAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.3] });
+    const windVeilOpacity = windAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.35] });
     // 播放中 / 暂停中（有进度）都显示「还剩 X」，暂停时数字自然停住不动；
     // 还没开始听则显示「故事约 X」。
     const showRemain = isPlaying || preparing || progress > 0;
@@ -2462,9 +2518,16 @@ export default function StoryPlayScreen() {
             style={[styles.storyScroll, isLandscape && styles.storyScrollL]}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={[styles.storyText, isLandscape && styles.storyTextL, isLandscape && winW >= 1024 && styles.storyTextXL]}>
+            <Animated.Text
+              style={[
+                styles.storyText,
+                isLandscape && styles.storyTextL,
+                isLandscape && winW >= 1024 && styles.storyTextXL,
+                { opacity: windTextOpacity },
+              ]}
+            >
               {storyText || t('story.contentLoading')}
-            </Text>
+            </Animated.Text>
           </ScrollView>
         )}
 
@@ -2623,6 +2686,18 @@ export default function StoryPlayScreen() {
             {voiceLocked ? '🔒' : (uiLang === 'en' ? 'Change' : '换声音')} ▾
           </Text>
         </TouchableOpacity>)}
+
+        {/*
+          v1.2.0 就寝渐变：播放开始后夜色缓慢淡入（复用现成 GRADIENTS.night），
+          正文同步渐隐，屏幕逐渐安静下来。pointerEvents=none 绝不挡触摸，
+          iPad 横屏沿用同一绝对定位层，不引入任何新颜色或新依赖。
+        */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.windVeil, { opacity: windVeilOpacity }]}
+        >
+          <GradientView colors={GRADIENTS.night} style={StyleSheet.absoluteFill} />
+        </Animated.View>
 
         <View style={[styles.raccoCorner, isLandscape && styles.raccoCornerL]}>
           <Racco state="talking" size={isLandscape ? Math.round(winW * 0.24) : 110} />
@@ -3016,6 +3091,25 @@ export default function StoryPlayScreen() {
         <Text style={styles.finishedBtnIcon}>🔄</Text>
         <Text style={styles.finishedBtnText}>{t('story.finished.again')}</Text>
       </TouchableOpacity>
+
+      {/* v1.2.0 评分卡：每 10 个故事问一次，不阻塞、不奖励、Maybe later 干净关闭 */}
+      {showRating ? (
+        <View style={styles.ratingCard}>
+          <Text style={styles.ratingBubble}>Did your little one love this story?</Text>
+          <View style={styles.ratingBtns}>
+            <TouchableOpacity style={styles.ratingYes} onPress={() => void onRateYes()} activeOpacity={0.85}>
+              <Text style={styles.ratingYesText}>Yes, loved it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.ratingLater}
+              onPress={() => setShowRating(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.ratingLaterText}>Maybe later</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
     </ScrollView>
     {/* 万一孩子手快直接点到「晚安」页，奖励动画也跟着过来，不会白答 */}
     {rewardOverlay}
@@ -3025,6 +3119,8 @@ export default function StoryPlayScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
+  /** 就寝夜色覆盖层：铺满播放区，置于正文/控件之上、浣熊之下，不挡触摸 */
+  windVeil: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   loadingContainer: { flex: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   completedContainer: { flexGrow: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
   finishedContainer: { flexGrow: 1, padding: 20, justifyContent: 'center', alignItems: 'center' },
@@ -3418,6 +3514,39 @@ const styles = StyleSheet.create({
   },
   finishedBtnIcon: { fontSize: 20, marginRight: 10 },
   finishedBtnText: { fontSize: 15, color: '#3D3229', fontWeight: '600' },
+  /* v1.2.0 评分卡：与设计 token 一致，不阻塞晚安页 */
+  ratingCard: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.xl,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    ...SHADOW.card,
+  },
+  ratingBubble: {
+    fontSize: 17,
+    fontFamily: FONT.rounded,
+    color: COLORS.text,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  ratingBtns: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap', justifyContent: 'center' },
+  ratingYes: {
+    backgroundColor: COLORS.orangeDeep,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    ...SHADOW.button,
+  },
+  ratingYesText: { fontSize: 15, fontFamily: FONT.rounded, color: COLORS.onPrimary },
+  ratingLater: {
+    backgroundColor: COLORS.cardSoft,
+    borderRadius: RADIUS.pill,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+  },
+  ratingLaterText: { fontSize: 15, color: COLORS.textSub },
   parentCommentCard: {
     backgroundColor: '#FFF8E1',
     borderRadius: 26,

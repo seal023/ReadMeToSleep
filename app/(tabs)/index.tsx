@@ -16,7 +16,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useFocusEffect } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import { FONT } from '../../constants/theme';
+import { COLORS } from '../../constants/Colors';
 import Racco from '../../components/common/Racco';
+import { useRaccoGuide } from '../../hooks/useRaccoGuide';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -166,9 +168,16 @@ export default function HomeTab() {
   const isWide = screenW >= 768;
   const raccoSize = isWide ? screenW * 0.24 : screenW * 0.4;
 
+  // 小浣熊向导：首页不自动播（避开每日问候），点浣熊才说话 + 气泡 + 动作
+  const guide = useRaccoGuide({ enterFrom: 'none', gesture: 'wave' });
+  const HOME_GUIDE_KEYS = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'];
+
   const handleRaccoPress = () => {
     const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];
     setRaccoState(next);
+    // 点一下说一句引导语（发音走独立 player，故事在播时自动让路）
+    const key = HOME_GUIDE_KEYS[Math.floor(Math.random() * HOME_GUIDE_KEYS.length)];
+    guide.say(key);
   };
 
   // 语音推荐开关：沿用设置页原来的「语音引导」开关（那个提问卡片已删除）。
@@ -427,7 +436,15 @@ export default function HomeTab() {
         </View>
 
         <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
-          <Racco state={raccoState} size={raccoSize} />
+          <Racco
+            state={guide.line ? guide.state : raccoState}
+            size={raccoSize}
+            showSpeechBubble={!!guide.line}
+            speechText={guide.line}
+            gesture={guide.gesture}
+            anim={guide.anim}
+            animPlaying={guide.animPlaying}
+          />
         </ElasticPressable>
       </View>
 
@@ -589,7 +606,7 @@ export default function HomeTab() {
                 value={onboardText}
                 onChangeText={setOnboardText}
                 placeholder={t('settings.childName.placeholder')}
-                placeholderTextColor="#bca"
+                placeholderTextColor={COLORS.textLight}
                 autoFocus
                 maxLength={20}
               />
@@ -642,7 +659,7 @@ const styles = StyleSheet.create({
   greetingText: {
     fontSize: 24,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
   },
 
   raccoWrap: {
@@ -654,7 +671,7 @@ const styles = StyleSheet.create({
   premiumCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EDE7FF',
+    backgroundColor: COLORS.purpleLight,
     borderRadius: 24,
     marginHorizontal: 24,
     marginBottom: 16,
@@ -664,14 +681,14 @@ const styles = StyleSheet.create({
   },
   premiumEmoji: { fontSize: 30, marginRight: 12 },
   premiumTextWrap: { flex: 1, marginRight: 8 },
-  premiumTitle: { fontSize: 17, fontFamily: FONT.rounded, color: '#4A2B8C', marginBottom: 3 },
-  premiumDesc: { fontSize: 12, color: '#7A6AA8', lineHeight: 18 },
+  premiumTitle: { fontSize: 17, fontFamily: FONT.rounded, color: COLORS.text, marginBottom: 3 },
+  premiumDesc: { fontSize: 12, color: COLORS.textSub, lineHeight: 18 },
   premiumCta: {
-    backgroundColor: '#9B7EDE',
+    backgroundColor: COLORS.purple,
     borderRadius: 24,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    color: '#fff',
+    color: COLORS.white,
     fontSize: 13,
     fontWeight: 'bold',
     overflow: 'hidden',
@@ -679,13 +696,13 @@ const styles = StyleSheet.create({
 
   // 声音克隆：产品灵魂，首页常驻、永远突出
   cloneBanner: {
-    backgroundColor: '#EFE7FF',
+    backgroundColor: COLORS.purpleLight,
     borderRadius: 22,
     marginHorizontal: 24,
     marginBottom: 16,
     padding: 16,
     borderLeftWidth: 5,
-    borderLeftColor: '#9B7EDE',
+    borderLeftColor: COLORS.purple,
     boxShadow: '0 3px 12px rgba(124, 77, 255, 0.20)',
     elevation: 3,
   },
@@ -695,12 +712,12 @@ const styles = StyleSheet.create({
   cloneBannerTitle: {
     fontSize: 18,
     fontFamily: FONT.rounded,
-    color: '#5B2E9C',
+    color: COLORS.text,
     marginBottom: 4,
   },
   cloneBannerDesc: {
     fontSize: 13,
-    color: '#5B7AA8',
+    color: COLORS.textSub,
     lineHeight: 20,
   },
   cloneBannerActions: {
@@ -709,7 +726,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cloneBannerCta: {
-    backgroundColor: '#9B7EDE',
+    backgroundColor: COLORS.purple,
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 9,
@@ -717,7 +734,7 @@ const styles = StyleSheet.create({
   cloneBannerCtaText: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: COLORS.white,
   },
   cloneBannerTitleRow: {
     flexDirection: 'row',
@@ -730,10 +747,10 @@ const styles = StyleSheet.create({
   recCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF7EA',
+    backgroundColor: COLORS.orangeLight,
     borderRadius: 22,
     borderLeftWidth: 5,
-    borderLeftColor: '#F2A65A',
+    borderLeftColor: COLORS.orange,
     marginHorizontal: 24,
     marginBottom: 20,
     padding: 14,
@@ -752,7 +769,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 20,
-    backgroundColor: '#FFE9CC',
+    backgroundColor: COLORS.orangeLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -767,19 +784,19 @@ const styles = StyleSheet.create({
   recKicker: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#C77B33',
+    color: COLORS.orangeDeep,
     letterSpacing: 0.4,
     marginBottom: 3,
   },
   recTitle: {
     fontSize: 19,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
     marginBottom: 5,
   },
   recMeta: {
     fontSize: 12,
-    color: '#8A7767',
+    color: COLORS.textSub,
   },
   recSpeakBtn: {
     position: 'absolute',
@@ -788,7 +805,7 @@ const styles = StyleSheet.create({
     bottom: 14,
     width: 46,
     borderRadius: 23,
-    backgroundColor: '#FFE0B2',
+    backgroundColor: COLORS.orangeLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -807,21 +824,21 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
-    backgroundColor: '#FFB5A0',
+    backgroundColor: COLORS.orange,
   },
   actionCard2: {
     flex: 1,
     borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
-    backgroundColor: '#FFD3B0',
+    backgroundColor: COLORS.orangeLight,
   },
   actionCard3: {
     flex: 1,
     borderRadius: 22,
     paddingVertical: 18,
     alignItems: 'center',
-    backgroundColor: '#C8E6C9',
+    backgroundColor: COLORS.mintLight,
   },
   actionEmoji: {
     fontSize: 28,
@@ -830,7 +847,7 @@ const styles = StyleSheet.create({
   /** 粘土贴图：补一点投影 + 底部间距，替代原来的 emoji 字号占位 */
   actionArt: {
     marginBottom: 6,
-    shadowColor: '#8A6A55',
+    shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.16,
     shadowRadius: 6,
@@ -839,7 +856,7 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 16,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
     textAlign: 'center',
   },
 
@@ -849,12 +866,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
     marginBottom: 12,
   },
   emptyState: {
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: COLORS.divider,
     borderStyle: 'dashed',
     borderRadius: 22,
     paddingVertical: 36,
@@ -862,14 +879,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#BDBDBD',
+    color: COLORS.textLight,
   },
 
   // #6 首页「最近故事」真实条目
   recentItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.white,
     borderRadius: 18,
     padding: 12,
     marginBottom: 10,
@@ -886,12 +903,12 @@ const styles = StyleSheet.create({
   recentItemTitle: {
     fontSize: 16,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
     marginBottom: 2,
   },
   recentItemSub: {
     fontSize: 12,
-    color: '#A8988A',
+    color: COLORS.textLight,
   },
 
   // 首启昵称引导弹窗样式
@@ -909,11 +926,11 @@ const styles = StyleSheet.create({
   onboardCard: {
     width: '100%',
     maxWidth: 360,
-    backgroundColor: '#FFF8F0',
+    backgroundColor: COLORS.cardSoft,
     borderRadius: 26,
     padding: 28,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: COLORS.shadow,
     shadowOpacity: 0.15,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -923,7 +940,7 @@ const styles = StyleSheet.create({
   onboardTitle: {
     fontSize: 23,
     fontFamily: FONT.rounded,
-    color: '#3D3229',
+    color: COLORS.text,
     textAlign: 'center',
     marginBottom: 20,
     lineHeight: 30,
@@ -931,22 +948,22 @@ const styles = StyleSheet.create({
   onboardInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#FFE0B2',
+    borderColor: COLORS.orangeLight,
     borderRadius: 22,
-    backgroundColor: '#FFF',
+    backgroundColor: COLORS.card,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#3D3229',
+    color: COLORS.text,
     textAlign: 'center',
     marginBottom: 20,
   },
   onboardBtn: {
     // 深一档蜜桃 + 深咖字：对比度 5:1（原来的浅蜜桃配白字只有 2.7:1）
-    backgroundColor: '#EE8B5E',
+    backgroundColor: COLORS.orangeDeep,
     borderRadius: 26,
     paddingVertical: 14,
     paddingHorizontal: 48,
   },
-  onboardBtnText: { fontSize: 18, fontFamily: FONT.rounded, color: '#3D3229' },
+  onboardBtnText: { fontSize: 18, fontFamily: FONT.rounded, color: COLORS.onPrimary },
 });

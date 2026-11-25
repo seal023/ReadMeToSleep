@@ -13,8 +13,13 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import ClayIcon, { type ClayIconName } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
-import { FONT } from '../../constants/theme';
+import { useRaccoGuide } from '../../hooks/useRaccoGuide';
+import { FONT, COLORS, RADIUS } from '../../constants/theme';
+import {
+  CLAY_SHADOW, clayCard, clayChip, clayChipActive, clayInput, claySurface,
+} from '../../constants/clayStyle';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 // 长篇原创故事轻量索引（id/标题/标签/时长/来源/长度档），不含正文
 import longIndex from '../../data/classic-stories/long/index.json';
@@ -29,13 +34,14 @@ import { isPremium } from '../../services/iap';
 import type { Story, Progress } from '../../types';
 
 // 与 data/classic-stories/stories-index.json 的实际标签保持一致（100 篇公版故事）
-const TAGS = [
-  { key: 'cat.fairy', zh: '童话', emoji: '📖' },
-  { key: 'cat.growth', zh: '成长', emoji: '🌱' },
-  { key: 'cat.fable', zh: '寓言', emoji: '🦉' },
-  { key: 'cat.animal', zh: '动物', emoji: '🐾' },
-  { key: 'cat.bedtime', zh: '睡前', emoji: '🌙' },
-  { key: 'cat.nature', zh: '自然', emoji: '🍃' },
+// 图标走 3D 粘土素材：童话=书、成长=嫩芽、寓言=猫头鹰、动物=爪印、睡前=月亮、自然=地球
+const TAGS: { key: string; zh: string; icon: ClayIconName }[] = [
+  { key: 'cat.fairy', zh: '童话', icon: 'book' },
+  { key: 'cat.growth', zh: '成长', icon: 'catGrowth' },
+  { key: 'cat.fable', zh: '寓言', icon: 'catOwl' },
+  { key: 'cat.animal', zh: '动物', icon: 'catAnimal' },
+  { key: 'cat.bedtime', zh: '睡前', icon: 'moon' },
+  { key: 'cat.nature', zh: '自然', icon: 'globe' },
 ];
 
 // 故事数据中的中文分类 → i18n key（英文界面下卡片标签也能本地化）
@@ -48,13 +54,14 @@ const TAG_KEY: Record<string, string> = {
   自然: 'cat.nature',
 };
 
-const TAG_EMOJI: Record<string, string> = {
-  童话: '📖',
-  成长: '🌱',
-  寓言: '🦉',
-  动物: '🐾',
-  睡前: '🌙',
-  自然: '🍃',
+// 故事卡片左侧图标：按分类取粘土素材，兜底=书
+const TAG_ICON: Record<string, ClayIconName> = {
+  童话: 'book',
+  成长: 'catGrowth',
+  寓言: 'catOwl',
+  动物: 'catAnimal',
+  睡前: 'moon',
+  自然: 'globe',
 };
 
 type TabKey = 'classic' | 'ai' | 'travel';
@@ -160,6 +167,9 @@ export default function LibraryScreen() {
   // 免费用户故事库门禁：会员全部可听；免费仅 5 篇经典池 + 已完成的免费克隆篇可听
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [freeCloneStoryId, setFreeCloneStoryId] = useState<string | null>(null);
+
+  // 小浣熊向导：进页面说一句"这里有好多故事，慢慢挑"
+  const guide = useRaccoGuide({ autoKey: 'b1', autoDelay: 1200, enterFrom: 'left', gesture: 'wave' });
 
   // 每次回到本页（从创作 / 打卡页返回）都刷新，保证与「我的故事」实时同步
   useFocusEffect(
@@ -281,7 +291,7 @@ export default function LibraryScreen() {
         onPress={() => router.push(`/story/${item.id}`)}
       >
         <View style={styles.cardLeft}>
-          <Text style={styles.cardEmoji}>{TAG_EMOJI[item.tags[0]] || '📖'}</Text>
+          <ClayIcon name={TAG_ICON[item.tags[0]] ?? 'book'} size={38} />
         </View>
         <View style={styles.cardCenter}>
           <Text style={styles.cardTitle} numberOfLines={1}>
@@ -298,7 +308,7 @@ export default function LibraryScreen() {
           </View>
         </View>
         <View style={styles.cardRight}>
-          <Text style={locked ? styles.lockBtn : styles.playBtn}>{locked ? '🔒' : '▶️'}</Text>
+          <ClayIcon name={locked ? 'lock' : 'play'} size={28} />
         </View>
       </TouchableOpacity>
     );
@@ -311,7 +321,7 @@ export default function LibraryScreen() {
       onPress={() => router.push(`/story/${item.id}`)}
     >
       <View style={styles.cardLeft}>
-        <Text style={styles.cardEmoji}>✨</Text>
+        <ClayIcon name="starBig" size={38} />
       </View>
       <View style={styles.cardCenter}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
@@ -321,7 +331,7 @@ export default function LibraryScreen() {
         </View>
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.playBtn}>▶️</Text>
+        <ClayIcon name="play" size={28} />
       </View>
     </TouchableOpacity>
   );
@@ -333,7 +343,7 @@ export default function LibraryScreen() {
       onPress={() => router.push('/story/travel-checkin')}
     >
       <View style={styles.cardLeft}>
-        <Text style={styles.cardEmoji}>✈️</Text>
+        <ClayIcon name="plane" size={38} />
       </View>
       <View style={styles.cardCenter}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.location}</Text>
@@ -343,7 +353,7 @@ export default function LibraryScreen() {
         </View>
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.playBtn}>▶️</Text>
+        <ClayIcon name="play" size={28} />
       </View>
     </TouchableOpacity>
   );
@@ -371,11 +381,19 @@ export default function LibraryScreen() {
       <View style={[styles.header, isLandscape && styles.headerLandscape, { paddingTop: headerPadTop }]}>
         {!isLandscape && (
           <View style={styles.raccoWrap}>
-            <Racco state="idle" size={78} />
+            <Racco
+              state={guide.state}
+              size={78}
+              showSpeechBubble={!!guide.line}
+              speechText={guide.line}
+              gesture={guide.gesture}
+              anim={guide.anim}
+              animPlaying={guide.animPlaying}
+            />
           </View>
         )}
         <View style={[styles.searchBox, isLandscape && styles.searchBoxLandscape]}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <ClayIcon name="search" size={22} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder={t('library.search')}
@@ -392,7 +410,16 @@ export default function LibraryScreen() {
         </View>
         {isLandscape && (
           <View style={styles.raccoWrapLandscape}>
-            <Racco state="idle" size={144} />
+            <Racco
+              state={guide.state}
+              size={144}
+              showSpeechBubble={!!guide.line}
+              speechText={guide.line}
+              enterFrom={guide.enterFrom}
+              gesture={guide.gesture}
+              anim={guide.anim}
+              animPlaying={guide.animPlaying}
+            />
           </View>
         )}
       </View>
@@ -438,9 +465,12 @@ export default function LibraryScreen() {
                 style={activeTag === tag.zh ? styles.tagChipActive : styles.tagChip}
                 onPress={() => setActiveTag(activeTag === tag.zh ? null : tag.zh)}
               >
-                <Text style={activeTag === tag.zh ? styles.tagChipTextActive : styles.tagChipText}>
-                  {tag.emoji} {t(tag.key)}
-                </Text>
+                <View style={styles.chipInner}>
+                  <ClayIcon name={tag.icon} size={20} />
+                  <Text style={activeTag === tag.zh ? styles.tagChipTextActive : styles.tagChipText}>
+                    {t(tag.key)}
+                  </Text>
+                </View>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -449,9 +479,12 @@ export default function LibraryScreen() {
             onPress={() => setFilterOpen(true)}
             activeOpacity={0.85}
           >
-            <Text style={[styles.filterBtnText, activeFilterCount > 0 && styles.filterBtnTextOn]}>
-              ⚙️ {t('library.filter')}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
-            </Text>
+            <View style={styles.chipInner}>
+              <ClayIcon name="settings" size={18} />
+              <Text style={[styles.filterBtnText, activeFilterCount > 0 && styles.filterBtnTextOn]}>
+                {t('library.filter')}{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
       )}
@@ -472,7 +505,7 @@ export default function LibraryScreen() {
         showsVerticalScrollIndicator={!isLandscape}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>📚</Text>
+            <ClayIcon name="book" size={64} />
             <Text style={styles.emptyText}>{t('library.empty')}</Text>
           </View>
         }
@@ -570,9 +603,13 @@ export default function LibraryScreen() {
   );
 }
 
+/**
+ * 3D 粘土化（2026-11-25）：所有控件从"扁平 App 控件"换成软陶质感——
+ * 厚圆角 + 内高光 + 暖投影 + COLORS token。父母端不在此列。
+ */
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  // 小浣熊与搜索框同一行：竖屏 Racco 78px，横屏 54px，整体高度不再吃掉半屏
+  // 小浣熊与搜索框同一行：竖屏 Racco 78px，横屏放大，整体高度不再吃掉半屏
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingTop: 10, paddingBottom: 4, paddingHorizontal: 14,
@@ -581,29 +618,28 @@ const styles = StyleSheet.create({
   // 横屏：搜索框在左、浣熊从最右往左让到搜索框右侧的空白区（红圈位置，中心约屏宽80%）
   raccoWrap: {},
   raccoWrapLandscape: { marginLeft: 'auto', marginRight: '15%' },
+  // 搜索框：粘土凹槽（内阴影为主，像在软陶上按出的槽）
   searchBox: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 26, paddingHorizontal: 14,
-    borderWidth: 1, borderColor: '#F0D9B5', height: 40, marginLeft: 6,
-    maxWidth: 640,
+    ...clayInput,
+    borderRadius: RADIUS.pill, paddingHorizontal: 14,
+    height: 44, marginLeft: 6, maxWidth: 640,
   },
   searchBoxLandscape: { marginLeft: 0, marginTop: 8, flex: 0, width: 640 },
-  searchIcon: { fontSize: 16, marginRight: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: '#3D3229', height: '100%' },
-  clearBtn: { fontSize: 14, color: '#A8988A', marginLeft: 4 },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: COLORS.text, height: '100%', fontFamily: FONT.body },
+  clearBtn: { fontSize: 16, color: COLORS.textLight, marginLeft: 4 },
   tabRow: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 6, marginTop: 2 },
   tabBtn: {
-    flex: 1, paddingVertical: 8, alignItems: 'center',
-    borderRadius: 24, marginHorizontal: 4,
-    backgroundColor: '#FFF0D6', borderWidth: 1, borderColor: '#F0D9B5',
+    flex: 1, paddingVertical: 9, alignItems: 'center',
+    marginHorizontal: 4, ...clayChip,
   },
   tabBtnActive: {
-    flex: 1, paddingVertical: 8, alignItems: 'center',
-    borderRadius: 24, marginHorizontal: 4,
-    backgroundColor: '#FFB347', borderWidth: 1, borderColor: '#FF8C00',
+    flex: 1, paddingVertical: 9, alignItems: 'center',
+    marginHorizontal: 4, ...clayChipActive,
   },
-  tabLabel: { fontSize: 15, color: '#A8988A', fontFamily: FONT.rounded },
-  tabLabelActive: { fontSize: 15, color: '#fff', fontFamily: FONT.rounded },
+  tabLabel: { fontSize: 15, color: COLORS.textSub, fontFamily: FONT.rounded },
+  tabLabelActive: { fontSize: 15, color: COLORS.onPrimary, fontFamily: FONT.rounded },
   // 单行分类条：左侧横向滚动，右侧固定「筛选」按钮
   chipBar: {
     flexDirection: 'row', alignItems: 'center',
@@ -611,66 +647,64 @@ const styles = StyleSheet.create({
   },
   chipScrollWrap: { flex: 1 },
   chipScroll: { alignItems: 'center', paddingRight: 4 },
+  // 图标+文字水平排列（胶囊内部）
+  chipInner: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   filterBtn: {
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: '#FFF0D6', borderWidth: 1, borderColor: '#F0D9B5', marginLeft: 6,
+    paddingHorizontal: 12, paddingVertical: 7,
+    marginLeft: 6, ...clayChip,
   },
-  filterBtnOn: { backgroundColor: '#FFB347', borderColor: '#FF8C00' },
-  filterBtnText: { fontSize: 12, color: '#8A7A6A', fontWeight: '700' },
-  filterBtnTextOn: { color: '#fff' },
+  filterBtnOn: { ...clayChipActive },
+  filterBtnText: { fontSize: 12, color: COLORS.textSub, fontWeight: '700' },
+  filterBtnTextOn: { color: COLORS.onPrimary },
   tagChip: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 22,
-    backgroundColor: '#FFF0D6', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#F0D9B5',
+    paddingHorizontal: 14, paddingVertical: 7,
+    marginHorizontal: 4, marginVertical: 4, ...clayChip,
   },
   tagChipActive: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 22,
-    backgroundColor: '#FFB347', marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: '#FF8C00',
+    paddingHorizontal: 14, paddingVertical: 7,
+    marginHorizontal: 4, marginVertical: 4, ...clayChipActive,
   },
-  tagChipText: { fontSize: 15, color: '#3D3229', fontFamily: FONT.rounded },
-  tagChipTextActive: { fontSize: 15, color: '#fff', fontFamily: FONT.rounded },
-  filterDivider: { width: 1, height: 22, backgroundColor: '#E8D5B5', marginHorizontal: 8, marginVertical: 4 },
+  tagChipText: { fontSize: 15, color: COLORS.text, fontFamily: FONT.rounded },
+  tagChipTextActive: { fontSize: 15, color: COLORS.onPrimary, fontFamily: FONT.rounded },
+  filterDivider: { width: 1, height: 22, backgroundColor: COLORS.divider, marginHorizontal: 8, marginVertical: 4 },
   // 关键修复：FlatList 必须占满剩余高度，否则横屏时内容被挤出屏幕且无法上滑
   listFlex: { flex: 1 },
   columnWrap: { gap: 10 },
   list: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: 24 },
+  // 故事卡片：厚软陶块 + 暖投影
   card: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', borderRadius: 22,
-    padding: 14, marginBottom: 10,
-    boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)', elevation: 2,
+    ...clayCard,
+    padding: 14, marginBottom: 12,
   },
   /** 单列：撑满一行；两列（横屏 / iPad）：均分宽度 */
   cardSingle: { width: '100%' },
   cardHalf: { flex: 1 },
   cardLeft: { marginRight: 12 },
-  cardEmoji: { fontSize: 32 },
   cardCenter: { flex: 1 },
-  cardTitle: { fontSize: 17, fontFamily: FONT.rounded, color: '#3D3229' },
+  cardTitle: { fontSize: 17, fontFamily: FONT.rounded, color: COLORS.text },
   tagRow: { flexDirection: 'row', marginTop: 4, flexWrap: 'wrap' },
   tag: {
-    fontSize: 11, color: '#FF8C00', backgroundColor: '#FFF0D6',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginRight: 6,
+    fontSize: 11, color: COLORS.orangeDeep, backgroundColor: COLORS.orangeLight,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.xs, marginRight: 6,
   },
-  duration: { fontSize: 11, color: '#A8988A' },
+  duration: { fontSize: 11, color: COLORS.textLight },
   cardRight: { marginLeft: 8 },
-  playBtn: { fontSize: 18 },
   /** 免费用户被锁定的非池内故事：整体压暗 + 挂锁图标，提示需会员解锁 */
   cardLocked: { opacity: 0.55 },
-  lockBtn: { fontSize: 18, opacity: 0.85 },
-  /** 免费畅听的 5 篇经典池：金色高亮边框 + 浅橙底，让孩子/家长一眼认出「这 5 篇免费、点开就能听」 */
+  /** 免费畅听的 5 篇经典池：暖色高亮边框 + 浅橙底 + 发光投影 */
   cardFree: {
-    borderWidth: 2, borderColor: '#FF8C00', backgroundColor: '#FFF7EC',
-    shadowColor: '#FFB347', shadowOpacity: 0.28, shadowRadius: 6, elevation: 3,
+    borderWidth: 2, borderColor: COLORS.orangeDeep,
+    ...claySurface(COLORS.orangeLight, 'active'),
   },
   /** 「免费畅听」金色标签 */
   freeTag: {
-    fontSize: 11, color: '#fff', backgroundColor: '#FF8C00', fontWeight: '700',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8, marginRight: 6,
+    fontSize: 11, color: COLORS.onPrimary, backgroundColor: COLORS.orangeDeep, fontWeight: '700',
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.xs, marginRight: 6,
   },
   emptyList: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { alignItems: 'center', marginTop: 60 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 17, color: '#A8988A', fontFamily: FONT.rounded },
+  emptyText: { fontSize: 17, color: COLORS.textLight, fontFamily: FONT.rounded, marginTop: 14 },
 
   // 筛选弹层
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
@@ -679,25 +713,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {
-    backgroundColor: '#FFFBF4',
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
+    backgroundColor: COLORS.cardSoft,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
     paddingHorizontal: 20,
     paddingTop: 18,
     paddingBottom: 28,
     maxHeight: '88%', // 横屏矮屏限制高度，内部 ScrollView 滚动，避免顶部筛选项被裁
+    boxShadow: CLAY_SHADOW.large,
   },
   sheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: 6,
   },
-  sheetTitle: { fontSize: 19, fontFamily: FONT.rounded, color: '#3D3229' },
-  sheetReset: { fontSize: 13, color: '#FF8C00', fontWeight: '600' },
-  sheetLabel: { fontSize: 12, color: '#A8988A', fontWeight: '600', marginTop: 12, marginBottom: 2 },
+  sheetTitle: { fontSize: 19, fontFamily: FONT.rounded, color: COLORS.text },
+  sheetReset: { fontSize: 13, color: COLORS.orangeDeep, fontWeight: '600' },
+  sheetLabel: { fontSize: 12, color: COLORS.textLight, fontWeight: '600', marginTop: 12, marginBottom: 2 },
   sheetRow: { flexDirection: 'row', flexWrap: 'wrap' },
   sheetDone: {
-    marginTop: 20, height: 46, borderRadius: 23,
-    backgroundColor: '#FFB347', alignItems: 'center', justifyContent: 'center',
+    marginTop: 20, height: 48, borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.orangeDeep, alignItems: 'center', justifyContent: 'center',
+    boxShadow: CLAY_SHADOW.active, elevation: 5,
   },
-  sheetDoneText: { fontSize: 17, color: '#fff', fontFamily: FONT.rounded },
+  sheetDoneText: { fontSize: 17, color: COLORS.onPrimary, fontFamily: FONT.rounded },
 });

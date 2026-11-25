@@ -18,7 +18,9 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { useRaccoGuide } from '@/hooks/useRaccoGuide';
 import { FONT } from '@/constants/theme';
+import { COLORS } from '@/constants/Colors';
 import type { Story, Language, RaccoState, GenerateStoryParams } from '@/types';
 
 // 出海适配：海外用户到新加坡节点延迟偏高。
@@ -67,6 +69,8 @@ export default function CreateScreen() {
   }, [spinAnim, twinkleAnim]);
   const [generating, setGenerating] = useState(false);
   const [raccoState, setRaccoState] = useState<RaccoState>('idle');
+  // 小浣熊向导：进页面说一句"自己编故事？好酷！"；生成中仍用原有循环短句
+  const guide = useRaccoGuide({ autoKey: 'c1', autoDelay: 1000, enterFrom: 'bottom', gesture: 'wave' });
   // 出海适配：海外用户到新加坡节点延迟更高，超过 15 秒给出安抚提示，避免以为"卡死"
   const [slowHint, setSlowHint] = useState(false);
   // 生成中循环展示的可爱短句（不识字的孩子也能通过文字气泡 + 语音辅助理解"正在努力生成"）
@@ -270,10 +274,13 @@ export default function CreateScreen() {
             </>
           )}
           <Racco
-            state={generating ? 'thinking' : raccoState}
+            state={generating ? 'thinking' : guide.line ? guide.state : raccoState}
             size={120}
-            showSpeechBubble
-            speechText={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : ''}
+            showSpeechBubble={generating || !!guide.line}
+            speechText={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : guide.line}
+            gesture={generating ? 'none' : guide.gesture}
+            anim={generating ? 'think' : guide.anim}
+            animPlaying={generating || guide.animPlaying}
           />
         </View>
       </View>
@@ -290,7 +297,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.input}
           placeholder={t('create.ph.theme')}
-          placeholderTextColor="#B9AFA6"
+          placeholderTextColor={COLORS.textLight}
           value={theme}
           onChangeText={setTheme}
         />
@@ -301,7 +308,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.input}
           placeholder={t('create.ph.protagonist')}
-          placeholderTextColor="#B9AFA6"
+          placeholderTextColor={COLORS.textLight}
           value={protagonist}
           onChangeText={setProtagonist}
         />
@@ -312,7 +319,7 @@ export default function CreateScreen() {
         <TextInput
           style={styles.inputMultiline}
           placeholder={t('create.ph.details')}
-          placeholderTextColor="#B9AFA6"
+          placeholderTextColor={COLORS.textLight}
           value={details}
           onChangeText={setDetails}
           multiline
@@ -397,13 +404,13 @@ const styles = StyleSheet.create({
     borderRadius: 39,
     borderWidth: 3,
     borderColor: 'rgba(183,148,244,0.25)',
-    borderTopColor: '#B794F4',
+    borderTopColor: COLORS.purple,
   },
   genSpark: { position: 'absolute', fontSize: 16 },
-  title: { fontSize: 24, color: '#3D3229', textAlign: 'center', marginBottom: 14, fontWeight: '700' },
+  title: { fontSize: 24, color: COLORS.text, textAlign: 'center', marginBottom: 14, fontWeight: '700' },
   slowHint: {
     fontSize: 14,
-    color: '#A8988A',
+    color: COLORS.textLight,
     textAlign: 'center',
     marginBottom: 12,
     paddingHorizontal: 16,
@@ -418,7 +425,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: COLORS.card,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -429,7 +436,7 @@ const styles = StyleSheet.create({
   icon: { fontSize: 18, lineHeight: 22, marginRight: 8 },
   quota: {
     fontSize: 12,
-    color: '#7A6A5D',
+    color: COLORS.textSub,
     textAlign: 'center',
     marginBottom: 10,
   },
@@ -445,7 +452,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
-    color: '#3D3229',
+    color: COLORS.text,
     padding: 0,
     fontFamily: FONT.body,
     letterSpacing: 0,
@@ -454,7 +461,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 21,
-    color: '#3D3229',
+    color: COLORS.text,
     padding: 0,
     minHeight: 56,
     textAlignVertical: 'top',
@@ -466,13 +473,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 22,
-    backgroundColor: '#FFE0B2',
+    backgroundColor: COLORS.orangeLight,
   },
-  chipActive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, backgroundColor: '#F2827F' },
-  chipText: { fontSize: 14, color: '#3D3229' },
-  chipTextActive: { fontSize: 14, color: '#3D3229', fontWeight: '600' },
+  chipActive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, backgroundColor: COLORS.danger },
+  chipText: { fontSize: 14, color: COLORS.text },
+  chipTextActive: { fontSize: 14, color: COLORS.text, fontWeight: '600' },
   btn: {
-    backgroundColor: '#EE8B5E',
+    backgroundColor: COLORS.orangeDeep,
     borderRadius: 24,
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -480,7 +487,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   btnDisabled: {
-    backgroundColor: '#EE8B5E',
+    backgroundColor: COLORS.orangeDeep,
     borderRadius: 24,
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -488,5 +495,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
     opacity: 0.5,
   },
-  btnText: { fontSize: 18, color: '#3D3229', fontWeight: '700', textAlign: 'center', flexShrink: 1, flexWrap: 'wrap' },
+  btnText: { fontSize: 18, color: COLORS.text, fontWeight: '700', textAlign: 'center', flexShrink: 1, flexWrap: 'wrap' },
 });
