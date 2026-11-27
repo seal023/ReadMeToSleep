@@ -37,6 +37,10 @@ import type { RaccoState } from '../../types';
 
 const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
 
+/** 冷启动开场动画：模块级标记 —— JS 重载（冷启动）才重置，回前台不重播 */
+let introPlayedThisLaunch = false;
+type IntroPhase = 'done' | 'walk' | 'wave';
+
 /** 上次推荐过哪篇（跨启动记住，保证「每次都不一样」） */
 const REC_LAST_KEY = 'rms_last_rec_story';
 
@@ -172,6 +176,46 @@ export default function HomeTab() {
   // 小浣熊向导：首页不自动播（避开每日问候），点浣熊才说话 + 气泡 + 动作
   const guide = useRaccoGuide({ enterFrom: 'none', gesture: 'wave' });
   const HOME_GUIDE_KEYS = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'];
+
+  /**
+   * 冷启动开场动画：小浣熊从左侧走进来 → 挥手 → 说开场白（替代原每日问候）。
+   * 时序：walk 序列帧走 1.6s（走到位）→ wave + 语音 + 气泡 → 4s 后回到常态。
+   * 仅冷启动播一次；回前台由 GreetingOnOpen 按时段问候，不在这里重播。
+   */
+  const [introPhase, setIntroPhase] = useState<IntroPhase>('done');
+  const introTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    if (introPlayedThisLaunch) return;
+    let alive = true;
+    (async () => {
+      // 隐私未同意不发声音（与全局规则一致）
+      let agreed = '';
+      try { agreed = await AsyncStorage.getItem('rms_privacy_consent_v1') || ''; } catch {}
+      if (!alive || agreed !== 'agreed') return;
+      introPlayedThisLaunch = true; // 确认要播了才占位，避免双挂载时首次被取消导致永远不播
+      setIntroPhase('walk');
+      // 走到位置后：挥手 + 播开场白 + 出气泡
+      const speakTimer = setTimeout(() => {
+        if (!alive) return;
+        setIntroPhase('wave');
+        void speakSystemVoice(language, {
+          key: 'intro',
+          text: t('home.intro'),
+          force: true, // 冷启动无故事在播，确保一定出声
+        });
+      }, 1600);
+      // 播完回到常态（开场白音频约 2.8s，留足缓冲）
+      const doneTimer = setTimeout(() => {
+        if (alive) setIntroPhase('done');
+      }, 1600 + 3600);
+      introTimers.current.push(speakTimer, doneTimer);
+    })();
+    return () => {
+      alive = false;
+      introTimers.current.forEach(clearTimeout);
+      introTimers.current = [];
+    };
+  }, []);
 
   const handleRaccoPress = () => {
     const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];
@@ -440,13 +484,18 @@ export default function HomeTab() {
 
         <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
           <Racco
-            state={guide.line ? guide.state : raccoState}
+            state={
+              introPhase === 'wave' ? 'happy'
+              : introPhase === 'walk' ? 'talking'
+              : guide.line ? guide.state : raccoState
+            }
             size={raccoSize}
-            showSpeechBubble={!!guide.line}
-            speechText={guide.line}
-            gesture={guide.gesture}
-            anim={guide.anim}
-            animPlaying={guide.animPlaying}
+            showSpeechBubble={!!guide.line || introPhase === 'wave'}
+            speechText={introPhase === 'wave' ? t('home.intro') : guide.line}
+            gesture={introPhase === 'wave' ? 'wave' : guide.gesture}
+            enterFrom={introPhase === 'walk' ? 'left' : guide.enterFrom}
+            anim={introPhase === 'walk' ? 'walk' : introPhase === 'wave' ? 'wave' : guide.anim}
+            animPlaying={introPhase !== 'done' ? true : guide.animPlaying}
           />
         </ElasticPressable>
       </View>

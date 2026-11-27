@@ -7,6 +7,7 @@
   "home.greetingNoon": "Good midday, {name}!",
   "home.greetingAfternoon": "Good afternoon, {name}!",
   "home.greetingEvening": "Good evening, {name}!",
+  "home.intro": "Here I am, let's begin!",
   "home.farewell": "Goodbye, {name}! Sweet dreams~",
   "home.farewellDay": "Bye bye, {name}!",
   "home.farewellNight": "Good night, {name}!",

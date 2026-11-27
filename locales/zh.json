@@ -7,6 +7,7 @@
   "home.greetingNoon": "中午好呀，{name}！",
   "home.greetingAfternoon": "下午好呀，{name}！",
   "home.greetingEvening": "晚上好呀，{name}！",
+  "home.intro": "我来啦，我们开始吧！",
   "home.farewell": "再见啦，{name}！晚安，做个好梦～",
   "home.farewellDay": "再见啦，{name}！",
   "home.farewellNight": "晚安啦，{name}！",
