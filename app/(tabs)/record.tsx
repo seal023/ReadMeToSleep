@@ -37,8 +37,8 @@ type Step = 'record' | 'process' | 'edit';
 
 export default function RecordScreen() {
   const { t, language } = useLanguage();
-  const { width: screenW } = useWindowDimensions();
-  const isWide = screenW >= 768;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const isWide = screenW >= 768 && screenW > screenH;
   // 免费版门禁：录音创作故事是会员专属功能（与 AI 生成同属会员权益），免费用户整页拦截。
   // snapshot 还在加载（null）时先不锁，等权益判定回来再决定，避免会员被闪一下锁定屏。
   const { snapshot } = useEntitlement();

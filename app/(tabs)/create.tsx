@@ -37,8 +37,8 @@ const GEN_HARD_TIMEOUT_LONG_MS = 95000;
 export default function CreateScreen() {
   const router = useRouter();
   const { t, language: uiLang } = useLanguage();
-  const { width: screenW } = useWindowDimensions();
-  const isWide = screenW >= 768;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const isWide = screenW >= 768 && screenW > screenH;
 
   const [theme, setTheme] = useState('');
   const [protagonist, setProtagonist] = useState('');

@@ -166,9 +166,10 @@ export default function HomeTab() {
     }, [])
   );
 
-  const { width: screenW } = useWindowDimensions();
-  // iPad landscape (and large screens) counts as wide: static scene on the left, cards on the right
-  const isWide = screenW >= 768;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // Scene background only in true landscape: an iPad in portrait is tall, so a cover-scene
+  // would crop the baked-in raccoon on the left. Portrait keeps the animated raccoon layout.
+  const isWide = screenW >= 768 && screenW > screenH;
 
   // 小浣熊向导：首页不自动播（避开每日问候），点浣熊才说话 + 气泡 + 动作
   const guide = useRaccoGuide({ enterFrom: 'none', gesture: 'wave' });

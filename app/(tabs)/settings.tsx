@@ -22,8 +22,8 @@ const RACCO_REPLIES = ['settings.racco.reply1', 'settings.racco.reply2'];
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
-  const { width: screenW } = useWindowDimensions();
-  const isWide = screenW >= 768;
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const isWide = screenW >= 768 && screenW > screenH;
   // 账号：让家长在设置页一级就能看见"会员记在哪个账号上"
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);

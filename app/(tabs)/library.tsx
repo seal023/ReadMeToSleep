@@ -375,8 +375,8 @@ export default function LibraryScreen() {
   const activeFilterCount =
     (lengthFilter !== 'all' ? 1 : 0) + (langFilter !== 'all' ? 1 : 0) + (sortKey !== 'recommend' ? 1 : 0);
 
-  // Wide screens (iPad landscape) use the integrated scene: hide the in-page animated raccoon; the baked-in one speaks
-  const isWide = width >= 768;
+  // Scene background only in true landscape (an iPad in portrait must keep the animated raccoon layout)
+  const isWide = width >= 768 && isLandscape;
 
   return (
     <View style={styles.root}>

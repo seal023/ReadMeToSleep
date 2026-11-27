@@ -165,8 +165,8 @@ export default function MyStoriesScreen() {
   /** 卡片操作说明：点一下进去听、长按删除（删除不再做成按钮，避免误触） */
   const ListHint = () => <Text style={styles.listHint}>{t('myStories.listHint')}</Text>;
 
-  // iPad landscape: integrated scene background (beach) + content column on the right
-  const isWide = width >= 768;
+  // Scene background only in true landscape; iPad portrait keeps the original layout
+  const isWide = width >= 768 && isLandscape;
 
   return (
     <CartoonScreen
