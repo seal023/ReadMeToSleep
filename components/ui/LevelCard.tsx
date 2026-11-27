@@ -12,7 +12,8 @@ import { getProgress } from '../../services/storage';
 import { getLevel, getNextLevel, getLevelProgress, BADGES, computeRewardExtras } from '../../constants/rewards';
 import type { Progress } from '../../types';
 import { useLanguage } from '@/hooks/useLanguage';
-import { COLORS, RADIUS, SPACING, FONT_SIZE, SHADOW } from '@/constants/theme';
+import { COLORS, SPACING, FONT_SIZE } from '@/constants/theme';
+import { ClayFrame } from './ClayFrame';
 
 interface LevelCardProps {
   /** 点击整卡时的回调（可选，用于跳转奖励详情） */
@@ -65,53 +66,60 @@ export function LevelCard({ onPress }: LevelCardProps) {
       : '已是最高等级，你太棒了！👑';
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={onPress ? 0.85 : 1}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <View style={styles.topRow}>
-        <View style={styles.badgeBox}>
-          <Text style={styles.levelEmoji}>{level.emoji}</Text>
+    <View style={styles.cardWrap}>
+      <ClayFrame tone="mint" innerStyle={styles.card}>
+        <View style={styles.topRow}>
+          <View style={styles.badgeBox}>
+            <Text style={styles.levelEmoji}>{level.emoji}</Text>
+          </View>
+
+          <View style={styles.infoBox}>
+            <Text style={styles.levelName}>
+              Lv.{level.level} · {levelName}
+            </Text>
+            <Text style={styles.statText}>{statText}</Text>
+          </View>
         </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.levelName}>
-            Lv.{level.level} · {levelName}
-          </Text>
-          <Text style={styles.statText}>{statText}</Text>
+        {/* 升级进度条 */}
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: fillWidth }]} />
         </View>
-      </View>
+        <Text style={styles.progressHint}>{progressHint}</Text>
 
-      {/* 升级进度条 */}
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: fillWidth }]} />
-      </View>
-      <Text style={styles.progressHint}>{progressHint}</Text>
-
-      {/* 已获得勋章 */}
-      {ownedBadges.length > 0 && (
-        <View style={styles.badgeRow}>
-          {ownedBadges.map((b) => (
-            <View key={b.id} style={styles.badgeChip}>
-              <Text style={styles.badgeChipEmoji}>{b.emoji}</Text>
-            </View>
-          ))}
-        </View>
+        {/* 已获得勋章 */}
+        {ownedBadges.length > 0 && (
+          <View style={styles.badgeRow}>
+            {ownedBadges.map((b) => (
+              <View key={b.id} style={styles.badgeChip}>
+                <Text style={styles.badgeChipEmoji}>{b.emoji}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ClayFrame>
+      {/* 若外部需要点击，用透明热区铺在相框上，保留原 onPress 语义 */}
+      {onPress && (
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={0.85}
+          onPress={onPress}
+        />
       )}
-    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
+  /** 相框外布局：左右留白 + 底部间距 */
+  cardWrap: {
     marginHorizontal: 24,
     marginBottom: 16,
-    ...SHADOW.soft,
+    position: 'relative',
+  },
+  /** 等级卡画面区（外壳交给 ClayFrame） */
+  card: {
+    padding: SPACING.md,
   },
   topRow: {
     flexDirection: 'row',

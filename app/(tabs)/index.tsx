@@ -22,6 +22,7 @@ import { useRaccoGuide } from '../../hooks/useRaccoGuide';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
+import { ClayFrame } from '../../components/ui/ClayFrame';
 import { ElasticPressable } from '../../components/ui/CartoonButton';
 import { getVoiceGuidance, getChildName, setChildName as saveChildName, getStories, getStory, getProgress, getPromptVoiceSetting, getVoiceSetting, CLASSIC_EN_IDS, FREE_OFFLINE_POOL_IDS } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
@@ -503,22 +504,24 @@ export default function HomeTab() {
       {/* 会员入口：只在未订阅 / 已过期时出现（已是会员就不再推销，v84 反馈 #6） */}
       {showPremiumCard && (
         <ElasticPressable
-          style={styles.premiumCard}
+          style={styles.frameWrap}
           onPress={() => router.push('/(parent)/subscription?plan=yearly')}
           pressScale={0.94}
           bounciness={14}
         >
-          <Text style={styles.premiumEmoji}>💎</Text>
-          <View style={styles.premiumTextWrap}>
-            <Text style={styles.premiumTitle}>{t('home.premium.title')}</Text>
-            <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
-          </View>
-          <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
+          <ClayFrame tone="lemon" hanger innerStyle={styles.frameInnerRow}>
+            <Text style={styles.premiumEmoji}>💎</Text>
+            <View style={styles.premiumTextWrap}>
+              <Text style={styles.premiumTitle}>{t('home.premium.title')}</Text>
+              <Text style={styles.premiumDesc}>{t('home.premium.desc')}</Text>
+            </View>
+            <Text style={styles.premiumCta}>{t('home.premium.cta')}</Text>
+          </ClayFrame>
         </ElasticPressable>
       )}
 
       {/* 声音克隆：产品灵魂，常驻渲染、永不消失（v79：去掉可收起的临时状态） */}
-      <View style={styles.cloneBanner}>
+      <ClayFrame tone="grape" style={styles.frameWrap} innerStyle={styles.cloneBanner}>
         <View style={styles.cloneBannerTextWrap}>
           <View style={styles.cloneBannerTitleRow}>
             <ClayIcon name="mic" size={34} />
@@ -540,7 +543,7 @@ export default function HomeTab() {
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ClayFrame>
 
       {/*
         今日推荐（v95 反馈：与「你想做什么呀」合并）
@@ -550,7 +553,7 @@ export default function HomeTab() {
         现在只留这一张：每次进首页从 100 篇公版故事里随机挑一篇，点开直接听。
       */}
       {rec && (
-        <View style={styles.recCard}>
+        <ClayFrame tone="peach" style={styles.frameWrap} innerStyle={styles.recInner}>
           {/* 整卡点击进故事：用 Pressable 铺满整卡，文字/封面区域都可点。
               喇叭独立叠在最上层、只响应自己的点击（v116 反馈 #5）。 */}
           <Pressable
@@ -582,7 +585,7 @@ export default function HomeTab() {
           >
             <Text style={styles.recSpeakEmoji}>{recPlaying ? '⏸️' : '🔊'}</Text>
           </Pressable>
-        </View>
+        </ClayFrame>
       )}
 
       {/* 需求 5：等级与奖励进度 */}
@@ -590,47 +593,55 @@ export default function HomeTab() {
 
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.actionCard1}
-          activeOpacity={0.8}
+          style={styles.actionSlot}
+          activeOpacity={0.85}
           onPress={() => router.push('/(tabs)/library')}
         >
-          <ClayIcon name="book" size={38} style={styles.actionArt} />
-          <Text style={styles.actionLabel}>{t('home.quickListen')}</Text>
+          <ClayFrame tone="peach" nails={false} innerStyle={styles.actionInner}>
+            <ClayIcon name="book" size={38} style={styles.actionArt} />
+            <Text style={styles.actionLabel}>{t('home.quickListen')}</Text>
+          </ClayFrame>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.actionCard2}
-          activeOpacity={0.8}
+          style={styles.actionSlot}
+          activeOpacity={0.85}
           onPress={openCreate}
         >
-          <ClayIcon name="starBig" size={38} style={styles.actionArt} />
-          <Text style={styles.actionLabel}>{t('home.quickCreate')}</Text>
+          <ClayFrame tone="lemon" nails={false} innerStyle={styles.actionInner}>
+            <ClayIcon name="starBig" size={38} style={styles.actionArt} />
+            <Text style={styles.actionLabel}>{t('home.quickCreate')}</Text>
+          </ClayFrame>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.actionCard3}
-          activeOpacity={0.8}
+          style={styles.actionSlot}
+          activeOpacity={0.85}
           onPress={openTravel}
         >
-          <ClayIcon name="tent" size={38} style={styles.actionArt} />
-          <Text style={styles.actionLabel}>{t('home.quickTravel')}</Text>
+          <ClayFrame tone="mint" nails={false} innerStyle={styles.actionInner}>
+            <ClayIcon name="tent" size={38} style={styles.actionArt} />
+            <Text style={styles.actionLabel}>{t('home.quickTravel')}</Text>
+          </ClayFrame>
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('home.recentStories')}</Text>
         {recent.length === 0 ? (
-          <View style={styles.emptyState}>
+          <ClayFrame tone="cream" nails={false} innerStyle={styles.emptyInner}>
             <Text style={styles.emptyText}>{t('home.noStories')}</Text>
-          </View>
+          </ClayFrame>
         ) : (
           recent.map((r) => (
-            <TouchableOpacity key={r.key} style={styles.recentItem} onPress={() => openRecent(r)}>
-              <ClayIcon name={r.kind === 'ai' ? 'starBig' : 'globe'} size={30} />
-              <View style={styles.recentItemInfo}>
-                <Text style={styles.recentItemTitle} numberOfLines={1}>{r.title}</Text>
-                <Text style={styles.recentItemSub}>{r.sub}</Text>
-              </View>
+            <TouchableOpacity key={r.key} style={styles.recentSlot} activeOpacity={0.85} onPress={() => openRecent(r)}>
+              <ClayFrame tone={r.kind === 'ai' ? 'lemon' : 'sky'} nails={false} innerStyle={styles.recentInner}>
+                <ClayIcon name={r.kind === 'ai' ? 'starBig' : 'globe'} size={30} />
+                <View style={styles.recentItemInfo}>
+                  <Text style={styles.recentItemTitle} numberOfLines={1}>{r.title}</Text>
+                  <Text style={styles.recentItemSub}>{r.sub}</Text>
+                </View>
+              </ClayFrame>
             </TouchableOpacity>
           ))
         )}
@@ -719,7 +730,21 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
 
-  // 会员入口卡片
+  // ── 粘土相框：所有卡片共用的外框布局 ──────────────────────
+  /** 相框外布局：左右留白 + 底部间距（替代原卡片自己的 margin） */
+  frameWrap: {
+    marginHorizontal: 24,
+    marginBottom: 16,
+  },
+  /** 会员卡相框内的横向内容排布 */
+  frameInnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingRight: 16,
+  },
+
+  // 会员入口卡片内容（外壳已交给 ClayFrame）
   premiumCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -746,17 +771,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // 声音克隆：产品灵魂，首页常驻、永远突出
+  // 声音克隆：产品灵魂，首页常驻、永远突出（外壳交给 ClayFrame，这里只管画面内边距）
   cloneBanner: {
-    backgroundColor: COLORS.purpleLight,
-    borderRadius: 22,
-    marginHorizontal: 24,
-    marginBottom: 16,
-    padding: 16,
-    borderLeftWidth: 5,
-    borderLeftColor: COLORS.purple,
-    boxShadow: '0 3px 12px rgba(124, 77, 255, 0.20)',
-    elevation: 3,
+    padding: 14,
   },
   cloneBannerTextWrap: {
     marginBottom: 12,
@@ -795,7 +812,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  // 今日推荐：左侧分类图标 + 标题 + 分类/时长 + 右侧语音按钮
+  // 今日推荐：左侧分类图标 + 标题 + 分类/时长 + 右侧语音按钮（外壳交给 ClayFrame）
   recCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -809,6 +826,13 @@ const styles = StyleSheet.create({
     boxShadow: '0 3px 10px rgba(214, 150, 80, 0.18)',
     elevation: 3,
     position: 'relative',
+  },
+  /** 推荐卡画面区：铺满 + 内边距（喇叭按钮相对它绝对定位） */
+  recInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    minHeight: 88,
   },
   /** 整卡可点的透明热区（铺满卡片，喇叭再叠在它上面） */
   recCardHit: {
@@ -871,26 +895,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 24,
   },
-  actionCard1: {
+  /** 三个快捷入口的点击槽位（外壳交给 ClayFrame） */
+  actionSlot: {
     flex: 1,
-    borderRadius: 22,
-    paddingVertical: 18,
-    alignItems: 'center',
-    backgroundColor: COLORS.orange,
   },
-  actionCard2: {
-    flex: 1,
-    borderRadius: 22,
-    paddingVertical: 18,
+  /** 快捷入口画面区：竖向排布图标 + 文字 */
+  actionInner: {
     alignItems: 'center',
-    backgroundColor: COLORS.orangeLight,
-  },
-  actionCard3: {
-    flex: 1,
-    borderRadius: 22,
-    paddingVertical: 18,
-    alignItems: 'center',
-    backgroundColor: COLORS.mintLight,
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    minHeight: 104,
   },
   actionEmoji: {
     fontSize: 28,
@@ -929,12 +944,26 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     alignItems: 'center',
   },
+  /** 空态相框的画面区 */
+  emptyInner: {
+    paddingVertical: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyText: {
     fontSize: 14,
     color: COLORS.textLight,
   },
 
-  // #6 首页「最近故事」真实条目
+  // #6 首页「最近故事」真实条目（外壳交给 ClayFrame）
+  recentSlot: {
+    marginBottom: 10,
+  },
+  recentInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
   recentItem: {
     flexDirection: 'row',
     alignItems: 'center',
