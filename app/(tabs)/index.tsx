@@ -38,7 +38,7 @@ import { playBundledAudio } from '../../services/clonedVoicePlayback';
 import { checkStoryGate, checkCheckInGate, getSnapshot } from '../../services/entitlement';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
 
-/** 冷启动开场动画：模块级标记 —— JS 重载（冷启动）才重置，回前台不重播 */
+/** Cold-start intro flag: reset only on JS reload (cold start), not on foregrounding */
 let introPlayedThisLaunch = false;
 
 /** 上次推荐过哪篇（跨启动记住，保证「每次都不一样」） */
@@ -167,7 +167,7 @@ export default function HomeTab() {
   );
 
   const { width: screenW } = useWindowDimensions();
-  // iPad 横屏（以及大屏）视为宽屏：左侧静态场景 + 右侧卡片列
+  // iPad landscape (and large screens) counts as wide: static scene on the left, cards on the right
   const isWide = screenW >= 768;
 
   // 小浣熊向导：首页不自动播（避开每日问候），点浣熊才说话 + 气泡 + 动作
@@ -175,27 +175,27 @@ export default function HomeTab() {
   const HOME_GUIDE_KEYS = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'];
 
   /**
-   * 冷启动开场动画：改为独立全屏层 AppIntroOverlay 播放（不再叠在首页上）。
-   * 首页只负责决定「要不要播」；动画、语音、气泡、关闭全部由 Overlay 自己管。
-   * 仅冷启动播一次；回前台由 GreetingOnOpen 按时段问候，不在这里重播。
+   * The cold-start intro now plays in a standalone full-screen AppIntroOverlay (no longer stacked on the home screen).
+   * Home only decides whether to play; the overlay owns animation, voice, bubble and dismissal.
+   * Plays once per cold start; foreground greetings are handled by GreetingOnOpen, not here.
    */
   const [introVisible, setIntroVisible] = useState(false);
   useEffect(() => {
     if (introPlayedThisLaunch) return;
     let alive = true;
     (async () => {
-      // 隐私未同意不发声音（与全局规则一致）
+      // No voice before privacy consent (matches the global rule)
       let agreed = '';
       try { agreed = await AsyncStorage.getItem('rms_privacy_consent_v1') || ''; } catch {}
       if (!alive || agreed !== 'agreed') return;
-      introPlayedThisLaunch = true; // 确认要播了才占位，避免双挂载时首次被取消导致永远不播
+      introPlayedThisLaunch = true; // claim the slot only once we know we will play, so a cancelled double mount cannot block it forever
       setIntroVisible(true);
     })();
     return () => { alive = false; };
   }, []);
   const handleIntroDone = useCallback(() => setIntroVisible(false), []);
 
-  /** 点场景里那只静态浣熊（图片上的热区）：说一句引导语 + 气泡，不再切换动画状态 */
+  /** Tap the static raccoon in the scene (image hot zone): speak a guide line + bubble, no animation state switch */
   const handleRaccoPress = () => {
     const key = HOME_GUIDE_KEYS[Math.floor(Math.random() * HOME_GUIDE_KEYS.length)];
     guide.say(key);
@@ -457,14 +457,14 @@ export default function HomeTab() {
         style={styles.container}
         contentContainerStyle={[styles.content, isWide && styles.contentWide]}
       >
-      {/* 问候：横屏时随卡片列显示在右侧；左侧整块留给静态场景里的浣熊 */}
+      {/* Greeting sits with the card column in landscape; the left side is reserved for the static scene raccoon */}
       <View style={styles.greetingSection}>
         <Text style={[styles.greetingText, isWide && styles.greetingTextWide]}>
           {greeting} ✨
         </Text>
       </View>
 
-      {/* 竖屏：顶部小浣熊（横屏改由静态场景图里的浣熊承担） */}
+      {/* Portrait: top raccoon (in landscape the baked-in scene raccoon takes over) */}
       {!isWide && (
         <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
           <Racco
@@ -660,10 +660,10 @@ export default function HomeTab() {
       </Modal>
       </CartoonScreen>
 
-      {/* 横屏：左侧场景上的浣熊热区 + 语音气泡（图里的浣熊不动，但能说话） */}
+      {/* Landscape: raccoon hot zone + voice bubble over the scene (baked-in raccoon is static but can speak) */}
       {isWide && <SceneRaccoLayer text={guide.line} onPress={handleRaccoPress} />}
 
-      {/* 独立全屏开场动画：播完自动关闭，不与静态场景重叠 */}
+      {/* Standalone full-screen intro: auto-dismisses, never overlaps the static scene */}
       <AppIntroOverlay visible={introVisible} onDone={handleIntroDone} />
     </View>
   );
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 40,
   },
-  // iPad 横屏：卡片列靠右，左侧整块露出静态场景（沙发上的浣熊）
+  // iPad landscape: card column on the right, the whole left side reveals the static scene (raccoon on the sofa)
   contentWide: {
     width: '52%',
     maxWidth: 560,
@@ -719,13 +719,13 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
 
-  // ── 粘土相框：所有卡片共用的外框布局 ──────────────────────
-  /** 相框外布局：左右留白 + 底部间距（替代原卡片自己的 margin） */
+  // -- Clay frames: shared outer layout for all cards --------------------------------
+  /** Frame wrapper layout: side gutters + bottom spacing (replaces each card's own margin) */
   frameWrap: {
     marginHorizontal: 24,
     marginBottom: 16,
   },
-  /** 会员卡相框内的横向内容排布 */
+  /** Horizontal content layout inside the membership card frame */
   frameInnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -733,7 +733,7 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
 
-  // 会员入口卡片内容（外壳已交给 ClayFrame）
+  // Membership card content (shell handled by ClayFrame)
   premiumCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -760,7 +760,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // 声音克隆：产品灵魂，首页常驻、永远突出（外壳交给 ClayFrame，这里只管画面内边距）
+  // Voice cloning: the core feature, always on home (shell by ClayFrame; this block only sets inner padding)
   cloneBanner: {
     padding: 14,
   },
@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
 
-  // 今日推荐：左侧分类图标 + 标题 + 分类/时长 + 右侧语音按钮（外壳交给 ClayFrame）
+  // Today's pick: category icon + title + category/duration + speaker button (shell by ClayFrame)
   recCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     position: 'relative',
   },
-  /** 推荐卡画面区：铺满 + 内边距（喇叭按钮相对它绝对定位） */
+  /** Pick card content area: fill + padding (the speaker button is absolutely positioned against it) */
   recInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -884,11 +884,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 24,
   },
-  /** 三个快捷入口的点击槽位（外壳交给 ClayFrame） */
+  /** Tap slots for the three shortcuts (shell by ClayFrame) */
   actionSlot: {
     flex: 1,
   },
-  /** 快捷入口画面区：竖向排布图标 + 文字 */
+  /** Shortcut content area: icon stacked above label */
   actionInner: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -933,7 +933,7 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     alignItems: 'center',
   },
-  /** 空态相框的画面区 */
+  /** Content area of the empty-state frame */
   emptyInner: {
     paddingVertical: 34,
     alignItems: 'center',
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
 
-  // #6 首页「最近故事」真实条目（外壳交给 ClayFrame）
+  // #6 Real "recent stories" entries on home (shell by ClayFrame)
   recentSlot: {
     marginBottom: 10,
   },

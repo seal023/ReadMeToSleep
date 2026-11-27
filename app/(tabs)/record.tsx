@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     alignSelf: 'center',
   },
-  // iPad 横屏：内容列靠右，左侧露出静态场景（录音棚）
+  // iPad landscape: content column on the right, static scene on the left (recording studio)
   contentWide: {
     width: '52%',
     maxWidth: 560,

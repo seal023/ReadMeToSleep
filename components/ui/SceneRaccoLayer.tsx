@@ -1,7 +1,9 @@
 /**
- * 横屏场景页左侧覆盖层：点击图中静态浣熊说话 + 气泡。
- * 场景图里已画有浣熊，页面不能再叠动态 Racco；此层只负责「热区 + 气泡」。
- * 竖屏不渲染（由调用方用 isWide 控制），页面保留原有动态浣熊。
+ * Left-side overlay for landscape scene pages: tap the static raccoon to speak + bubble.
+ * The raccoon is baked into the scene image, so pages must not stack an animated
+ * Racco on top; this layer only provides the "hot zone + bubble".
+ * Not rendered in portrait (caller gates on isWide), where pages keep their
+ * original animated raccoon.
  */
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';

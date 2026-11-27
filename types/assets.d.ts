@@ -22,7 +22,7 @@ declare module '*.m4a' {
 }
 
 /**
- * react-native-iap 源码里用到 Node 的 global，但本项目未装 @types/node。
- * 这里补一个最小声明，避免改动第三方 node_modules（改动会在装包时丢失）。
+ * react-native-iap source references Node's `global`, but @types/node is not installed.
+ * Declare it here instead of patching node_modules (which is lost on reinstall).
  */
 declare var global: typeof globalThis | any;

@@ -232,7 +232,7 @@ export default function VoiceSettings() {
           <Text style={styles.sectionSub}>{t('guideVoice.hint')}</Text>
           {(
             [
-              // v129 反馈：小浣熊选项用项目自有吉祥物图，不再用系统 emoji 🦝
+              // Build 129 feedback: use our own mascot image for the raccoon option instead of the system emoji
               { id: 'racco' as GuideVoice, label: t('guideVoice.racco'), emoji: '', img: require('../../assets/racco_anim/wave_01.png') },
               { id: 'preset' as GuideVoice, label: t('guideVoice.preset'), emoji: '🔔', img: null },
             ]

@@ -42,11 +42,11 @@ interface CartoonScreenProps {
   /** 额外内容样式（如顶部留白、对齐） */
   contentStyle?: StyleProp<ViewStyle>;
   /**
-   * 场景背景图（3D 粘土场景）。传入时替代渐变背景；不传则沿用原渐变。
-   * 注意：传了场景图的页面，图里若已画有静态浣熊，页面不要再叠动态 Racco 组件。
+   * Scene background image (3D clay scene). Replaces the gradient when provided.
+   * Note: if the scene image has a baked-in static raccoon, do not stack an animated Racco.
    */
   backgroundSource?: any;
-  /** 场景图缩放模式，默认 cover（横屏铺满）；竖屏可用 contain 保留完整构图 */
+  /** Scene image resize mode, defaults to cover (fills landscape); use contain in portrait to keep the full composition */
   backgroundResizeMode?: ImageResizeMode;
 }
 

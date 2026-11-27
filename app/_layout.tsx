@@ -135,8 +135,8 @@ function GreetingOnOpen() {
       // 回到前台：顺手刷新告别缓存（昵称 / 声线可能刚在家长端改过）
       await refreshFarewellCache();
       if (!agreedRef.current) return;
-      // 只在真正要播时才记节流时间：首启被隐私门槛跳过的那次不该占用窗口，
-      // 否则同意隐私后补播的问候会被 60 秒节流挡掉。
+      // Only record the throttle timestamp when we actually speak: the first-launch skip by the privacy gate must not consume the window,
+      // otherwise the catch-up greeting after consent would be blocked by the 60s throttle.
       lastSpoke.current = now;
       /**
        * 故事优先（v93 反馈 #1）：
@@ -180,9 +180,9 @@ function GreetingOnOpen() {
     (async () => {
       await refreshFarewellCache();
       if (disposed) return;
-      // 冷启动的「打开问候」已合并进儿童首页的开场动画（小浣熊走过来挥手 + 开场白），
-      // 这里不再单独 speak('hello')，避免和开场白连说两句。
-      // 「从后台回前台」的时段问候仍在下方 AppState 监听里照常播放。
+      // The cold-start "opening greeting" is now merged into the home intro animation (raccoon walks in, waves, speaks),
+      // so no separate speak('hello') here - avoid saying the same thing twice.
+      // Time-of-day greetings on foregrounding are still handled by the AppState listener below.
     })();
     // 若已克隆声音，后台预热高频短句到本地缓存：使提示音是克隆声且秒出、零 token
     // （克隆较早 / 缓存被系统清理也能补上；同进程只跑一次）
@@ -221,8 +221,8 @@ function GreetingOnOpen() {
     };
   }, [hydrated, speak, refreshFarewellCache]);
 
-  // 首启的「打开问候」已改由儿童首页的开场动画承担（走过来挥手 + 开场白），
-  // 这里不再在同意隐私后补播时段问候，避免与开场白连说两句。
+  // The first-launch "opening greeting" is now handled by the home intro animation (walk in, wave, speak),
+  // so no catch-up greeting after privacy consent here - avoid saying the same thing twice.
 
   return null;
 }

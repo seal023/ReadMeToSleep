@@ -49,8 +49,8 @@ export const CLAY_SHADOW = {
   /** 高亮/选中态：暖色外发光 + 保留凸起 */
   active: `inset 0 2px 3px rgba(255,255,255,0.9), inset 0 -2px 5px rgba(${SR},0.10), 0 4px 12px rgba(${SR},0.26)`,
   /**
-   * 相框/窗户的「画面区」：往里凹进去的玻璃面。
-   * 顶部内阴影（暗）+ 底部内高光（亮），模拟视线透过厚泥框看进去的凹陷感。
+   * The "content area" of a frame/window: a recessed glass surface.
+   * Dark inner shadow at the top + light inner highlight at the bottom, mimicking looking through a thick clay frame.
    */
   inset: `inset 0 4px 9px rgba(${SR},0.20), inset 0 -2px 3px rgba(255,255,255,0.9)`,
 } as const;

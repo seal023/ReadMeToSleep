@@ -1,11 +1,14 @@
 /**
- * 冷启动开场动画（独立全屏层）
+ * Cold-start intro animation (standalone full-screen layer).
  * ---------------------------------------------------------------------------
- * 小浣熊从左侧走进来 → 挥手 → 说开场白，播完关闭露出静态场景首页。
- * 与首页完全分离：首页背景图里的浣熊是静态的，这里的浣熊是动画的，永不同屏，
- * 因此不会出现「一只静态浣熊 + 一只动画浣熊叠在一起」的贴纸感。
+ * The raccoon walks in from the left, waves, says the intro line, then closes
+ * to reveal the static-scene home screen.
+ * Kept fully separate from the home screen: the raccoon baked into the home
+ * background is static, this one is animated, and they are never on screen at
+ * the same time - no "static raccoon + animated raccoon" sticker overlap.
  *
- * 时序与原首页版本一致：walk 1.6s → wave + 语音 + 气泡 → 共 5.2s 后 onDone。
+ * Timing matches the old in-home version: walk 1.6s -> wave + voice + bubble,
+ * then onDone at 5.2s total.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -53,7 +56,7 @@ export default function AppIntroOverlay({ visible, onDone }: Props) {
       void speakSystemVoice(language, {
         key: 'intro',
         text: t('home.intro'),
-        force: true, // 冷启动无故事在播，确保一定出声
+        force: true, // no story is playing at cold start, always speak
       });
     }, WALK_MS);
 
@@ -79,7 +82,7 @@ export default function AppIntroOverlay({ visible, onDone }: Props) {
       onRequestClose={onDone}
     >
       <GradientBackground colors={GRADIENTS.day} decor decorVariant="day" style={styles.flex}>
-        {/* 全屏透明热区：家长可点任意处跳过；孩子正常等它自动结束 */}
+        {/* Full-screen transparent hot zone: parents can tap anywhere to skip; kids just wait */}
         <Pressable style={styles.skipHit} onPress={onDone} accessibilityLabel="skip intro">
           <Text style={styles.skipText}>›</Text>
         </Pressable>
@@ -123,7 +126,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stageWide: {
-    // 横屏时浣熊站在画面偏左，面朝右侧（由 scaleX:-1 翻转实现）
+    // In landscape the raccoon sits left of center, facing right (via scaleX:-1)
     paddingRight: '22%',
   },
   raccoSlot: {

@@ -81,13 +81,13 @@ export function LevelCard({ onPress }: LevelCardProps) {
           </View>
         </View>
 
-        {/* 升级进度条 */}
+        {/* Upgrade progress bar */}
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: fillWidth }]} />
         </View>
         <Text style={styles.progressHint}>{progressHint}</Text>
 
-        {/* 已获得勋章 */}
+        {/* Earned badges */}
         {ownedBadges.length > 0 && (
           <View style={styles.badgeRow}>
             {ownedBadges.map((b) => (
@@ -98,7 +98,7 @@ export function LevelCard({ onPress }: LevelCardProps) {
           </View>
         )}
       </ClayFrame>
-      {/* 若外部需要点击，用透明热区铺在相框上，保留原 onPress 语义 */}
+      {/* For whole-frame taps, overlay a transparent hot zone to keep the original onPress semantics */}
       {onPress && (
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
@@ -111,13 +111,13 @@ export function LevelCard({ onPress }: LevelCardProps) {
 }
 
 const styles = StyleSheet.create({
-  /** 相框外布局：左右留白 + 底部间距 */
+  /** Frame wrapper layout: side gutters + bottom spacing */
   cardWrap: {
     marginHorizontal: 24,
     marginBottom: 16,
     position: 'relative',
   },
-  /** 等级卡画面区（外壳交给 ClayFrame） */
+  /** Level card content area (shell by ClayFrame) */
   card: {
     padding: SPACING.md,
   },

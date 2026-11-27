@@ -1,16 +1,17 @@
 /**
- * ClayFrame —— 卡通相框 / 窗户（3D 泥土质感）
+ * ClayFrame - cartoon picture frame / window (3D clay look).
  * ===========================================================================
- * 把首页每一个「窗口」都装进一个厚厚的软陶相框里，像卡通动画里的画框：
- *   ① 泥条外框 —— 厚圆角 + 内高光 + 外投影（CLAY_SHADOW.surface）
- *   ② 内凹玻璃 —— 画面区往里凹（CLAY_SHADOW.inset），像透窗看进去
- *   ③ 四角铆钉 —— 四颗小泥球，强化「相框」的实体感（可关）
- *   ④ 顶部挂钉 —— 可选的一颗挂钉 + 小绳，强化「挂墙相框」的意象
+ * Wraps each home "window" in a thick soft-clay frame, like a cartoon picture frame:
+ *   1) Clay border - thick rounded edges + inner highlight + outer shadow (CLAY_SHADOW.surface)
+ *   2) Recessed glass - the content area sits slightly inside (CLAY_SHADOW.inset)
+ *   3) Corner nails - four small clay balls to sell the physical frame (optional)
+ *   4) Hanger nail - an optional nail + string for the "hanging frame" look
  *
- * 颜色全部走当前主题色盘，糖果/森林/星空/樱花四套皮肤下都协调。
- * 用法：
+ * Colors come from the current theme palette, so all four skins stay in sync.
+ * Usage:
  *   <ClayFrame tone="peach"><Text>...</Text></ClayFrame>
- *   需要整框点击时套一层 Pressable/TouchableOpacity 即可（组件本身不抢事件）。
+ *   Wrap in a Pressable/TouchableOpacity if the whole frame must be tappable
+ *   (this component does not capture events itself).
  */
 
 import React from 'react';
@@ -24,7 +25,7 @@ import { COLORS } from '../../constants/Colors';
 import { RADIUS } from '../../constants/theme';
 import { CLAY_SHADOW } from '../../constants/clayStyle';
 
-/** 泥框配色：语义名 → 主题浅色（框体）/ 主题主色（铆钉） */
+/** Frame palette: semantic name -> theme light tone (frame) / theme main tone (nails) */
 export type ClayFrameTone =
   | 'cream' | 'peach' | 'pink' | 'grape'
   | 'mint' | 'sky' | 'lemon';
@@ -51,17 +52,17 @@ const NAIL_COLOR: Record<ClayFrameTone, string> = {
 
 export interface ClayFrameProps {
   children: React.ReactNode;
-  /** 泥框颜色，默认 cream */
+  /** Frame color, defaults to cream */
   tone?: ClayFrameTone;
-  /** 四角橡皮铆钉，默认 true */
+  /** Four corner clay nails, defaults to true */
   nails?: boolean;
-  /** 顶部挂钉（挂墙相框意象），默认 false */
+  /** Top hanger nail (hanging-frame look), defaults to false */
   hanger?: boolean;
-  /** 外框样式（margin / 高度 / alignSelf 等布局用） */
+  /** Outer frame style (margin / height / alignSelf, layout only) */
   style?: StyleProp<ViewStyle>;
-  /** 内凹画面区样式（padding / 圆角 / flex 方向等） */
+  /** Recessed content area style (padding / radius / flex direction, etc.) */
   innerStyle?: StyleProp<ViewStyle>;
-  /** 画面区底色，默认暖白 card */
+  /** Content area background, defaults to warm-white card */
   glassColor?: string;
 }
 
@@ -76,7 +77,7 @@ export function ClayFrame({
 }: ClayFrameProps) {
   return (
     <View style={[styles.frame, { backgroundColor: FRAME_BG[tone] }, style]}>
-      {/* 顶部挂钉 + 小绳：强化「挂墙相框」意象 */}
+      {/* Top hanger nail + string: sells the hanging-frame look */}
       {hanger && (
         <View style={styles.hangerWrap} pointerEvents="none">
           <View style={styles.hangerString} />
@@ -84,7 +85,7 @@ export function ClayFrame({
         </View>
       )}
 
-      {/* 内凹玻璃：真正承载内容的画面区 */}
+      {/* Recessed glass: the area that actually holds the content */}
       <View
         style={[
           styles.glass,
@@ -95,7 +96,7 @@ export function ClayFrame({
         {children}
       </View>
 
-      {/* 四角泥球铆钉，压在玻璃与泥框交界处 */}
+      {/* Four corner clay nails, sitting on the glass/frame seam */}
       {nails && (
         <View style={styles.nails} pointerEvents="none">
           <View style={[styles.nail, styles.nailTL, { backgroundColor: NAIL_COLOR[tone] }]} />
@@ -111,7 +112,7 @@ export function ClayFrame({
 const styles = StyleSheet.create({
   frame: {
     borderRadius: RADIUS.xl,
-    padding: 8, // 泥条厚度
+    padding: 8, // clay border thickness
     boxShadow: CLAY_SHADOW.surface,
     elevation: 6,
     position: 'relative',
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     boxShadow: CLAY_SHADOW.inset,
     overflow: 'hidden',
     flex: 1,
-    position: 'relative', // 让内部按钮的绝对定位落在画面区里
+    position: 'relative', // keep absolutely-positioned children inside the glass area
   },
   nails: {
     position: 'absolute',
@@ -129,14 +130,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    // 让铆钉层不拦截内容点击（各 nail 再单独关）
+    // Nail layer must not swallow taps meant for the content
   },
   nail: {
     position: 'absolute',
     width: 11,
     height: 11,
     borderRadius: 6,
-    // 泥球：顶部白高光 + 底部内阴影 + 一点点外投影
+    // Clay ball: white top highlight + bottom inner shadow + a touch of outer shadow
     boxShadow: CLAY_SHADOW.small,
     elevation: 2,
   },

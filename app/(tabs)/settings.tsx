@@ -206,8 +206,8 @@ export default function SettingsScreen() {
         <Switch value={voiceGuidance} onValueChange={toggleVoiceGuidance} />
       </View>
 
-      {/* v129 反馈：向导语音角色（小浣熊声/大姐姐/克隆亲人）属于家长配置，
-          统一收在家长中心 /(parent)/voices，孩子端设置页不再放这个选择项。 */}
+      {/* Guide voice role (raccoon / preset voice) is a parent setting:
+          managed in /(parent)/voices only; the child settings page no longer repeats it. */}
 
       <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)')}>
         <View style={styles.cardLeft}>
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     alignSelf: 'center',
   },
-  // iPad 横屏：设置项列靠右，左侧露出静态场景（森林树屋）
+  // iPad landscape: settings column on the right, static scene on the left (forest treehouse)
   contentWide: {
     width: '52%',
     maxWidth: 560,

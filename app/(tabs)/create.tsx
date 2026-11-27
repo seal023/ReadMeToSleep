@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     alignSelf: 'center',
   },
-  // iPad 横屏：卡片列靠右，左侧露出静态场景里的浣熊
+  // iPad landscape: card column on the right, static scene raccoon revealed on the left
   contentWide: {
     width: '52%',
     maxWidth: 560,

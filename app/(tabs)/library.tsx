@@ -375,7 +375,7 @@ export default function LibraryScreen() {
   const activeFilterCount =
     (lengthFilter !== 'all' ? 1 : 0) + (langFilter !== 'all' ? 1 : 0) + (sortKey !== 'recommend' ? 1 : 0);
 
-  // 宽屏（iPad 横屏）用一体化场景图：隐藏页内动态浣熊，左侧场景里的浣熊负责说话
+  // Wide screens (iPad landscape) use the integrated scene: hide the in-page animated raccoon; the baked-in one speaks
   const isWide = width >= 768;
 
   return (
@@ -627,7 +627,7 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   container: { flex: 1 },
-  // iPad 横屏：内容列靠右，左侧露出静态场景（城堡图书馆）
+  // iPad landscape: content column on the right, static scene on the left (castle library)
   containerWide: {
     width: '52%',
     maxWidth: 620,

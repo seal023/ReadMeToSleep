@@ -25,10 +25,11 @@ interface RaccoProps {
   anim?: RaccoAnim;
   /** 序列帧是否正在播放。false 时停在第一帧（配合语音只在说话期间播动画） */
   animPlaying?: boolean;
-  /** 只水平翻转浣熊图片（让横屏里的浣熊面朝画面中心），气泡文字不受影响 */
+  /** Flip only the raccoon image horizontally (so it faces the screen center in landscape); bubble text is unaffected */
   flipImage?: boolean;
-  /** 气泡改为绝对定位浮在浣熊上方、不占布局高度。用于浣熊被放进定高容器的页面
-   *  （如创作页 genWrap 120px），避免气泡占位把下面的标题顶下去。默认 false 不影响旧调用 */
+  /** Render the bubble as an absolute overlay above the raccoon (no layout height).
+   *  Use when the raccoon sits in a fixed-height container (e.g. create page genWrap 120px)
+   *  so the bubble cannot push the title down. Defaults to false, no change for old callers. */
   bubbleOverlay?: boolean;
 }
 

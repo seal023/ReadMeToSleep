@@ -165,7 +165,7 @@ export default function MyStoriesScreen() {
   /** 卡片操作说明：点一下进去听、长按删除（删除不再做成按钮，避免误触） */
   const ListHint = () => <Text style={styles.listHint}>{t('myStories.listHint')}</Text>;
 
-  // iPad 横屏：一体化场景背景（海滩）+ 内容列靠右
+  // iPad landscape: integrated scene background (beach) + content column on the right
   const isWide = width >= 768;
 
   return (
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  // iPad 横屏：内容列靠右，左侧露出静态场景（海滩）
+  // iPad landscape: content column on the right, static scene on the left (beach)
   containerWide: {
     width: '52%',
     maxWidth: 620,

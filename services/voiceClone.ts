@@ -3,9 +3,9 @@ import { ts } from './i18n';
 import { cloudFetch } from './cloudFetch';
 import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl } from './endpoints';
 import * as FileSystem from 'expo-file-system';
-// ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
-//    改用新版 File.bytes() 读字节，再手写 base64（Hermes 无 btoa）。
-//    SDK 57 的 File/Directory/Paths 已从主入口导出，无需再走 /next 子路径。
+// NOTE: In SDK 57 the top-level expo-file-system readAsStringAsync is deprecated and
+//       throws at runtime. Use File.bytes() and hand-roll base64 (Hermes has no btoa).
+//       File/Directory/Paths are exported from the main entry in SDK 57; no /next subpath.
 import { File } from 'expo-file-system';
 
 /**

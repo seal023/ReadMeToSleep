@@ -1,7 +1,7 @@
 /**
  * 系统提示音 · 小浣熊声资源表（build127「全用小浣熊卡通声」）
  * ---------------------------------------------------------------------------
- * 55 个固定系统提示音（问答短句/问候/告别/设置/主题/推荐/开场白）× 中英双语，
+ * 55 fixed system cues (Q&A / greetings / goodbyes / settings / themes / recommendations / intro) in zh + en,
  * 由 gen_system.py 用 edge-tts YunxiaNeural+40Hz / AnaNeural+40Hz 预录，
  * 与 40 句向导语同一音色。Metro 要求 require 字面量，故逐条列出。
  *
@@ -9,7 +9,7 @@
  * 运行时按 key 查表；查不到时由 raccoSystemVoice 回退到提示音声线。
  */
 export const SYSTEM_VOICE: Record<string, { zh: number; en: number }> = {
-  // 开机开场白：小浣熊走进来挥手说「我来啦，我们开始吧 / Here I am, let's begin!」
+  // Intro line: raccoon walks in, waves, and says "Here I am, let's begin!"
   intro: { zh: require('../assets/audio/racco/sys_intro_zh.mp3') as number, en: require('../assets/audio/racco/sys_intro_en.mp3') as number },
   bye_day: { zh: require('../assets/audio/racco/sys_bye_day_zh.mp3') as number, en: require('../assets/audio/racco/sys_bye_day_en.mp3') as number },
   bye_night: { zh: require('../assets/audio/racco/sys_bye_night_zh.mp3') as number, en: require('../assets/audio/racco/sys_bye_night_en.mp3') as number },

@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
   coverFill: { width: '100%', height: '100%' },
   coverCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverImage: { width: '100%', height: '100%' },
-  /** 粘土贴图带一点投影，压在渐变底上更像“贴纸”（只用 ImageStyle 支持的阴影字段，elevation 是 ViewStyle 专属） */
+  /** Soft drop shadow so the clay art reads like a sticker on the gradient (ImageStyle-only fields; elevation is ViewStyle-only) */
   coverArt: {
     shadowColor: SHADOW.soft.shadowColor,
     shadowOffset: SHADOW.soft.shadowOffset,
