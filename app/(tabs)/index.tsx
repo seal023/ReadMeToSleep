@@ -28,6 +28,7 @@ import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { getClonedTargets } from '../../services/voiceClone';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { speakWithBestVoice, playStory, stopStory, isStoryPlaying, isStoryResumePending } from '../../services/playback';
+import { speakSystemVoice } from '../../services/raccoSystemVoice';
 import { isBundledFreeStory, getBundledAudioAssetId } from '../../services/bundledAudio';
 import { playBundledAudio } from '../../services/clonedVoicePlayback';
 import { checkStoryGate, checkCheckInGate, getSnapshot } from '../../services/entitlement';
@@ -317,7 +318,9 @@ export default function HomeTab() {
       }
       recAnnouncedIdRef.current = rec.id; // 真正要念了才标记，避免被跳过后永不再念
       const text = tRef.current('home.recVoice').replace('{title}', rec.title);
-      void speakWithBestVoice(text, language);
+      // build127：统一走系统提示音入口（racco=预录浣熊声 rec_voice 通用句）
+      // preset 模式仍念含故事名的完整句子（text 作兜底）
+      void speakSystemVoice(language, { key: 'rec_voice', text });
     };
     const timer = setTimeout(speak, 4500); // 先等每日问候说完
     return () => {

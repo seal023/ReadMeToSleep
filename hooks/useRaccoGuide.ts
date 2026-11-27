@@ -68,13 +68,27 @@ export function useRaccoGuide(opts: Options = {}): RaccoGuideApi {
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alive = useRef(true);
+  // build127 声画同步：每次 say 递增，迟到的 onStart/定时器只认最新一句，防止旧句把当前画面清掉
+  const seq = useRef(0);
 
-  const clear = useCallback(() => {
+  /** 收起气泡 + 动画回 idle 循环（只有最新一句能执行） */
+  const settle = useCallback((mySeq: number) => {
+    if (!alive.current || mySeq !== seq.current) return;
     if (clearTimer.current) { clearTimeout(clearTimer.current); clearTimer.current = null; }
     setLine('');
     setState('idle');
     setGesture('none');
     // 动画回到 idle 动作并继续循环，不保留上一句话的动作定格（否则页面变静态）
+    setAnim('none');
+    setAnimPlaying(false);
+  }, []);
+
+  const clear = useCallback(() => {
+    seq.current += 1; // 作废在途的 onStart / 定时器
+    if (clearTimer.current) { clearTimeout(clearTimer.current); clearTimer.current = null; }
+    setLine('');
+    setState('idle');
+    setGesture('none');
     setAnim('none');
     setAnimPlaying(false);
   }, []);
@@ -85,31 +99,46 @@ export function useRaccoGuide(opts: Options = {}): RaccoGuideApi {
   ) => {
     const text = getRaccoGuideLine(key);
     if (!text) return;
+    const mySeq = ++seq.current;
     if (clearTimer.current) { clearTimeout(clearTimer.current); clearTimer.current = null; }
-    setLine(text);
-    setState('talking');
-    setGesture(o.gesture ?? defaultGesture);
-    // 按语音语义播对应序列帧动画，从第一帧开始
-    setAnim(getRaccoAnimForKey(key));
-    setAnimPlaying(true);
 
-    // 发音走统一入口（按向导语音角色选小浣熊声 / 提示音声线），失败也不影响气泡显示
-    speakGuideLine(key, { force: o.force }).catch(() => {});
+    // ★ 关键改动：画面不再同步抢跑。先发音，等"真正出声"回调到点再显示气泡+动画。
+    // 之前是同步 setLine/setAnim，声音要几百毫秒后才到，孩子看到画面先划过去、声音才响。
+    speakGuideLine(key, {
+      force: o.force,
+      onStart: (durationSec) => {
+        if (!alive.current || mySeq !== seq.current) return;
+        setLine(text);
+        setState('talking');
+        setGesture(o.gesture ?? defaultGesture);
+        setAnim(getRaccoAnimForKey(key));
+        setAnimPlaying(true);
 
-    // 气泡自动收起（按字数估，中文每字约 220ms、英文每字符约 95ms，至少 1.8s）
-    const cjk = /[\u4e00-\u9fa5]/.test(text);
-    const estimate = cjk ? text.length * 220 : text.length * 95;
-    const ms = bubbleMs ?? Math.max(1800, Math.min(7000, estimate));
-    clearTimer.current = setTimeout(() => {
-      if (!alive.current) return;
-      setLine('');
-      setState('idle');
-      setGesture('none');
-      // 语音结束回到 idle 循环挥手，避免定格首帧让页面看起来"没动画"
-      setAnim('none');
-      setAnimPlaying(false);
-    }, ms);
-  }, [defaultGesture, bubbleMs]);
+        // 气泡停留时长优先用音频真实时长（+250ms 收尾缓冲），拿不到再按字数估算。
+        // 中文每字约 220ms、英文每字符约 95ms，至少 1.8s。
+        const cjk = /[\u4e00-\u9fa5]/.test(text);
+        const estimate = cjk ? text.length * 220 : text.length * 95;
+        const ms = bubbleMs ?? (
+          durationSec && durationSec > 0
+            ? Math.round(durationSec * 1000) + 250
+            : Math.max(1800, Math.min(7000, estimate))
+        );
+        clearTimer.current = setTimeout(() => settle(mySeq), ms);
+      },
+    }).catch(() => {
+      // 发音彻底失败时仍显示一次画面，避免孩子点了浣熊完全没反应
+      if (!alive.current || mySeq !== seq.current) return;
+      setLine(text);
+      setState('talking');
+      setGesture(o.gesture ?? defaultGesture);
+      setAnim(getRaccoAnimForKey(key));
+      setAnimPlaying(true);
+      const cjk = /[\u4e00-\u9fa5]/.test(text);
+      const estimate = cjk ? text.length * 220 : text.length * 95;
+      const ms = bubbleMs ?? Math.max(1800, Math.min(7000, estimate));
+      clearTimer.current = setTimeout(() => settle(mySeq), ms);
+    });
+  }, [defaultGesture, bubbleMs, settle]);
 
   useEffect(() => {
     alive.current = true;

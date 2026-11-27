@@ -179,6 +179,22 @@ export function pickPhrase(cat: PhraseCategory, lang: Language): string {
 }
 
 /**
+ * build127：取一句 + 它对应的预录 key（小浣熊声映射表用）。
+ * key 规则与 gen_system.py 一致：分类名 + 序号（thinking_1 / correct_2 …）。
+ * 特殊分类 tooShort/heard 对应脚本里的 tooShort_/heard_。
+ */
+export function pickPhraseWithKey(
+  cat: PhraseCategory,
+  lang: Language,
+): { text: string; key: string } {
+  const arr = PHRASE_BANK[cat]?.[lang] ?? PHRASE_BANK[cat]?.zh ?? [];
+  if (!arr.length) return { text: '', key: '' };
+  const i = Math.floor(Math.random() * arr.length);
+  const prefix = cat === 'voiceTooShort' ? 'tooShort' : cat === 'voiceHeard' ? 'heard' : cat;
+  return { text: arr[i], key: `${prefix}_${i + 1}` };
+}
+
+/**
  * 「声音设置」页的试听样句。
  * ⚠️ 试听与预热必须引用同一份字符串（缓存 key = 文本 hash），
  * 否则首次点选永远要现合成——正是 v91 #4「等很久才出声」的原因。

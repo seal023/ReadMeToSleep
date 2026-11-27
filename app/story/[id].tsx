@@ -30,7 +30,8 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { FONT, GRADIENTS, RADIUS, SPACING, SHADOW } from '../../constants/theme';
 import { COLORS } from '../../constants/Colors';
 import { playStory, stopStory, cancelSpeaking, speakWithBestVoice, speakPhrase, presetTargetFor, prewarmSpeech, getLastPlayedVoice, setStoryResumePending } from '../../services/playback';
-import { pickPhrase } from '../../services/phraseBank';
+import { pickPhrase, pickPhraseWithKey } from '../../services/phraseBank';
+import { speakSystemVoice } from '../../services/raccoSystemVoice';
 import { playLocalFile, prewarmClonedAudio, getChunkPlace } from '../../services/clonedVoicePlayback';
 import { startSleepSession, cancelSleepSession, isSleepSessionActive, getSleepRemainingMs } from '../../services/sleepTimer';
 import { hasClonedVoice, seekClonedAudio, getClonedPosition, getClonedDuration, reassertAudioSession, didPlayThisSession, getMaxPlayedPosition, setPlaybackInterrupted, pauseClonedAudio, resumeClonedAudio, didFinishNaturally, isClonedAudioPlaying, getClonedPositionRaw, getClonedDurationRaw, beginPlaybackSession, forceResetPlayback, hasLivePlayer, playBundledAudio } from '../../services/clonedVoicePlayback';
@@ -764,13 +765,27 @@ export default function StoryPlayScreen() {
   }, [id]);
 
   // —— 孩子友好化（2026-10-29）：目标用户含不识字小朋友，必要沟通须有语音/动画辅助 ——
+  /**
+   * build127：词库短句统一走系统提示音入口（racco=预录浣熊声 / preset=提示音声线）。
+   * 题目、AI 回答等动态文本仍走原 speakWithBestVoice，不在此列。
+   */
+  const sayPhrase = useCallback((cat: import('../../services/phraseBank').PhraseCategory, lang: 'zh' | 'en', opts: { onDone?: () => void } = {}) => {
+    const { text, key } = pickPhraseWithKey(cat, lang);
+    if (!text) return;
+    void speakSystemVoice(lang, { key, text, speakOpts: { onDone: opts.onDone } });
+  }, []);
+  const sayTextPhrase = useCallback((text: string, key: string, lang: 'zh' | 'en', opts: { onDone?: () => void } = {}) => {
+    if (!text) return;
+    void speakSystemVoice(lang, { key, text, speakOpts: { onDone: opts.onDone } });
+  }, []);
+
   // 进入问答环节时，用语音把「该做什么」说出来，而不是只靠文字
   useEffect(() => {
     if (phase === 'qa_round1') {
       qaPhaseEnterRef.current = Date.now();
-      speakPhrase('round1', displayLang);
+      sayPhrase('round1', displayLang);
     } else if (phase === 'qa_round2') {
-      speakPhrase('round2', displayLang);
+      sayPhrase('round2', displayLang);
     }
   }, [phase]);
 
@@ -1216,7 +1231,7 @@ export default function StoryPlayScreen() {
     setResumeSec(0);
     if (story) clearStoryPosition(story.id);
     // 俏皮收尾：克隆声随机来一句「讲完啦」，与屏显的完成页呼应
-    speakPhrase('done', displayLang);
+    sayPhrase('done', displayLang);
   };
 
   // 启动进度条计时器：isReal=true 用真实播放位置（克隆/本地录音，与实际时长一致），
@@ -1979,7 +1994,7 @@ export default function StoryPlayScreen() {
         at: new Date().toISOString(),
       };
       saveChildQuiz(quiz).catch(() => {});
-      const fb = pickPhrase('correct', displayLang);
+      const { text: fb, key: fbKey } = pickPhraseWithKey('correct', displayLang);
       setQaFeedback(fb);
       // 等反馈语音播完再进下一题，避免「答对」被下一题打断；但最多只等 2.5 秒，
       // 提示音卡住时不能把孩子晾在原地（v92：提示音与界面的联动不能过长）。
@@ -2002,14 +2017,14 @@ export default function StoryPlayScreen() {
         clearTimeout(qaAdvanceTimer.current);
         qaAdvanceTimer.current = null;
       }
-      speakWithBestVoice(fb, displayLang, { onDone: advance }).catch(() => {});
+      sayTextPhrase(fb, fbKey, displayLang, { onDone: advance });
       // 兜底：万一音频未触发 onDone（合成失败等），也按时推进，不卡住流程
       qaAdvanceTimer.current = setTimeout(advance, 2500);
     } else {
       // 答错：给再次选择的机会，停留在本题（选项始终可点），不进入下一步
-      const fb = pickPhrase('wrong', displayLang);
+      const { text: fb, key: fbKey } = pickPhraseWithKey('wrong', displayLang);
       setQaFeedback(fb);
-      speakWithBestVoice(fb, displayLang);
+      sayTextPhrase(fb, fbKey, displayLang);
     }
   };
 
@@ -2028,9 +2043,9 @@ export default function StoryPlayScreen() {
     const durSec = (recEndTs.current - recStartTs.current) / 1000;
     // 录音过短（<0.6s）视为误触/没说话：提示重录，不推进
     if (durSec < 0.6) {
-      const tooShort = pickPhrase('voiceTooShort', displayLang);
+      const { text: tooShort, key: tooShortKey } = pickPhraseWithKey('voiceTooShort', displayLang);
       setQaFeedback(tooShort);
-      speakWithBestVoice(tooShort, displayLang);
+      sayTextPhrase(tooShort, tooShortKey, displayLang);
       setTimeout(() => setQaFeedback(''), 1600);
       return;
     }
@@ -2044,16 +2059,16 @@ export default function StoryPlayScreen() {
     }
     const clip = persistQaClip(rawUri);
     if (!clip) {
-      const tooShort = pickPhrase('voiceTooShort', displayLang);
+      const { text: tooShort, key: tooShortKey } = pickPhraseWithKey('voiceTooShort', displayLang);
       setQaFeedback(tooShort);
-      speakWithBestVoice(tooShort, displayLang);
+      sayTextPhrase(tooShort, tooShortKey, displayLang);
       setTimeout(() => setQaFeedback(''), 1600);
       return;
     }
     setVoiceClipUri(clip);
-    const heard = pickPhrase('voiceHeard', displayLang);
+    const { text: heard, key: heardKey } = pickPhraseWithKey('voiceHeard', displayLang);
     setQaFeedback(heard);
-    speakWithBestVoice(heard, displayLang);
+    sayTextPhrase(heard, heardKey, displayLang);
     // v91 #2：顺手把这段回答转成文字并显示出来（失败就只留录音，不影响流程）
     setQaAnswerText('');
     void (async () => {
@@ -2187,9 +2202,9 @@ export default function StoryPlayScreen() {
       return;
     }
     if (childQuestion.trim()) return; // 已经手输入过问题，保留原文不打断
-    const tooShort = pickPhrase('voiceTooShort', displayLang);
+    const { text: tooShort, key: tooShortKey } = pickPhraseWithKey('voiceTooShort', displayLang);
     setQaFeedback(tooShort);
-    speakWithBestVoice(tooShort, displayLang);
+    sayTextPhrase(tooShort, tooShortKey, displayLang);
     setTimeout(() => setQaFeedback(''), 1600);
   };
 
@@ -2229,7 +2244,7 @@ export default function StoryPlayScreen() {
     setAiAskError(false);
     // 立即给一个「我在听」的即时反馈（克隆声、缓存命中即秒出），
     // 避免孩子问完要等好几秒 AI 才回、还以为没反应
-    speakPhrase('thinking', displayLang);
+    sayPhrase('thinking', displayLang);
     try {
       // 第一个参数是故事正文（作为回答依据），第二个才是孩子的问题，
       // 第三个是界面语言——强制 AI 用同一语言作答（v81：英文提问曾被答成中文）

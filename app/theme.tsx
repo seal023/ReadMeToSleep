@@ -38,6 +38,7 @@ import {
 } from '../constants/Colors';
 import { useLanguage } from '../hooks/useLanguage';
 import { speakWithBestVoice, prewarmSpeech } from '../services/playback';
+import { speakSystemVoice } from '../services/raccoSystemVoice';
 
 /** 每套主题一个专属 emoji，孩子看图标就能认出来 */
 const THEME_EMOJI: Record<ThemeKey, string> = {
@@ -89,9 +90,13 @@ export default function ThemeScreen() {
       return;
     }
     setSaved(key);
-    // 语音反馈：孩子不识字，选完要「听得见」结果。
-    // fast：不再等音频会话配置，进一步压缩起播延迟。
-    void speakWithBestVoice(pickedLine(key), language, { fast: true });
+    // build127：统一走系统提示音入口（racco=预录浣熊声 theme_picked 通用句）
+    // preset 模式仍念含主题名的完整句子（pickedLine 作兜底文本）
+    void speakSystemVoice(language, {
+      key: 'theme_picked',
+      text: pickedLine(key),
+      speakOpts: { fast: true },
+    });
   };
 
   return (

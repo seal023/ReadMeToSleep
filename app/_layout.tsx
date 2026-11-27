@@ -17,6 +17,7 @@ import {
   migrateVoiceDefaultsOnce, migratePromptVoiceOnce,
 } from '../services/storage';
 import { speakWithBestVoice, stopStory, isStoryPlaying, isStoryResumePending } from '../services/playback';
+import { speakSystemVoice } from '../services/raccoSystemVoice';
 import { invalidateAudioMode } from '../services/tts';
 import { reassertAudioSession, isClonedAudioPlaying } from '../services/clonedVoicePlayback';
 import { ensurePhraseWarmup, ensurePresetVoicesInstalled, applyName } from '../services/phraseCache';
@@ -50,6 +51,16 @@ function getGreetingKey(): string {
 function getFarewellKey(): string {
   const h = new Date().getHours();
   return h >= 18 || h < 6 ? 'home.farewellNight' : 'home.farewellDay';
+}
+
+/** build127：问候/告别对应的小浣熊预录 key（与 gen_system.py 命名一致） */
+function systemKeyFor(kind: 'hello' | 'bye'): string {
+  const h = new Date().getHours();
+  if (kind === 'bye') return h >= 18 || h < 6 ? 'bye_night' : 'bye_day';
+  if (h < 11) return 'hello_morning';
+  if (h < 13) return 'hello_noon';
+  if (h < 18) return 'hello_afternoon';
+  return 'hello_evening';
 }
 
 /**
@@ -132,8 +143,13 @@ function GreetingOnOpen() {
        * chunkState 一起清掉，孩子的感受就是「回到 App 点播放一直缓冲 / 没声音」。
        */
       if (isStoryResumePending() || isStoryPlaying() || isClonedAudioPlaying()) return;
-      // 问候用最好的声音（克隆声优先；已预热过的问候句命中缓存、秒出）
-      speakWithBestVoice(buildText('hello'), langRef.current, { voiceId: voiceRef.current });
+      // build127：问候改走系统提示音统一入口（racco=预录浣熊声「早上好呀，宝贝」）
+      // 动态昵称版文本作兜底（preset 模式念原名）。预录 mp3 是本地文件，秒出。
+      void speakSystemVoice(langRef.current, {
+        key: systemKeyFor('hello'),
+        text: buildText('hello'),
+        speakOpts: { voiceId: voiceRef.current },
+      });
       return;
     }
     // —— 切后台 / 锁屏：全同步快通道 ——
@@ -143,10 +159,15 @@ function GreetingOnOpen() {
     lastSpoke.current = now;
     // 隐私尚未确认（极冷启动即锁屏）时不静默，等确认过再说
     if (privacyReadyRef.current && !agreedRef.current) return;
-    speakWithBestVoice(buildText('bye'), langRef.current, {
-      cacheOnly: true, // 只播已落盘的克隆音频；没缓存就立刻用系统音，绝不现场等网络合成
-      fast: true, // 不等音频会话配置，直接起播，进一步压缩延迟
-      voiceId: voiceRef.current, // 用预取的声线，省掉一次存储读取
+    // build127：告别同样走统一入口（racco=预录浣熊声）。preset 模式保留快通道参数。
+    void speakSystemVoice(langRef.current, {
+      key: systemKeyFor('bye'),
+      text: buildText('bye'),
+      speakOpts: {
+        cacheOnly: true, // preset 模式：只播已落盘音频，绝不现场等网络合成
+        fast: true, // 不等音频会话配置，直接起播
+        voiceId: voiceRef.current, // 用预取的声线，省掉一次存储读取
+      },
     });
   }, [refreshFarewellCache, buildText]);
 

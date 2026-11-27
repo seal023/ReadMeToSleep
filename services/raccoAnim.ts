@@ -99,7 +99,9 @@ export function getRaccoAnimFrames(anim: RaccoAnim): any[] | null {
   return FRAMES[anim] ?? null;
 }
 
-export const RACCO_ANIM_FPS = 12; // 每帧约 83ms，一个循环 1 秒
+// build127 反馈：动作过快 → 12fps 降到 6fps，一轮从 1 秒拉长到 2 秒，观感更舒缓。
+// Racco.tsx 用它算切帧间隔；语音驱动的动画会随气泡收起结束，不受循环长度影响。
+export const RACCO_ANIM_FPS = 6; // 每帧约 167ms，一个循环 2 秒
 
 /**
  * 语音 key → 动画动作映射（40 句引导语按语义分配）。

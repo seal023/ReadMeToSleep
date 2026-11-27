@@ -8,7 +8,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
 import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting, getGuideVoice, setGuideVoice, type GuideVoice } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
-import { speakWithBestVoice } from '../../services/playback';
+import { speakSystemVoice } from '../../services/raccoSystemVoice';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
 
 /** 隐私政策 / 使用条款（出海合规必备，COPPA / GDPR 要求清晰可访问的英文入口） */
@@ -64,7 +64,9 @@ export default function SettingsScreen() {
      * 换主题语音同一条链路，会读 getPromptVoiceSetting()、走内置音色/克隆声缓存，
      * 家长在声音设置里换什么，这里就跟着换成什么。
      */
-    void speakWithBestVoice(line, language === 'en' ? 'en' : 'zh', { fast: true });
+    // build127：统一走系统提示音入口（racco=预录浣熊声 settings_reply1/2）
+    const sysKey = key === 'settings.racco.reply1' ? 'settings_reply1' : 'settings_reply2';
+    void speakSystemVoice(language === 'en' ? 'en' : 'zh', { key: sysKey, text: line, speakOpts: { fast: true } });
     if (raccoTimer.current) clearTimeout(raccoTimer.current);
     raccoTimer.current = setTimeout(() => setRaccoHappy(false), 2800);
   };
