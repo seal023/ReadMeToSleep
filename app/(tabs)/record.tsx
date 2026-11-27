@@ -17,7 +17,7 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import { Directory, File, Paths } from 'expo-file-system/next';
+import { Directory, File, Paths } from 'expo-file-system';
 import { saveStory, getStories, deleteStory } from '../../services/storage';
 import { playLocalFile, stopClonedAudio } from '../../services/clonedVoicePlayback';
 import { stopStory } from '../../services/playback';
@@ -139,7 +139,7 @@ export default function RecordScreen() {
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
-        staysActiveInBackground: false,
+        shouldPlayInBackground: false,
       });
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();

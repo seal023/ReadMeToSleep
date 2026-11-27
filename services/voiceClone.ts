@@ -4,9 +4,9 @@ import { cloudFetch } from './cloudFetch';
 import { chatCompletionsUrl, endpointOrigin, voiceEnrollUrl } from './endpoints';
 import * as FileSystem from 'expo-file-system';
 // ⚠️ SDK 57 起 expo-file-system 顶层 readAsStringAsync 已弃用并在调用时直接抛错，
-//    且 /legacy 子路径在该版本并不存在；故改用官方推荐的 /next 的 File.bytes() 读字节，
-//    再手写 base64（Hermes 无 btoa）。
-import { File } from 'expo-file-system/next';
+//    改用新版 File.bytes() 读字节，再手写 base64（Hermes 无 btoa）。
+//    SDK 57 的 File/Directory/Paths 已从主入口导出，无需再走 /next 子路径。
+import { File } from 'expo-file-system';
 
 /**
  * 家长声音克隆服务（需求 4：AI 模仿家长声音陪伴孩子）
@@ -139,7 +139,7 @@ export function isPresetTarget(target: CloneTarget): boolean {
 async function resolveVoiceForTarget(target: CloneTarget): Promise<string | undefined> {
   const preset = PRESET_VOICES[target];
   if (preset) return preset.voice;
-  return getClonedVoiceId(target);
+  return (await getClonedVoiceId(target)) ?? undefined;
 }
 
 const STORAGE_KEY = (target: CloneTarget) => `rms_voice_clone_${target}`;

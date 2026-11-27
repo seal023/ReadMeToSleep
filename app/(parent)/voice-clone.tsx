@@ -255,7 +255,7 @@ export default function VoiceClonePage() {
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
-        staysActiveInBackground: false,
+        shouldPlayInBackground: false,
       });
 
       await audioRecorder.prepareToRecordAsync();

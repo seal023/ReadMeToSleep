@@ -41,11 +41,12 @@ export default function ParentComments() {
         return '';
       };
       const created: Story[] = await getStories();
-      const createdItems: PickItem[] = created.map((s) => ({ id: s.id, title: normalizeTitle(s.title), listened: false, lastAt: '' }));
+      const createdItems: PickItem[] = created.map((s) => ({ id: s.id, title: normalizeTitle(s.title), listened: false, commented: false, lastAt: '' }));
       const classicItems: PickItem[] = (storiesIndex as any[]).map((s) => ({
         id: s.id,
         title: normalizeTitle(s.title),
         listened: false,
+        commented: false,
         lastAt: '',
       }));
       // 合并：自建故事优先，经典故事补充

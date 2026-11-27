@@ -16,13 +16,13 @@ import React from 'react';
 import {
   View,
   StyleSheet,
-  SafeAreaView,
   ImageBackground,
   useWindowDimensions,
   StyleProp,
   ViewStyle,
   ImageResizeMode,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { GradientBackground } from './Gradient';
 import { COLORS, GRADIENTS } from '../../constants/theme';
 

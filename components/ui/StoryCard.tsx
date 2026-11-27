@@ -152,9 +152,12 @@ const styles = StyleSheet.create({
   coverFill: { width: '100%', height: '100%' },
   coverCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   coverImage: { width: '100%', height: '100%' },
-  /** 粘土贴图带一点投影，压在渐变底上更像“贴纸” */
+  /** 粘土贴图带一点投影，压在渐变底上更像“贴纸”（只用 ImageStyle 支持的阴影字段，elevation 是 ViewStyle 专属） */
   coverArt: {
-    ...SHADOW.soft,
+    shadowColor: SHADOW.soft.shadowColor,
+    shadowOffset: SHADOW.soft.shadowOffset,
+    shadowOpacity: SHADOW.soft.shadowOpacity,
+    shadowRadius: SHADOW.soft.shadowRadius,
   },
 
   // ── 其它 ─────────────────────────────────────
