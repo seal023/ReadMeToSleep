@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image,
   Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -232,8 +232,9 @@ export default function VoiceSettings() {
           <Text style={styles.sectionSub}>{t('guideVoice.hint')}</Text>
           {(
             [
-              { id: 'racco' as GuideVoice, label: t('guideVoice.racco'), emoji: '🦝' },
-              { id: 'preset' as GuideVoice, label: t('guideVoice.preset'), emoji: '🔔' },
+              // v129 反馈：小浣熊选项用项目自有吉祥物图，不再用系统 emoji 🦝
+              { id: 'racco' as GuideVoice, label: t('guideVoice.racco'), emoji: '', img: require('../../assets/racco_anim/wave_01.png') },
+              { id: 'preset' as GuideVoice, label: t('guideVoice.preset'), emoji: '🔔', img: null },
             ]
           ).map((o) => {
             const active = guideVoice === o.id;
@@ -245,7 +246,11 @@ export default function VoiceSettings() {
                 activeOpacity={0.85}
               >
                 <View style={styles.optionLeft}>
-                  <Text style={styles.optionEmoji}>{o.emoji}</Text>
+                  {o.img ? (
+                    <Image source={o.img} style={styles.optionRaccoImg} resizeMode="contain" />
+                  ) : (
+                    <Text style={styles.optionEmoji}>{o.emoji}</Text>
+                  )}
                   <Text style={active ? styles.optionTextActive : styles.optionText}>{o.label}</Text>
                 </View>
                 {active ? <Text style={styles.check}>✓</Text> : null}
@@ -394,6 +399,7 @@ const styles = StyleSheet.create({
   },
   optionLeft: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   optionEmoji: { fontSize: 18, marginRight: 10 },
+  optionRaccoImg: { width: 24, height: 24, marginRight: 8 },
   optionText: { fontSize: 15, color: COLORS.text, flexShrink: 1 },
   optionTextActive: { fontSize: 15, color: COLORS.orange, fontWeight: '600', flexShrink: 1 },
   check: { fontSize: 18, color: COLORS.orange },

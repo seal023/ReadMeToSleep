@@ -18,6 +18,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { FONT } from '../../constants/theme';
 import { COLORS } from '../../constants/Colors';
 import { useRaccoGuide } from '../../hooks/useRaccoGuide';
+import Racco from '../../components/common/Racco';
 import AppIntroOverlay from '../../components/intro/AppIntroOverlay';
 import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
 import { HOME_SCENE } from '../../constants/sceneBackgrounds';
@@ -462,6 +463,21 @@ export default function HomeTab() {
           {greeting} ✨
         </Text>
       </View>
+
+      {/* 竖屏：顶部小浣熊（横屏改由静态场景图里的浣熊承担） */}
+      {!isWide && (
+        <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
+          <Racco
+            state={guide.line ? guide.state : 'idle'}
+            size={screenW * 0.4}
+            showSpeechBubble={!!guide.line}
+            speechText={guide.line}
+            gesture={guide.gesture}
+            anim={guide.anim}
+            animPlaying={guide.animPlaying}
+          />
+        </ElasticPressable>
+      )}
 
       {/* 会员入口：只在未订阅 / 已过期时出现（已是会员就不再推销，v84 反馈 #6） */}
       {showPremiumCard && (

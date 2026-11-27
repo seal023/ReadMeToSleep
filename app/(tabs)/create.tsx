@@ -293,6 +293,7 @@ export default function CreateScreen() {
             gesture={generating ? 'none' : guide.gesture}
             anim={generating ? 'think' : guide.anim}
             animPlaying={generating || guide.animPlaying}
+            bubbleOverlay
           />
         </View>
       </View>}

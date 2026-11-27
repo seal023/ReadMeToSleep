@@ -27,6 +27,9 @@ interface RaccoProps {
   animPlaying?: boolean;
   /** 只水平翻转浣熊图片（让横屏里的浣熊面朝画面中心），气泡文字不受影响 */
   flipImage?: boolean;
+  /** 气泡改为绝对定位浮在浣熊上方、不占布局高度。用于浣熊被放进定高容器的页面
+   *  （如创作页 genWrap 120px），避免气泡占位把下面的标题顶下去。默认 false 不影响旧调用 */
+  bubbleOverlay?: boolean;
 }
 
 // 默认静态图改用无圆盘的序列帧首帧（wave_01），彻底去掉木质圆盘底座。
@@ -57,6 +60,7 @@ const Racco: React.FC<RaccoProps> = ({
   anim = 'none',
   animPlaying = true,
   flipImage = false,
+  bubbleOverlay = false,
 }) => {
   // 序列帧：显式 anim 用它；anim='none' 时按 state 挑一个默认动作，
   // 让所有没接语音的页面也能看到会动的小浣熊（且默认图无圆盘）。
@@ -277,21 +281,29 @@ const Racco: React.FC<RaccoProps> = ({
   return (
     <View style={{ alignItems: 'center' }}>
       {showSpeechBubble && speechText ? (
-        <Animated.View
-          style={[
-            styles.bubble,
-            bubbleColor && { backgroundColor: bubbleColor },
-            {
-              opacity: bubbleV,
-              transform: [{
-                translateY: bubbleV.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }),
-              }],
-            },
-          ]}
+        <View
+          style={
+            bubbleOverlay
+              ? { position: 'absolute', bottom: size + 6, left: 0, right: 0, alignItems: 'center' }
+              : undefined
+          }
         >
-          <Text style={[styles.bubbleText, bubbleColor && { color: '#fff' }]}>{speechText}</Text>
-          <View style={[styles.arrow, bubbleColor && { borderTopColor: bubbleColor }]} />
-        </Animated.View>
+          <Animated.View
+            style={[
+              styles.bubble,
+              bubbleColor && { backgroundColor: bubbleColor },
+              {
+                opacity: bubbleV,
+                transform: [{
+                  translateY: bubbleV.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }),
+                }],
+              },
+            ]}
+          >
+            <Text style={[styles.bubbleText, bubbleColor && { color: '#fff' }]}>{speechText}</Text>
+            <View style={[styles.arrow, bubbleColor && { borderTopColor: bubbleColor }]} />
+          </Animated.View>
+        </View>
       ) : null}
       {onPress ? <TouchableOpacity onPress={onPress} activeOpacity={0.8}>{img}</TouchableOpacity> : img}
     </View>

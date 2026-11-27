@@ -8,7 +8,7 @@ import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
-import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting, getGuideVoice, setGuideVoice, type GuideVoice } from '../../services/storage';
+import { getVoiceGuidance, setVoiceGuidance, getChildName, setChildName, getPromptVoiceSetting } from '../../services/storage';
 import { warmPresetVoiceInBackground } from '../../services/phraseCache';
 import { speakSystemVoice } from '../../services/raccoSystemVoice';
 import { THEMES, THEME_KEYS } from '../../constants/Colors';
@@ -28,7 +28,6 @@ export default function SettingsScreen() {
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
   const [childName, setChildNameState] = useState('');
-  const [guideVoice, setGuideVoiceState] = useState<GuideVoice>('racco');
 
   /**
    * v99 反馈 #1：页面顶部的小浣熊原来只是张图片（Racco 没挂 onPress），
@@ -96,7 +95,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     getVoiceGuidance().then(setVoiceGuidanceState);
-    getGuideVoice().then(setGuideVoiceState);
   }, []);
 
   useEffect(() => {
@@ -108,20 +106,6 @@ export default function SettingsScreen() {
   const toggleVoiceGuidance = async (val: boolean) => {
     setVoiceGuidanceState(val);
     await setVoiceGuidance(val);
-  };
-
-  const chooseGuideVoice = () => {
-    Alert.alert(t('guideVoice.title'), t('guideVoice.hint'), [
-      {
-        text: t('guideVoice.racco'),
-        onPress: () => { setGuideVoiceState('racco'); void setGuideVoice('racco'); },
-      },
-      {
-        text: t('guideVoice.preset'),
-        onPress: () => { setGuideVoiceState('preset'); void setGuideVoice('preset'); },
-      },
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
   };
 
   const toggleLanguage = () => {
@@ -222,19 +206,8 @@ export default function SettingsScreen() {
         <Switch value={voiceGuidance} onValueChange={toggleVoiceGuidance} />
       </View>
 
-      {/* 向导语音角色：默认小浣熊卡通声，可改成提示音声线（大姐姐/克隆亲人） */}
-      <TouchableOpacity style={styles.card} onPress={chooseGuideVoice}>
-        <View style={styles.cardLeft}>
-          <Text style={styles.cardIcon}>🦝</Text>
-          <View style={styles.cardTextWrap}>
-            <Text style={styles.cardText}>{t('guideVoice.title')}</Text>
-            <Text style={styles.cardSub}>{t('guideVoice.hint')}</Text>
-          </View>
-        </View>
-        <Text style={styles.cardValue}>
-          {guideVoice === 'racco' ? t('guideVoice.racco') : t('guideVoice.preset')}
-        </Text>
-      </TouchableOpacity>
+      {/* v129 反馈：向导语音角色（小浣熊声/大姐姐/克隆亲人）属于家长配置，
+          统一收在家长中心 /(parent)/voices，孩子端设置页不再放这个选择项。 */}
 
       <TouchableOpacity style={styles.card} onPress={() => router.push('/(parent)')}>
         <View style={styles.cardLeft}>
