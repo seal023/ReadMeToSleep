@@ -19,6 +19,7 @@ import { FONT } from '../../constants/theme';
 import { COLORS } from '../../constants/Colors';
 import { useRaccoGuide } from '../../hooks/useRaccoGuide';
 import AppIntroOverlay from '../../components/intro/AppIntroOverlay';
+import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
 import { HOME_SCENE } from '../../constants/sceneBackgrounds';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
@@ -644,19 +645,7 @@ export default function HomeTab() {
       </CartoonScreen>
 
       {/* 横屏：左侧场景上的浣熊热区 + 语音气泡（图里的浣熊不动，但能说话） */}
-      {isWide && (
-        <Pressable
-          style={styles.sceneRaccoHit}
-          onPress={handleRaccoPress}
-          accessibilityRole="button"
-          accessibilityLabel="talk to raccoon"
-        />
-      )}
-      {isWide && guide.line ? (
-        <View style={styles.sceneBubble} pointerEvents="none">
-          <Text style={styles.sceneBubbleText}>{guide.line}</Text>
-        </View>
-      ) : null}
+      {isWide && <SceneRaccoLayer text={guide.line} onPress={handleRaccoPress} />}
 
       {/* 独立全屏开场动画：播完自动关闭，不与静态场景重叠 */}
       <AppIntroOverlay visible={introVisible} onDone={handleIntroDone} />
@@ -683,38 +672,6 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 36,
   },
-  /** 左侧静态浣熊的点击热区（图里浣熊大致落在左 15%–40%、上 30%–70%） */
-  sceneRaccoHit: {
-    position: 'absolute',
-    left: '12%',
-    top: '26%',
-    width: '30%',
-    height: '46%',
-    zIndex: 2,
-  },
-  /** 气泡浮在场景浣熊上方，不随卡片列走 */
-  sceneBubble: {
-    position: 'absolute',
-    left: '10%',
-    top: '12%',
-    maxWidth: 260,
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    zIndex: 3,
-    shadowColor: '#8A6A55',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 5,
-  },
-  sceneBubbleText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontFamily: FONT.rounded,
-    textAlign: 'center',
-  },
-
   topArea: {},
   topAreaWide: {
     flexDirection: 'row',

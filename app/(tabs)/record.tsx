@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import {
@@ -24,6 +25,8 @@ import { transcribeAudio } from '../../services/voiceClone';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
+import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import Racco from '@/components/common/Racco';
 import { useRaccoGuide } from '@/hooks/useRaccoGuide';
@@ -34,6 +37,8 @@ type Step = 'record' | 'process' | 'edit';
 
 export default function RecordScreen() {
   const { t, language } = useLanguage();
+  const { width: screenW } = useWindowDimensions();
+  const isWide = screenW >= 768;
   // 免费版门禁：录音创作故事是会员专属功能（与 AI 生成同属会员权益），免费用户整页拦截。
   // snapshot 还在加载（null）时先不锁，等权益判定回来再决定，避免会员被闪一下锁定屏。
   const { snapshot } = useEntitlement();
@@ -268,13 +273,20 @@ export default function RecordScreen() {
   }
 
   return (
-    <CartoonScreen gradient="day" decor>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.root}>
+    <CartoonScreen
+      gradient="day"
+      decor={false}
+      wide={false}
+      backgroundSource={isWide ? SCENE_BACKGROUNDS.record : undefined}
+      backgroundResizeMode="cover"
+    >
+      <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
         <Text style={styles.title}>{t('record.title')}</Text>
         {/* 说明用途：这个页面到底是干嘛的（此前缺文案，只显示原始 key，家长看不懂） */}
         <Text style={styles.intro}>{t('record.intro')}</Text>
 
-        <View style={styles.raccoWrap}>
+        {!isWide && <View style={styles.raccoWrap}>
           <Racco
             state={guide.line && !recording ? guide.state : raccoState}
             size={120}
@@ -284,7 +296,7 @@ export default function RecordScreen() {
             anim={recording ? 'listen' : guide.anim}
             animPlaying={recording || guide.animPlaying}
           />
-        </View>
+        </View>}
 
         {/* 录音中：波形 + 计时 */}
         {step === 'record' && (
@@ -410,10 +422,18 @@ export default function RecordScreen() {
         </View>
       </ScrollView>
     </CartoonScreen>
+    {isWide && (
+      <SceneRaccoLayer
+        text={recording ? t('record.racco') : guide.line}
+        onPress={() => guide.say('e1')}
+      />
+    )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   content: {
     padding: 20,
     paddingBottom: 40,
@@ -421,6 +441,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 760,
     alignSelf: 'center',
+  },
+  // iPad 横屏：内容列靠右，左侧露出静态场景（录音棚）
+  contentWide: {
+    width: '52%',
+    maxWidth: 560,
+    alignSelf: 'flex-end',
+    marginRight: 18,
+    paddingTop: 10,
+    paddingBottom: 36,
   },
   // 免费版录音创作锁屏：整页拦截，引导去订阅
   lockedWrap: {

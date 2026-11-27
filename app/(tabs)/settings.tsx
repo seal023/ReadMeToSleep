@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch, TextInput, Linking, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
+import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
@@ -20,6 +22,8 @@ const RACCO_REPLIES = ['settings.racco.reply1', 'settings.racco.reply2'];
 
 export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
+  const { width: screenW } = useWindowDimensions();
+  const isWide = screenW >= 768;
   // 账号：让家长在设置页一级就能看见"会员记在哪个账号上"
   const { isSignedIn, email: accountEmail, displayName } = useAuth();
   const [voiceGuidance, setVoiceGuidanceState] = useState(false);
@@ -131,9 +135,16 @@ export default function SettingsScreen() {
   /** 声音设置入口已统一收到家长中心（/(parent)/voices），设置页不再重复放卡 */
 
   return (
-    <CartoonScreen gradient="day" decor>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.raccoWrap}>
+    <View style={styles.root}>
+    <CartoonScreen
+      gradient="day"
+      decor={false}
+      wide={false}
+      backgroundSource={isWide ? SCENE_BACKGROUNDS.settings : undefined}
+      backgroundResizeMode="cover"
+    >
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
+      {!isWide && <View style={styles.raccoWrap}>
         <Racco
           state={raccoHappy ? 'happy' : 'idle'}
           size={120}
@@ -141,7 +152,7 @@ export default function SettingsScreen() {
           speechText={raccoLine || t('settings.racco.idle')}
           onPress={tapRacco}
         />
-      </View>
+      </View>}
 
       <Text style={styles.title}>{t('settings.title')}</Text>
 
@@ -291,10 +302,18 @@ export default function SettingsScreen() {
       */}
       </ScrollView>
     </CartoonScreen>
+    {isWide && (
+      <SceneRaccoLayer
+        text={raccoLine || t('settings.racco.idle')}
+        onPress={tapRacco}
+      />
+    )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   container: {
     flex: 1,
   },
@@ -306,6 +325,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 760,
     alignSelf: 'center',
+  },
+  // iPad 横屏：设置项列靠右，左侧露出静态场景（森林树屋）
+  contentWide: {
+    width: '52%',
+    maxWidth: 560,
+    alignSelf: 'flex-end',
+    marginRight: 18,
+    paddingTop: 12,
+    paddingBottom: 36,
   },
   raccoWrap: {
     alignItems: 'center',

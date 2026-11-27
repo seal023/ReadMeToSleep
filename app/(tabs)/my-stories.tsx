@@ -13,6 +13,7 @@ import { getStories, deleteStory } from '../../services/storage';
 import { getProgress } from '../../services/storage';
 import { useLanguage } from '../../hooks/useLanguage';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
 import type { Story, Progress } from '../../types';
 
 type Tab = 'created' | 'recorded' | 'checkins';
@@ -164,9 +165,18 @@ export default function MyStoriesScreen() {
   /** 卡片操作说明：点一下进去听、长按删除（删除不再做成按钮，避免误触） */
   const ListHint = () => <Text style={styles.listHint}>{t('myStories.listHint')}</Text>;
 
+  // iPad 横屏：一体化场景背景（海滩）+ 内容列靠右
+  const isWide = width >= 768;
+
   return (
-    <CartoonScreen gradient="day" decor>
-      <View style={[styles.container, { paddingTop: topPad }]}>
+    <CartoonScreen
+      gradient="day"
+      decor={false}
+      wide={false}
+      backgroundSource={isWide ? SCENE_BACKGROUNDS.stories : undefined}
+      backgroundResizeMode="cover"
+    >
+      <View style={[styles.container, { paddingTop: topPad }, isWide && styles.containerWide]}>
       {/* Tab bar */}
       <View style={styles.tabBar}>
         {TABS.map(tabItem => (
@@ -259,6 +269,13 @@ export default function MyStoriesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // iPad 横屏：内容列靠右，左侧露出静态场景（海滩）
+  containerWide: {
+    width: '52%',
+    maxWidth: 620,
+    alignSelf: 'flex-end',
+    marginRight: 18,
   },
   tabBar: {
     flexDirection: 'row',

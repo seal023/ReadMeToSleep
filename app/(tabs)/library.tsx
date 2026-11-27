@@ -13,6 +13,8 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
+import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
+import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
 import ClayIcon, { type ClayIconName } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useRaccoGuide } from '../../hooks/useRaccoGuide';
@@ -373,13 +375,22 @@ export default function LibraryScreen() {
   const activeFilterCount =
     (lengthFilter !== 'all' ? 1 : 0) + (langFilter !== 'all' ? 1 : 0) + (sortKey !== 'recommend' ? 1 : 0);
 
+  // 宽屏（iPad 横屏）用一体化场景图：隐藏页内动态浣熊，左侧场景里的浣熊负责说话
+  const isWide = width >= 768;
+
   return (
-    <>
-    <CartoonScreen gradient="day" decor>
-      <View style={styles.container}>
+    <View style={styles.root}>
+    <CartoonScreen
+      gradient="day"
+      decor={false}
+      wide={false}
+      backgroundSource={isWide ? SCENE_BACKGROUNDS.library : undefined}
+      backgroundResizeMode="cover"
+    >
+      <View style={[styles.container, isWide && styles.containerWide]}>
       {/* 顶栏：横屏时搜索框在左、小浣熊移到右上角并放大；竖屏保持浣熊在左 */}
       <View style={[styles.header, isLandscape && styles.headerLandscape, { paddingTop: headerPadTop }]}>
-        {!isLandscape && (
+        {!isLandscape && !isWide && (
           <View style={styles.raccoWrap}>
             <Racco
               state={guide.state}
@@ -408,7 +419,7 @@ export default function LibraryScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-        {isLandscape && (
+        {isLandscape && !isWide && (
           <View style={styles.raccoWrapLandscape}>
             <Racco
               state={guide.state}
@@ -599,7 +610,13 @@ export default function LibraryScreen() {
         </View>
       </View>
     </Modal>
-    </>
+    {isWide && (
+      <SceneRaccoLayer
+        text={guide.line}
+        onPress={() => guide.say('b1')}
+      />
+    )}
+    </View>
   );
 }
 
@@ -608,7 +625,15 @@ export default function LibraryScreen() {
  * 厚圆角 + 内高光 + 暖投影 + COLORS token。父母端不在此列。
  */
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   container: { flex: 1 },
+  // iPad 横屏：内容列靠右，左侧露出静态场景（城堡图书馆）
+  containerWide: {
+    width: '52%',
+    maxWidth: 620,
+    alignSelf: 'flex-end',
+    marginRight: 18,
+  },
   // 小浣熊与搜索框同一行：竖屏 Racco 78px，横屏放大，整体高度不再吃掉半屏
   header: {
     flexDirection: 'row', alignItems: 'center',

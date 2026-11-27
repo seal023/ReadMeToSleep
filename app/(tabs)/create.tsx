@@ -8,6 +8,7 @@ import {
   Alert,
   StyleSheet,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { generateStory } from '@/services/ai';
@@ -18,6 +19,8 @@ import { useLanguage } from '@/hooks/useLanguage';
 import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
+import { SceneRaccoLayer } from '@/components/ui/SceneRaccoLayer';
+import { SCENE_BACKGROUNDS } from '@/constants/sceneBackgrounds';
 import { useRaccoGuide } from '@/hooks/useRaccoGuide';
 import { FONT } from '@/constants/theme';
 import { COLORS } from '@/constants/Colors';
@@ -34,6 +37,8 @@ const GEN_HARD_TIMEOUT_LONG_MS = 95000;
 export default function CreateScreen() {
   const router = useRouter();
   const { t, language: uiLang } = useLanguage();
+  const { width: screenW } = useWindowDimensions();
+  const isWide = screenW >= 768;
 
   const [theme, setTheme] = useState('');
   const [protagonist, setProtagonist] = useState('');
@@ -249,9 +254,16 @@ export default function CreateScreen() {
   };
 
   return (
-    <CartoonScreen gradient="day" decor>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.raccoWrap}>
+    <View style={styles.root}>
+    <CartoonScreen
+      gradient="day"
+      decor={false}
+      wide={false}
+      backgroundSource={isWide ? SCENE_BACKGROUNDS.create : undefined}
+      backgroundResizeMode="cover"
+    >
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
+      {!isWide && <View style={styles.raccoWrap}>
         {/* v79 修复：光环/星星原先绝对定位在「占满整行」的容器里，会飘到左上角且显得巨大。
             现在包一层与浣熊等宽的定尺容器，环只绕在头顶，直径也从 130 收到 78。 */}
         <View style={styles.genWrap}>
@@ -283,7 +295,7 @@ export default function CreateScreen() {
             animPlaying={generating || guide.animPlaying}
           />
         </View>
-      </View>
+      </View>}
 
       <Text style={styles.title}>{t('create.title')}</Text>
 
@@ -375,10 +387,18 @@ export default function CreateScreen() {
       </TouchableOpacity>
       </ScrollView>
     </CartoonScreen>
+    {isWide && (
+      <SceneRaccoLayer
+        text={generating ? t(GEN_PHRASE_KEYS[phraseIdx]) : guide.line}
+        onPress={() => guide.say('c1')}
+      />
+    )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   container: { flex: 1 },
   content: {
     padding: 20,
@@ -386,6 +406,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 760,
     alignSelf: 'center',
+  },
+  // iPad 横屏：卡片列靠右，左侧露出静态场景里的浣熊
+  contentWide: {
+    width: '52%',
+    maxWidth: 560,
+    alignSelf: 'flex-end',
+    marginRight: 18,
+    paddingTop: 10,
+    paddingBottom: 36,
   },
   raccoWrap: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
   /** 与浣熊等宽的定尺容器：光环与星星都相对它定位，才不会飘到屏幕左上角 */
