@@ -17,9 +17,11 @@ import {
   View,
   StyleSheet,
   SafeAreaView,
+  ImageBackground,
   useWindowDimensions,
   StyleProp,
   ViewStyle,
+  ImageResizeMode,
 } from 'react-native';
 import { GradientBackground } from './Gradient';
 import { COLORS, GRADIENTS } from '../../constants/theme';
@@ -39,6 +41,13 @@ interface CartoonScreenProps {
   maxWidth?: number;
   /** 额外内容样式（如顶部留白、对齐） */
   contentStyle?: StyleProp<ViewStyle>;
+  /**
+   * 场景背景图（3D 粘土场景）。传入时替代渐变背景；不传则沿用原渐变。
+   * 注意：传了场景图的页面，图里若已画有静态浣熊，页面不要再叠动态 Racco 组件。
+   */
+  backgroundSource?: any;
+  /** 场景图缩放模式，默认 cover（横屏铺满）；竖屏可用 contain 保留完整构图 */
+  backgroundResizeMode?: ImageResizeMode;
 }
 
 export function CartoonScreen({
@@ -49,6 +58,8 @@ export function CartoonScreen({
   wide = true,
   maxWidth = 920,
   contentStyle,
+  backgroundSource,
+  backgroundResizeMode = 'cover',
 }: CartoonScreenProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 768;
@@ -62,14 +73,24 @@ export function CartoonScreen({
 
   return (
     <SafeAreaView style={[styles.flex, styles.safe]} edges={['left', 'right', 'bottom']}>
-      <GradientBackground
-        colors={GRADIENTS[gradient]}
-        decor={decor}
-        decorVariant={decorVariant}
-        style={styles.flex}
-      >
-        <View style={content}>{children}</View>
-      </GradientBackground>
+      {backgroundSource ? (
+        <ImageBackground
+          source={backgroundSource}
+          resizeMode={backgroundResizeMode}
+          style={styles.flex}
+        >
+          <View style={content}>{children}</View>
+        </ImageBackground>
+      ) : (
+        <GradientBackground
+          colors={GRADIENTS[gradient]}
+          decor={decor}
+          decorVariant={decorVariant}
+          style={styles.flex}
+        >
+          <View style={content}>{children}</View>
+        </GradientBackground>
+      )}
     </SafeAreaView>
   );
 }

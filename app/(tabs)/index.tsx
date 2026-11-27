@@ -17,8 +17,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { useLanguage } from '../../hooks/useLanguage';
 import { FONT } from '../../constants/theme';
 import { COLORS } from '../../constants/Colors';
-import Racco from '../../components/common/Racco';
 import { useRaccoGuide } from '../../hooks/useRaccoGuide';
+import AppIntroOverlay from '../../components/intro/AppIntroOverlay';
+import { HOME_SCENE } from '../../constants/sceneBackgrounds';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -34,13 +35,9 @@ import { isBundledFreeStory, getBundledAudioAssetId } from '../../services/bundl
 import { playBundledAudio } from '../../services/clonedVoicePlayback';
 import { checkStoryGate, checkCheckInGate, getSnapshot } from '../../services/entitlement';
 import storiesIndex from '../../data/classic-stories/stories-index.json';
-import type { RaccoState } from '../../types';
-
-const RACCO_STATES: RaccoState[] = ['idle', 'talking', 'listening', 'thinking', 'happy', 'sleeping'];
 
 /** 冷启动开场动画：模块级标记 —— JS 重载（冷启动）才重置，回前台不重播 */
 let introPlayedThisLaunch = false;
-type IntroPhase = 'done' | 'walk' | 'wave';
 
 /** 上次推荐过哪篇（跨启动记住，保证「每次都不一样」） */
 const REC_LAST_KEY = 'rms_last_rec_story';
@@ -99,7 +96,6 @@ export default function HomeTab() {
   const { snapshot, refresh: refreshEntitlement, showPaywall } = useEntitlement();
   const showPremiumCard = snapshot ? !snapshot.premium : false;
 
-  const [raccoState, setRaccoState] = useState<RaccoState>('idle');
   /**
    * 今日推荐（v95 反馈）
    * -------------------------------------------------------------------------
@@ -169,22 +165,19 @@ export default function HomeTab() {
   );
 
   const { width: screenW } = useWindowDimensions();
-  // iPad 横屏（以及大屏）视为宽屏：内容限宽居中
-  // 宽屏浣熊从 0.18 放大到 0.24（物理约 660px），更醒目；Racco 组件另加立体阴影
+  // iPad 横屏（以及大屏）视为宽屏：左侧静态场景 + 右侧卡片列
   const isWide = screenW >= 768;
-  const raccoSize = isWide ? screenW * 0.24 : screenW * 0.4;
 
   // 小浣熊向导：首页不自动播（避开每日问候），点浣熊才说话 + 气泡 + 动作
   const guide = useRaccoGuide({ enterFrom: 'none', gesture: 'wave' });
   const HOME_GUIDE_KEYS = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8'];
 
   /**
-   * 冷启动开场动画：小浣熊从左侧走进来 → 挥手 → 说开场白（替代原每日问候）。
-   * 时序：walk 序列帧走 1.6s（走到位）→ wave + 语音 + 气泡 → 4s 后回到常态。
+   * 冷启动开场动画：改为独立全屏层 AppIntroOverlay 播放（不再叠在首页上）。
+   * 首页只负责决定「要不要播」；动画、语音、气泡、关闭全部由 Overlay 自己管。
    * 仅冷启动播一次；回前台由 GreetingOnOpen 按时段问候，不在这里重播。
    */
-  const [introPhase, setIntroPhase] = useState<IntroPhase>('done');
-  const introTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [introVisible, setIntroVisible] = useState(false);
   useEffect(() => {
     if (introPlayedThisLaunch) return;
     let alive = true;
@@ -194,34 +187,14 @@ export default function HomeTab() {
       try { agreed = await AsyncStorage.getItem('rms_privacy_consent_v1') || ''; } catch {}
       if (!alive || agreed !== 'agreed') return;
       introPlayedThisLaunch = true; // 确认要播了才占位，避免双挂载时首次被取消导致永远不播
-      setIntroPhase('walk');
-      // 走到位置后：挥手 + 播开场白 + 出气泡
-      const speakTimer = setTimeout(() => {
-        if (!alive) return;
-        setIntroPhase('wave');
-        void speakSystemVoice(language, {
-          key: 'intro',
-          text: t('home.intro'),
-          force: true, // 冷启动无故事在播，确保一定出声
-        });
-      }, 1600);
-      // 播完回到常态（开场白音频约 2.8s，留足缓冲）
-      const doneTimer = setTimeout(() => {
-        if (alive) setIntroPhase('done');
-      }, 1600 + 3600);
-      introTimers.current.push(speakTimer, doneTimer);
+      setIntroVisible(true);
     })();
-    return () => {
-      alive = false;
-      introTimers.current.forEach(clearTimeout);
-      introTimers.current = [];
-    };
+    return () => { alive = false; };
   }, []);
+  const handleIntroDone = useCallback(() => setIntroVisible(false), []);
 
+  /** 点场景里那只静态浣熊（图片上的热区）：说一句引导语 + 气泡，不再切换动画状态 */
   const handleRaccoPress = () => {
-    const next = RACCO_STATES[Math.floor(Math.random() * RACCO_STATES.length)];
-    setRaccoState(next);
-    // 点一下说一句引导语（发音走独立 player，故事在播时自动让路）
     const key = HOME_GUIDE_KEYS[Math.floor(Math.random() * HOME_GUIDE_KEYS.length)];
     guide.say(key);
   };
@@ -470,35 +443,23 @@ export default function HomeTab() {
   };
 
   return (
-    <CartoonScreen gradient="day" decor>
+    <View style={styles.root}>
+      <CartoonScreen
+        gradient="day"
+        decor={false}
+        wide={false}
+        backgroundSource={isWide ? HOME_SCENE : undefined}
+        backgroundResizeMode="cover"
+      >
       <ScrollView
         style={styles.container}
         contentContainerStyle={[styles.content, isWide && styles.contentWide]}
       >
-      {/* 问候 + 浣熊：iPad 横屏时左右并排，避免竖向留白过多 */}
-      <View style={[styles.topArea, isWide && styles.topAreaWide]}>
-        <View style={[styles.greetingSection, isWide && styles.greetingSectionWide]}>
-          <Text style={[styles.greetingText, isWide && styles.greetingTextWide]}>
-            {greeting} ✨
-          </Text>
-        </View>
-
-        <ElasticPressable onPress={handleRaccoPress} style={styles.raccoWrap}>
-          <Racco
-            state={
-              introPhase === 'wave' ? 'happy'
-              : introPhase === 'walk' ? 'talking'
-              : guide.line ? guide.state : raccoState
-            }
-            size={raccoSize}
-            showSpeechBubble={!!guide.line || introPhase === 'wave'}
-            speechText={introPhase === 'wave' ? t('home.intro') : guide.line}
-            gesture={introPhase === 'wave' ? 'wave' : guide.gesture}
-            enterFrom={introPhase === 'walk' ? 'left' : guide.enterFrom}
-            anim={introPhase === 'walk' ? 'walk' : introPhase === 'wave' ? 'wave' : guide.anim}
-            animPlaying={introPhase !== 'done' ? true : guide.animPlaying}
-          />
-        </ElasticPressable>
+      {/* 问候：横屏时随卡片列显示在右侧；左侧整块留给静态场景里的浣熊 */}
+      <View style={styles.greetingSection}>
+        <Text style={[styles.greetingText, isWide && styles.greetingTextWide]}>
+          {greeting} ✨
+        </Text>
       </View>
 
       {/* 会员入口：只在未订阅 / 已过期时出现（已是会员就不再推销，v84 反馈 #6） */}
@@ -680,23 +641,78 @@ export default function HomeTab() {
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
-    </CartoonScreen>
+      </CartoonScreen>
+
+      {/* 横屏：左侧场景上的浣熊热区 + 语音气泡（图里的浣熊不动，但能说话） */}
+      {isWide && (
+        <Pressable
+          style={styles.sceneRaccoHit}
+          onPress={handleRaccoPress}
+          accessibilityRole="button"
+          accessibilityLabel="talk to raccoon"
+        />
+      )}
+      {isWide && guide.line ? (
+        <View style={styles.sceneBubble} pointerEvents="none">
+          <Text style={styles.sceneBubbleText}>{guide.line}</Text>
+        </View>
+      ) : null}
+
+      {/* 独立全屏开场动画：播完自动关闭，不与静态场景重叠 */}
+      <AppIntroOverlay visible={introVisible} onDone={handleIntroDone} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
   content: {
     paddingBottom: 40,
   },
-  // iPad 横屏：内容限宽居中，避免在超宽屏上被拉得太散
+  // iPad 横屏：卡片列靠右，左侧整块露出静态场景（沙发上的浣熊）
   contentWide: {
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-    paddingBottom: 48,
+    width: '52%',
+    maxWidth: 560,
+    alignSelf: 'flex-end',
+    marginRight: 18,
+    paddingTop: 10,
+    paddingBottom: 36,
+  },
+  /** 左侧静态浣熊的点击热区（图里浣熊大致落在左 15%–40%、上 30%–70%） */
+  sceneRaccoHit: {
+    position: 'absolute',
+    left: '12%',
+    top: '26%',
+    width: '30%',
+    height: '46%',
+    zIndex: 2,
+  },
+  /** 气泡浮在场景浣熊上方，不随卡片列走 */
+  sceneBubble: {
+    position: 'absolute',
+    left: '10%',
+    top: '12%',
+    maxWidth: 260,
+    backgroundColor: '#fff',
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    zIndex: 3,
+    shadowColor: '#8A6A55',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 5,
+  },
+  sceneBubbleText: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontFamily: FONT.rounded,
+    textAlign: 'center',
   },
 
   topArea: {},

@@ -25,6 +25,8 @@ interface RaccoProps {
   anim?: RaccoAnim;
   /** 序列帧是否正在播放。false 时停在第一帧（配合语音只在说话期间播动画） */
   animPlaying?: boolean;
+  /** 只水平翻转浣熊图片（让横屏里的浣熊面朝画面中心），气泡文字不受影响 */
+  flipImage?: boolean;
 }
 
 // 默认静态图改用无圆盘的序列帧首帧（wave_01），彻底去掉木质圆盘底座。
@@ -54,6 +56,7 @@ const Racco: React.FC<RaccoProps> = ({
   enterDelay = 0,
   anim = 'none',
   animPlaying = true,
+  flipImage = false,
 }) => {
   // 序列帧：显式 anim 用它；anim='none' 时按 state 挑一个默认动作，
   // 让所有没接语音的页面也能看到会动的小浣熊（且默认图无圆盘）。
@@ -204,6 +207,7 @@ const Racco: React.FC<RaccoProps> = ({
           // 否则看起来像"挥手时身体在抖"。仅静态图模式才用旧的手势/呼吸动画。
           ...(animFrames ? [] : gestureTransform),
           { scale: animFrames ? 1 : breathe },
+          { scaleX: flipImage ? -1 : 1 },
         ],
         opacity: enterOpacity,
         alignItems: 'center',
