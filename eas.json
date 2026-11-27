@@ -7,11 +7,6 @@
     "production": {
       "distribution": "store",
       "credentialsSource": "local"
-    },
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "credentialsSource": "remote"
     }
   },
   "submit": {
