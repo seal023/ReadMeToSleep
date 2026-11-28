@@ -14,10 +14,13 @@ export const SCENE_BACKGROUNDS: Record<string, any> = {
 };
 
 /**
- * Landscape scene images place the raccoon low in the frame. Shift the image up
- * (fraction of screen height) so the whole raccoon clears the bottom tab bar.
+ * Ground clearance below the raccoon is baked into the image itself (see
+ * pad_ground.py): the scene was shifted up inside the bitmap and empty ground
+ * added beneath the feet. An extra transform here would lift the image bottom
+ * off the screen edge and expose the container background as a seam above the
+ * tab bar, so this stays at 0.
  */
-export const SCENE_SHIFT_Y = 0.12;
+export const SCENE_SHIFT_Y = 0;
 
 /** Home scene image (static raccoon baked in; do not stack an animated Racco) */
 export const HOME_SCENE = SCENE_BACKGROUNDS.home;
