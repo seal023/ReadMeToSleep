@@ -13,7 +13,7 @@ import { getStories, deleteStory } from '../../services/storage';
 import { getProgress } from '../../services/storage';
 import { useLanguage } from '../../hooks/useLanguage';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
-import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
+import { SCENE_BACKGROUNDS, SCENE_SHIFT_Y } from '../../constants/sceneBackgrounds';
 import type { Story, Progress } from '../../types';
 
 type Tab = 'created' | 'recorded' | 'checkins';
@@ -175,6 +175,7 @@ export default function MyStoriesScreen() {
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.stories : undefined}
       backgroundResizeMode="contain"
+      backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
     >
       <View style={[styles.container, { paddingTop: topPad }, isWide && styles.containerWide]}>
       {/* Tab bar */}

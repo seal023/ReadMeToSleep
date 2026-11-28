@@ -20,6 +20,7 @@ import {
   useWindowDimensions,
   StyleProp,
   ViewStyle,
+  ImageStyle,
   ImageResizeMode,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +49,8 @@ interface CartoonScreenProps {
   backgroundSource?: any;
   /** Scene image resize mode, defaults to cover (fills landscape); use contain in portrait to keep the full composition */
   backgroundResizeMode?: ImageResizeMode;
+  /** Fraction of screen height to shift the scene image upward (baked-in raccoon sits low in the frame) */
+  backgroundShiftY?: number;
 }
 
 export function CartoonScreen({
@@ -60,9 +63,13 @@ export function CartoonScreen({
   contentStyle,
   backgroundSource,
   backgroundResizeMode = 'cover',
+  backgroundShiftY,
 }: CartoonScreenProps) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isWide = width >= 768;
+  const sceneImageStyle: ImageStyle | undefined = backgroundShiftY
+    ? ({ transform: [{ translateY: -height * backgroundShiftY }] } as ImageStyle)
+    : undefined;
 
   const content: ViewStyle | ViewStyle[] = [
     styles.flex,
@@ -77,6 +84,7 @@ export function CartoonScreen({
         <ImageBackground
           source={backgroundSource}
           resizeMode={backgroundResizeMode}
+          imageStyle={sceneImageStyle}
           style={styles.flex}
         >
           <View style={content}>{children}</View>

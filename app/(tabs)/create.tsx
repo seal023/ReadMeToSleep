@@ -20,7 +20,7 @@ import { useEntitlement } from '@/hooks/useEntitlement';
 import Racco from '@/components/common/Racco';
 import { CartoonScreen } from '@/components/ui/CartoonScreen';
 import { SceneRaccoLayer } from '@/components/ui/SceneRaccoLayer';
-import { SCENE_BACKGROUNDS } from '@/constants/sceneBackgrounds';
+import { SCENE_BACKGROUNDS, SCENE_SHIFT_Y } from '@/constants/sceneBackgrounds';
 import { useRaccoGuide } from '@/hooks/useRaccoGuide';
 import { FONT } from '@/constants/theme';
 import { COLORS } from '@/constants/Colors';
@@ -261,6 +261,7 @@ export default function CreateScreen() {
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.create : undefined}
       backgroundResizeMode="contain"
+      backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
     >
       <ScrollView style={styles.container} contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
       {!isWide && <View style={styles.raccoWrap}>

@@ -21,7 +21,7 @@ import { useRaccoGuide } from '../../hooks/useRaccoGuide';
 import Racco from '../../components/common/Racco';
 import AppIntroOverlay from '../../components/intro/AppIntroOverlay';
 import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
-import { HOME_SCENE } from '../../constants/sceneBackgrounds';
+import { HOME_SCENE, SCENE_SHIFT_Y } from '../../constants/sceneBackgrounds';
 import { LevelCard } from '../../components/ui/LevelCard';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { ClayIcon } from '../../components/ui/ClayIcon';
@@ -453,6 +453,7 @@ export default function HomeTab() {
         wide={false}
         backgroundSource={isWide ? HOME_SCENE : undefined}
         backgroundResizeMode="contain"
+        backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
       >
       <ScrollView
         style={styles.container}

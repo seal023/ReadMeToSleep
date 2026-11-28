@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
-import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
+import { SCENE_BACKGROUNDS, SCENE_SHIFT_Y } from '../../constants/sceneBackgrounds';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useAuth } from '../../hooks/useAuth';
@@ -126,6 +126,7 @@ export default function SettingsScreen() {
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.settings : undefined}
       backgroundResizeMode="contain"
+      backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
     >
       <ScrollView style={styles.container} contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
       {!isWide && <View style={styles.raccoWrap}>

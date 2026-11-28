@@ -14,7 +14,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import Racco from '../../components/common/Racco';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
-import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
+import { SCENE_BACKGROUNDS, SCENE_SHIFT_Y } from '../../constants/sceneBackgrounds';
 import ClayIcon, { type ClayIconName } from '../../components/ui/ClayIcon';
 import { useLanguage } from '../../hooks/useLanguage';
 import { useRaccoGuide } from '../../hooks/useRaccoGuide';
@@ -386,6 +386,7 @@ export default function LibraryScreen() {
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.library : undefined}
       backgroundResizeMode="contain"
+      backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
     >
       <View style={[styles.container, isWide && styles.containerWide]}>
       {/* 顶栏：横屏时搜索框在左、小浣熊移到右上角并放大；竖屏保持浣熊在左 */}

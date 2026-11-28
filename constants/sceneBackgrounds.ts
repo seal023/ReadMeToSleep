@@ -13,5 +13,11 @@ export const SCENE_BACKGROUNDS: Record<string, any> = {
   settings: require('../assets/scenes/scene_settings_with_racco.png'),
 };
 
+/**
+ * Landscape scene images place the raccoon low in the frame. Shift the image up
+ * (fraction of screen height) so the whole raccoon clears the bottom tab bar.
+ */
+export const SCENE_SHIFT_Y = 0.12;
+
 /** Home scene image (static raccoon baked in; do not stack an animated Racco) */
 export const HOME_SCENE = SCENE_BACKGROUNDS.home;

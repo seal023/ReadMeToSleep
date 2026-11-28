@@ -26,7 +26,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { CartoonScreen } from '../../components/ui/CartoonScreen';
 import { SceneRaccoLayer } from '../../components/ui/SceneRaccoLayer';
-import { SCENE_BACKGROUNDS } from '../../constants/sceneBackgrounds';
+import { SCENE_BACKGROUNDS, SCENE_SHIFT_Y } from '../../constants/sceneBackgrounds';
 import { ClayIcon } from '../../components/ui/ClayIcon';
 import Racco from '@/components/common/Racco';
 import { useRaccoGuide } from '@/hooks/useRaccoGuide';
@@ -280,6 +280,7 @@ export default function RecordScreen() {
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.record : undefined}
       backgroundResizeMode="contain"
+      backgroundShiftY={isWide ? SCENE_SHIFT_Y : undefined}
     >
       <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
         <Text style={styles.title}>{t('record.title')}</Text>
