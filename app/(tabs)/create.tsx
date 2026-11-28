@@ -260,7 +260,7 @@ export default function CreateScreen() {
       decor={false}
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.create : undefined}
-      backgroundResizeMode="cover"
+      backgroundResizeMode="contain"
     >
       <ScrollView style={styles.container} contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
       {!isWide && <View style={styles.raccoWrap}>

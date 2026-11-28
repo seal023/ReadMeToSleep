@@ -385,7 +385,7 @@ export default function LibraryScreen() {
       decor={false}
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.library : undefined}
-      backgroundResizeMode="cover"
+      backgroundResizeMode="contain"
     >
       <View style={[styles.container, isWide && styles.containerWide]}>
       {/* 顶栏：横屏时搜索框在左、小浣熊移到右上角并放大；竖屏保持浣熊在左 */}

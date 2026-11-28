@@ -174,7 +174,7 @@ export default function MyStoriesScreen() {
       decor={false}
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.stories : undefined}
-      backgroundResizeMode="cover"
+      backgroundResizeMode="contain"
     >
       <View style={[styles.container, { paddingTop: topPad }, isWide && styles.containerWide]}>
       {/* Tab bar */}

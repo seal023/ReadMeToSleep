@@ -279,7 +279,7 @@ export default function RecordScreen() {
       decor={false}
       wide={false}
       backgroundSource={isWide ? SCENE_BACKGROUNDS.record : undefined}
-      backgroundResizeMode="cover"
+      backgroundResizeMode="contain"
     >
       <ScrollView contentContainerStyle={[styles.content, isWide && styles.contentWide]}>
         <Text style={styles.title}>{t('record.title')}</Text>

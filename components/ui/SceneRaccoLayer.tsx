@@ -34,17 +34,20 @@ export function SceneRaccoLayer({ text, onPress }: Props) {
 
 const styles = StyleSheet.create({
   hit: {
+    // Scene uses "contain": the image is centered with side gutters, and the
+    // raccoon sits low on the left. Cover a generous left-center band so the
+    // tap target reaches the raccoon on both iPad and iPhone landscape.
     position: 'absolute',
-    left: '11%',
-    top: '26%',
-    width: '30%',
-    height: '46%',
+    left: '16%',
+    top: '30%',
+    width: '32%',
+    height: '60%',
     zIndex: 2,
   },
   bubble: {
     position: 'absolute',
-    left: '9%',
-    top: '12%',
+    left: '14%',
+    top: '10%',
     maxWidth: 260,
     backgroundColor: '#fff',
     borderRadius: 22,

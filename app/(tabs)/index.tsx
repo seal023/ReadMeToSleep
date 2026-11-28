@@ -452,7 +452,7 @@ export default function HomeTab() {
         decor={false}
         wide={false}
         backgroundSource={isWide ? HOME_SCENE : undefined}
-        backgroundResizeMode="cover"
+        backgroundResizeMode="contain"
       >
       <ScrollView
         style={styles.container}
